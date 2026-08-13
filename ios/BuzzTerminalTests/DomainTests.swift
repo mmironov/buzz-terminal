@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import BuzzTerminal
@@ -7,7 +8,7 @@ import Testing
 //  exercises during iteration 1. All green.
 //
 //    TopUpEntry.press(_:)           keypad input rules
-//    WaitingGuest.matches(query:)   check-in search
+//    Participant.matches(query:)    check-in search
 //    PaymentDecision.evaluate(…)    the charge decision
 //
 //  Run with ⌘U in Xcode, or ./scripts/test.sh
@@ -89,10 +90,16 @@ struct TopUpEntryTests {
 // MARK: - Search
 
 @Suite("Check-in search")
-struct WaitingGuestTests {
+struct ParticipantSearchTests {
 
-    private let amelie = WaitingGuest(id: "w1", name: "Amélie Roux", pass: "Full pass", city: "Lyon")
-    private let nina = WaitingGuest(id: "w3", name: "Nina Kowalski", pass: "Party pass", city: "Kraków")
+    private let amelie = Participant(
+        id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432",
+        name: "Amélie Roux", ticketType: "Full pass", city: "Lyon"
+    )
+    private let nina = Participant(
+        id: ParticipantID("tkt-10434"), ticketRef: "TKT-10434",
+        name: "Nina Kowalski", ticketType: "Party pass", city: "Kraków"
+    )
 
     @Test("An empty or blank query matches everybody")
     func blankQuery() {
@@ -143,11 +150,14 @@ struct PaymentDecisionTests {
         blocked: Bool = false
     ) -> Participant {
         Participant(
-            id: SampleData.braceletB,
+            id: ParticipantID("tkt-10001"),
+            ticketRef: "TKT-10001",
             name: "Marta Lindqvist",
-            pass: "Full pass",
+            ticketType: "Full pass",
+            city: "Stockholm",
+            braceletId: SampleData.braceletB,
+            checkedInAt: .now,
             balance: balance,
-            checkedInAt: "Fri 17:12",
             isBlocked: blocked
         )
     }
@@ -195,5 +205,57 @@ struct PaymentDecisionTests {
             .note(total: Money(euros: 4))
         #expect(note.contains("Marta Lindqvist"))
         #expect(note.contains("nothing was charged"))
+    }
+}
+
+// MARK: - Participant lifecycle
+
+/// `braceletId == nil` replaced the old `WaitingGuest` type entirely, so the
+/// "is this person still waiting?" question now has exactly one answer.
+@Suite("Participant lifecycle")
+struct ParticipantLifecycleTests {
+
+    private func roux(bracelet: BraceletID? = nil, checkedInAt: Date? = nil) -> Participant {
+        Participant(
+            id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432",
+            name: "Amélie Roux", ticketType: "Full pass", city: "Lyon",
+            braceletId: bracelet, checkedInAt: checkedInAt
+        )
+    }
+
+    @Test("No bracelet means awaiting check-in")
+    func awaiting() {
+        #expect(roux().isAwaitingCheckIn)
+        #expect(roux().balance == .zero)
+        #expect(roux().checkedInLabel == "Not checked in")
+    }
+
+    @Test("A paired bracelet means checked in")
+    func pairedIsCheckedIn() {
+        let paired = roux(bracelet: SampleData.braceletA, checkedInAt: .now)
+        #expect(paired.isAwaitingCheckIn == false)
+    }
+
+    @Test("A just-paired bracelet reads as \"just now\", an older one as a time")
+    func checkInLabel() {
+        let now = roux(bracelet: SampleData.braceletA, checkedInAt: .now)
+        #expect(now.checkedInLabel == "Checked in just now")
+
+        let earlier = roux(
+            bracelet: SampleData.braceletA,
+            checkedInAt: Date(timeIntervalSinceNow: -3 * 3600)
+        )
+        #expect(earlier.checkedInLabel.hasPrefix("Checked in "))
+        #expect(earlier.checkedInLabel != "Checked in just now")
+    }
+
+    @Test("The sample roster splits into checked-in and awaiting, with no overlap")
+    func rosterSplit() {
+        let awaiting = SampleData.roster.filter(\.isAwaitingCheckIn)
+        #expect(awaiting.count == SampleData.awaitingCheckIn.count)
+        #expect(SampleData.roster.count == SampleData.checkedIn.count + awaiting.count)
+        // Participant ids are unique — a duplicate would mean two people sharing
+        // a balance, which is the importer's whole reason for refusing to guess.
+        #expect(Set(SampleData.roster.map(\.id)).count == SampleData.roster.count)
     }
 }

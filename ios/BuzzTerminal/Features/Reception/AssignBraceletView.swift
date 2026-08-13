@@ -59,13 +59,13 @@ struct AssignBraceletView: View {
         .scrollBounceBehavior(.basedOnSize)
     }
 
-    private func candidateRow(_ guest: WaitingGuest) -> some View {
+    private func candidateRow(_ guest: Participant) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(guest.name)
                         .font(.sbHeading(16))
-                    Text("\(guest.pass) · \(guest.city)")
+                    Text("\(guest.ticketType) · \(guest.city)")
                         .font(.sbBody(11))
                         .foregroundStyle(.sbInk(0.55))
                 }
@@ -116,7 +116,7 @@ struct SBSearchField: View {
     let model = AppModel()
     model.role = .reception
     model.bracelet = SampleData.braceletA
-    model.waitingGuests = SampleData.waitingGuests
+    model.awaitingCheckIn = SampleData.awaitingCheckIn
     return AssignBraceletView()
         .environment(model)
         .background(Color.sbBackground)

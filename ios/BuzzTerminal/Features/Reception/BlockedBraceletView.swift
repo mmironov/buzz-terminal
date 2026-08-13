@@ -17,7 +17,7 @@ struct BlockedBraceletView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 4)
 
-                Text("\(model.participant?.pass ?? "—") · Bracelet \(model.braceletLabel)")
+                Text("\(model.participant?.ticketType ?? "—") · Bracelet \(model.braceletLabel)")
                     .font(.sbBody(12))
                     .foregroundStyle(.sbInk(0.6))
 
@@ -72,7 +72,7 @@ struct BlockedBraceletView: View {
     let model = AppModel()
     model.role = .reception
     model.bracelet = SampleData.braceletD
-    model.participant = SampleData.participants[SampleData.braceletD]
+    model.participant = SampleData.participant(withBracelet: SampleData.braceletD)
     return BlockedBraceletView()
         .environment(model)
         .background(Color.sbBackground)

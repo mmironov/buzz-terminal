@@ -118,7 +118,7 @@ private struct KeypadStyle: ButtonStyle {
     let model = AppModel()
     model.role = .reception
     model.bracelet = SampleData.braceletB
-    model.participant = SampleData.participants[SampleData.braceletB]
+    model.participant = SampleData.participant(withBracelet: SampleData.braceletB)
     return TopUpView()
         .environment(model)
         .background(Color.sbBackground)

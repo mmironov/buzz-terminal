@@ -1,10 +1,11 @@
 import Foundation
 
-/// The fixture data from the Claude Design prototype, kept verbatim so the app
-/// and the design can be compared side by side.
+/// The fixture data from the Claude Design prototype, reshaped to match the
+/// Firestore model: one roster of participants, some of whom happen to have a
+/// bracelet paired already.
 ///
-/// In iteration 2 the drinks list and the guest list move to Firestore and this
-/// file shrinks to whatever the offline cache needs to seed itself with.
+/// Once `FirebaseTerminalRepository` lands, this is only used by SwiftUI previews,
+/// `LaunchOverrides` and the in-memory repository — never in a real session.
 enum SampleData {
 
     // MARK: Bar menu
@@ -36,42 +37,65 @@ enum SampleData {
         SimulatedBracelet(id: braceletD, hint: "Elena Novak — blocked in admin panel"),
     ]
 
-    // MARK: Already checked in
+    // MARK: Roster
 
-    static let participants: [BraceletID: Participant] = [
-        braceletB: Participant(
-            id: braceletB,
+    /// A time on the Friday evening, used so the fixtures read like a real
+    /// festival rather than "checked in 0 seconds ago".
+    private static func earlier(_ hours: Double) -> Date {
+        Date(timeIntervalSinceNow: -hours * 3600)
+    }
+
+    /// Already checked in — these three have bracelets.
+    static let checkedIn: [Participant] = [
+        Participant(
+            id: ParticipantID("tkt-10001"),
+            ticketRef: "TKT-10001",
             name: "Marta Lindqvist",
-            pass: "Full pass",
-            balance: Money(euros: 23, cents: 50),
-            checkedInAt: "Fri 17:12"
+            ticketType: "Full pass",
+            city: "Stockholm",
+            braceletId: braceletB,
+            checkedInAt: earlier(6),
+            balance: Money(euros: 23, cents: 50)
         ),
-        braceletC: Participant(
-            id: braceletC,
+        Participant(
+            id: ParticipantID("tkt-10002"),
+            ticketRef: "TKT-10002",
             name: "Jonas Bergström",
-            pass: "Party pass",
-            balance: Money(euros: 2),
-            checkedInAt: "Fri 18:04"
+            ticketType: "Party pass",
+            city: "Göteborg",
+            braceletId: braceletC,
+            checkedInAt: earlier(5),
+            balance: Money(euros: 2)
         ),
-        braceletD: Participant(
-            id: braceletD,
+        Participant(
+            id: ParticipantID("tkt-10003"),
+            ticketRef: "TKT-10003",
             name: "Elena Novak",
-            pass: "Full pass",
+            ticketType: "Full pass",
+            city: "Ljubljana",
+            braceletId: braceletD,
+            checkedInAt: earlier(7),
             balance: Money(euros: 14),
-            checkedInAt: "Fri 16:40",
             isBlocked: true,
             blockReason: "Blocked in the admin panel on Sat 01:20 — no top-ups and no payments until an organiser lifts it."
         ),
     ]
 
-    // MARK: Arrived, waiting for a bracelet
-
-    static let waitingGuests: [WaitingGuest] = [
-        WaitingGuest(id: "w1", name: "Amélie Roux", pass: "Full pass", city: "Lyon"),
-        WaitingGuest(id: "w2", name: "Tomás Herrera", pass: "Full pass", city: "Madrid"),
-        WaitingGuest(id: "w3", name: "Nina Kowalski", pass: "Party pass", city: "Kraków"),
-        WaitingGuest(id: "w4", name: "Sofia Ferreira", pass: "Full pass", city: "Porto"),
-        WaitingGuest(id: "w5", name: "Dmitri Alvarez", pass: "Weekend pass", city: "Berlin"),
-        WaitingGuest(id: "w6", name: "Hannah Vos", pass: "Party pass", city: "Utrecht"),
+    /// Arrived, no bracelet yet. These are what the check-in list shows.
+    static let awaitingCheckIn: [Participant] = [
+        Participant(id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432", name: "Amélie Roux", ticketType: "Full pass", city: "Lyon"),
+        Participant(id: ParticipantID("tkt-10433"), ticketRef: "TKT-10433", name: "Tomás Herrera", ticketType: "Full pass", city: "Madrid"),
+        Participant(id: ParticipantID("tkt-10434"), ticketRef: "TKT-10434", name: "Nina Kowalski", ticketType: "Party pass", city: "Kraków"),
+        Participant(id: ParticipantID("tkt-10435"), ticketRef: "TKT-10435", name: "Sofia Ferreira", ticketType: "Full pass", city: "Porto"),
+        Participant(id: ParticipantID("tkt-10436"), ticketRef: "TKT-10436", name: "Dmitri Alvarez", ticketType: "Weekend pass", city: "Berlin"),
+        Participant(id: ParticipantID("tkt-10437"), ticketRef: "TKT-10437", name: "Hannah Vos", ticketType: "Party pass", city: "Utrecht"),
     ]
+
+    /// The whole roster, as the Sheet import would have left it.
+    static var roster: [Participant] { checkedIn + awaitingCheckIn }
+
+    /// Convenience for previews and launch overrides.
+    static func participant(withBracelet bracelet: BraceletID) -> Participant? {
+        checkedIn.first { $0.braceletId == bracelet }
+    }
 }

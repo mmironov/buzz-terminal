@@ -4,6 +4,9 @@ import Foundation
 
 /// Which terminal mode a signed-in staff member gets. The festival runs the same
 /// binary at reception and behind the bar; the account decides the flow.
+///
+/// From iteration 2 this comes from a Firebase Auth custom claim, not from
+/// anything the client chooses — see `docs/firestore-schema.md`, "Roles".
 enum StaffRole: String, Hashable, Sendable {
     case reception
     case bar
@@ -47,13 +50,23 @@ enum Screen: Hashable, Sendable {
     case receipt
 }
 
-// MARK: - Bracelets
+// MARK: - Identifiers
 
 /// The NFC chip UID, as printed in the design (`04:B4:2F:11`).
-///
-/// A distinct type rather than a bare `String` so a bracelet id can never be
-/// passed where a participant id is expected.
 struct BraceletID: Hashable, Sendable, CustomStringConvertible {
+    let rawValue: String
+    init(_ rawValue: String) { self.rawValue = rawValue }
+    var description: String { rawValue }
+}
+
+/// Identity of a person on the roster — the Firestore document id, derived from
+/// the Google Sheet's stable ticket reference.
+///
+/// Distinct from `BraceletID` on purpose. Until iteration 2 these were the same
+/// thing, because a participant only existed once a chip was paired to them. Now
+/// the roster comes from the Sheet, so a participant exists from the moment they
+/// buy a ticket and the bracelet is something that happens to them later.
+struct ParticipantID: Hashable, Sendable, CustomStringConvertible {
     let rawValue: String
     init(_ rawValue: String) { self.rawValue = rawValue }
     var description: String { rawValue }
@@ -69,36 +82,58 @@ struct SimulatedBracelet: Identifiable, Hashable, Sendable {
 
 // MARK: - People
 
-/// Somebody who has been checked in and has a bracelet paired to them.
+/// Somebody who bought a ticket.
+///
+/// One type for the whole lifecycle. `braceletId == nil` *is* the "arrived but
+/// not checked in yet" state — there is no separate `WaitingGuest`, because the
+/// roster now comes from the Sheet and everybody on it is a participant from the
+/// moment they buy a ticket. This mirrors `participants/{id}` in Firestore
+/// exactly, so the mapping layer has nothing to reconcile.
 struct Participant: Identifiable, Hashable, Sendable {
-    var id: BraceletID
+
+    // ── Roster: owned by the Google Sheet import, never written by the app ──
+    var id: ParticipantID
+    /// As printed on their ticket. The Sheet's stable unique key.
+    var ticketRef: String
     var name: String
-    var pass: String
-    var balance: Money
-    /// Display string as in the design (`"Fri 17:12"`, or `"now"` right after check-in).
-    var checkedInAt: String
+    /// "Full pass", "Party pass", "Weekend pass". `ticketType` in Firestore.
+    var ticketType: String
+    var city: String
+
+    // ── Festival state: owned by the terminals ──
+    /// `nil` until reception pairs a chip. Permanent once set.
+    var braceletId: BraceletID?
+    var checkedInAt: Date?
+    var balance: Money = .zero
+
+    // ── Organiser state: owned by the admin panel ──
     var isBlocked: Bool = false
     /// Why an organiser froze the bracelet, shown verbatim on the blocked screen.
     var blockReason: String?
 
+    /// The check-in list is everybody this is true for.
+    var isAwaitingCheckIn: Bool { braceletId == nil }
+
+    /// `"Checked in Fri 17:12"`, or `"Checked in just now"` immediately after
+    /// pairing — the design distinguishes the two.
     var checkedInLabel: String {
-        checkedInAt == "now" ? "Checked in just now" : "Checked in \(checkedInAt)"
+        guard let checkedInAt else { return "Not checked in" }
+        if Date.now.timeIntervalSince(checkedInAt) < 120 {
+            return "Checked in just now"
+        }
+        return "Checked in \(Self.checkInFormatter.string(from: checkedInAt))"
     }
+
+    /// `"Fri 17:12"`. 24-hour regardless of device settings, because the design
+    /// shows it that way and staff read these out to each other across a room.
+    private static let checkInFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE HH:mm"
+        return formatter
+    }()
 }
 
-/// Somebody who bought a ticket and has arrived, but has no bracelet yet.
-struct WaitingGuest: Identifiable, Hashable, Sendable {
-    var id: String
-    var name: String
-    var pass: String
-    var city: String
-}
-
-extension WaitingGuest {
-    /// Does this guest match what reception typed into the search box?
-    ///
-    /// An empty or whitespace-only query matches everybody.
-    ///
+extension Participant {
     /// Case- and diacritic-insensitive substring match against the guest's name
     /// or their ticket type. Deliberately *not* the city: the row displays it,
     /// but the field's placeholder only promises "participant or ticket".
@@ -108,10 +143,10 @@ extension WaitingGuest {
     /// probably want the ticket match to be prefix-only.
     func matches(query: String) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         guard !trimmed.isEmpty else { return true }
-        
-        return name.localizedCaseInsensitiveContains(trimmed) || pass.localizedCaseInsensitiveContains(trimmed)
+
+        return name.localizedCaseInsensitiveContains(trimmed) || ticketType.localizedCaseInsensitiveContains(trimmed)
     }
 }
 

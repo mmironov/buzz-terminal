@@ -47,7 +47,7 @@ struct PayReviewView: View {
                     .tracking(-0.02 * 30)
                     .sbLineHeight(1.05, size: 30)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(model.participant?.pass ?? "—") · Bracelet \(model.braceletLabel)")
+                Text("\(model.participant?.ticketType ?? "—") · Bracelet \(model.braceletLabel)")
                     .font(.sbBody(12))
                     .foregroundStyle(.sbInk(0.6))
             }
@@ -168,7 +168,7 @@ struct PayReviewView: View {
     model.menu = SampleData.drinks
     model.add(SampleData.drinks[0])
     model.bracelet = SampleData.braceletB
-    model.participant = SampleData.participants[SampleData.braceletB]
+    model.participant = SampleData.participant(withBracelet: SampleData.braceletB)
     model.paymentDecision = .approved(balanceAfter: Money(euros: 19, cents: 50))
     return PayReviewView().environment(model).background(Color.sbBackground)
 }
@@ -179,7 +179,7 @@ struct PayReviewView: View {
     model.menu = SampleData.drinks
     model.add(SampleData.drinks[0])
     model.bracelet = SampleData.braceletD
-    let blocked = SampleData.participants[SampleData.braceletD]!
+    let blocked = SampleData.participant(withBracelet: SampleData.braceletD)!
     model.participant = blocked
     model.paymentDecision = .blocked(participant: blocked)
     return PayReviewView().environment(model).background(Color.sbBackground)

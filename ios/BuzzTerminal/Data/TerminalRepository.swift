@@ -25,15 +25,21 @@ protocol TerminalRepository: Sendable {
 
     // MARK: Catalogue
     func drinks() async throws -> [Drink]
-    func waitingGuests() async throws -> [WaitingGuest]
+
+    /// Everybody on the roster who has arrived but has no bracelet yet — i.e.
+    /// `braceletId == nil`. The check-in list.
+    func awaitingCheckIn() async throws -> [Participant]
 
     // MARK: Bracelets
     /// The account paired to this chip, or `nil` if the chip is unassigned.
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant?
 
-    /// Pair a fresh bracelet to a guest who has arrived. Returns the newly
-    /// created account, which starts at a zero balance.
-    func assignBracelet(_ bracelet: BraceletID, to guest: WaitingGuest) async throws -> Participant
+    /// Pair a fresh bracelet to somebody already on the roster. Returns the
+    /// updated participant.
+    ///
+    /// Permanent: re-pointing a chip at a different guest would silently
+    /// transfer their balance, so the security rules forbid it outright.
+    func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant
 
     /// Take cash at reception and credit the account.
     /// Must be atomic server-side — two reception desks may top up at once.
@@ -49,6 +55,7 @@ protocol TerminalRepository: Sendable {
 enum TerminalError: Error, Equatable, LocalizedError {
     case unknownAccount
     case braceletNotAssigned
+    case braceletAlreadyPaired
     case braceletBlocked
     case insufficientFunds(balance: Money, required: Money)
     case offline
@@ -59,6 +66,8 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "Unknown account. Use one of the staff logins below."
         case .braceletNotAssigned:
             "This bracelet is not paired to anybody yet."
+        case .braceletAlreadyPaired:
+            "This bracelet is already paired to somebody. Use a fresh one."
         case .braceletBlocked:
             "This bracelet is blocked. An organiser must lift the block."
         case .insufficientFunds(let balance, let required):

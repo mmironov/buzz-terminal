@@ -81,13 +81,14 @@ final class AppModel {
 
     // MARK: Reception
 
-    var waitingGuests: [WaitingGuest] = []
+    /// Everybody on the roster without a bracelet yet.
+    var awaitingCheckIn: [Participant] = []
     var search = ""
 
     /// The check-in list, filtered by whatever is in the search box.
-    /// The filtering itself lives on `WaitingGuest` (exercise 2).
-    var candidates: [WaitingGuest] {
-        waitingGuests.filter { $0.matches(query: search) }
+    /// The filtering itself lives on `Participant.matches(query:)`.
+    var candidates: [Participant] {
+        awaitingCheckIn.filter { $0.matches(query: search) }
     }
 
     var topUp = TopUpEntry()
@@ -115,7 +116,7 @@ final class AppModel {
     func loadCatalogue() async {
         do {
             menu = try await repository.drinks()
-            waitingGuests = try await repository.waitingGuests()
+            awaitingCheckIn = try await repository.awaitingCheckIn()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -228,24 +229,24 @@ final class AppModel {
 
     // MARK: - Reception: check in
 
-    func assign(to guest: WaitingGuest) async {
+    func assign(to guest: Participant) async {
         guard let bracelet else { return }
         isWorking = true
         defer { isWorking = false }
         do {
-            let created = try await repository.assignBracelet(bracelet, to: guest)
-            participant = created
-            waitingGuests.removeAll { $0.id == guest.id }
+            let paired = try await repository.assignBracelet(bracelet, to: guest)
+            participant = paired
+            awaitingCheckIn.removeAll { $0.id == guest.id }
             receipt = Receipt(
                 kind: .checkIn,
                 title: "Checked in",
                 note: "\(guest.name) is checked in and the bracelet is now paired to them for the whole festival.",
                 rows: [
                     .init(key: "Participant", value: guest.name),
-                    .init(key: "Ticket", value: guest.pass),
+                    .init(key: "Ticket", value: guest.ticketType),
                     .init(key: "Bracelet", value: bracelet.rawValue),
                 ],
-                balance: created.balance
+                balance: paired.balance
             )
             screen = .receipt
         } catch {

@@ -48,11 +48,11 @@ extension AppModel {
         }
 
         menu = SampleData.drinks
-        waitingGuests = SampleData.waitingGuests
+        awaitingCheckIn = SampleData.awaitingCheckIn
 
-        let marta = SampleData.participants[SampleData.braceletB]
-        let jonas = SampleData.participants[SampleData.braceletC]
-        let elena = SampleData.participants[SampleData.braceletD]
+        let marta = SampleData.participant(withBracelet: SampleData.braceletB)
+        let jonas = SampleData.participant(withBracelet: SampleData.braceletC)
+        let elena = SampleData.participant(withBracelet: SampleData.braceletD)
 
         switch overrides.screen {
         case "reception":

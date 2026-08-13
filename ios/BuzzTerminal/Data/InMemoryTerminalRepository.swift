@@ -11,21 +11,24 @@ import Foundation
 /// during development. Set it to zero in tests.
 actor InMemoryTerminalRepository: TerminalRepository {
 
-    private var participants: [BraceletID: Participant]
-    private var waiting: [WaitingGuest]
+    /// The whole roster, keyed the way Firestore keys it.
+    private var roster: [ParticipantID: Participant]
     private let menu: [Drink]
     private let latency: Duration
 
     init(
-        participants: [BraceletID: Participant] = SampleData.participants,
-        waiting: [WaitingGuest] = SampleData.waitingGuests,
+        roster: [Participant] = SampleData.roster,
         menu: [Drink] = SampleData.drinks,
         latency: Duration = .milliseconds(180)
     ) {
-        self.participants = participants
-        self.waiting = waiting
+        self.roster = Dictionary(uniqueKeysWithValues: roster.map { ($0.id, $0) })
         self.menu = menu
         self.latency = latency
+    }
+
+    /// Reverse lookup, standing in for the `bracelets/{chipUid}` collection.
+    private func participant(pairedTo bracelet: BraceletID) -> Participant? {
+        roster.values.first { $0.braceletId == bracelet }
     }
 
     private func simulateNetwork() async {
@@ -57,44 +60,43 @@ actor InMemoryTerminalRepository: TerminalRepository {
         return menu
     }
 
-    func waitingGuests() async throws -> [WaitingGuest] {
+    func awaitingCheckIn() async throws -> [Participant] {
         await simulateNetwork()
-        return waiting
+        return roster.values
+            .filter(\.isAwaitingCheckIn)
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
     // MARK: Bracelets
 
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant? {
         await simulateNetwork()
-        return participants[bracelet]
+        return participant(pairedTo: bracelet)
     }
 
-    func assignBracelet(_ bracelet: BraceletID, to guest: WaitingGuest) async throws -> Participant {
+    func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant {
         await simulateNetwork()
-        let participant = Participant(
-            id: bracelet,
-            name: guest.name,
-            pass: guest.pass,
-            balance: .zero,
-            checkedInAt: "now"
-        )
-        participants[bracelet] = participant
-        waiting.removeAll { $0.id == guest.id }
-        return participant
+        guard var updated = roster[participant.id] else { throw TerminalError.unknownAccount }
+        guard updated.isAwaitingCheckIn else { throw TerminalError.braceletAlreadyPaired }
+        guard self.participant(pairedTo: bracelet) == nil else { throw TerminalError.braceletAlreadyPaired }
+        updated.braceletId = bracelet
+        updated.checkedInAt = .now
+        roster[updated.id] = updated
+        return updated
     }
 
     func topUp(bracelet: BraceletID, amount: Money) async throws -> Participant {
         await simulateNetwork()
-        guard var participant = participants[bracelet] else { throw TerminalError.braceletNotAssigned }
+        guard var participant = participant(pairedTo: bracelet) else { throw TerminalError.braceletNotAssigned }
         guard !participant.isBlocked else { throw TerminalError.braceletBlocked }
         participant.balance += amount
-        participants[bracelet] = participant
+        roster[participant.id] = participant
         return participant
     }
 
     func charge(bracelet: BraceletID, lines: [CartLine]) async throws -> Participant {
         await simulateNetwork()
-        guard var participant = participants[bracelet] else { throw TerminalError.braceletNotAssigned }
+        guard var participant = participant(pairedTo: bracelet) else { throw TerminalError.braceletNotAssigned }
         guard !participant.isBlocked else { throw TerminalError.braceletBlocked }
         let total = lines.reduce(Money.zero) { $0 + $1.total }
         // Re-check server side. The client already ran `PaymentDecision`, but a
@@ -103,7 +105,7 @@ actor InMemoryTerminalRepository: TerminalRepository {
             throw TerminalError.insufficientFunds(balance: participant.balance, required: total)
         }
         participant.balance -= total
-        participants[bracelet] = participant
+        roster[participant.id] = participant
         return participant
     }
 }
