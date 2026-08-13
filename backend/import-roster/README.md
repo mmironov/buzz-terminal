@@ -70,6 +70,21 @@ cannot be set from the Firebase console — only through the Admin SDK — which
 precisely why they are trustworthy: no client can grant itself a role. The staff
 member must sign out and back in before a new claim takes effect.
 
+## Who gets imported
+
+Only rows with **`Status` = `Paid`** (matched lowercased and trimmed, so `PAID`
+and ` paid ` both count). Everything else — pending, expired, cancelled,
+refunded, blank — is treated as if the registration does not exist. During the
+festival, unpaid is the same as absent.
+
+Every dry run prints a breakdown of what it skipped, by status. **Read it.** A
+value nobody anticipated, say `Paid (bank transfer)`, is skipped by this rule and
+the first anyone would know is a paying guest missing at the door.
+
+Somebody already in Firestore whose status is no longer `Paid` is reported rather
+than silently skipped — they may have checked in and loaded money onto a bracelet
+before the refund. Never deleted; that money is real.
+
 ## What it will refuse to do
 
 The importer stops rather than guess, because a wrong guess here corrupts

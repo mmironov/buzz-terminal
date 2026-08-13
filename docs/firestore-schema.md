@@ -7,7 +7,7 @@ Source of truth for the backend model. `backend/firestore.rules` enforces it;
 
 | Data | Owner | Written by |
 | --- | --- | --- |
-| Who bought a ticket (name, ticket type, country) | the Google Sheet | the import script, via Admin SDK |
+| Who bought a ticket (name, ticket type, country) | the Google Sheet, `Status = Paid` only | the import script, via Admin SDK |
 | Which chip belongs to whom | the reception terminal | the app, at check-in |
 | Balance and its history | the terminals | the app, in Firestore transactions |
 | Blocks | organisers | the web admin panel (not built yet) |

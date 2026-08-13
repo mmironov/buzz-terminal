@@ -159,21 +159,17 @@ async function cmdImport() {
     );
   }
 
-  const { importable, excluded, unknown } = partitionByStatus(usable);
+  const { importable, excluded, breakdown } = partitionByStatus(usable);
 
-  if (unknown.size) {
-    fail(
-      `Unrecognised values in the "${COLUMNS.status}" column:\n` +
-        [...unknown].map(([value, rowNumbers]) =>
-          `    "${value || '(blank)'}" on sheet row(s) ${rowNumbers.slice(0, 8).join(', ')}` +
-          (rowNumbers.length > 8 ? ` … and ${rowNumbers.length - 8} more` : '')
-        ).join('\n') +
-        `\n\n  Add each to IMPORTABLE_STATUSES or NON_IMPORTABLE_STATUSES in mapping.mjs.\n` +
-        `  Guessing checks in somebody who never paid, or turns a paying guest away.`
-    );
+  console.log(`Status:     ${importable.length} paid, ${excluded.length} skipped`);
+  if (breakdown.size) {
+    // Read this. A value like "Paid (bank transfer)" would be skipped by the
+    // Paid-only rule, and that guest would simply be missing at the door.
+    for (const [status, count] of [...breakdown].sort((a, b) => b[1] - a[1])) {
+      console.log(`              ${String(count).padStart(5)}  ${status}`);
+    }
   }
-
-  console.log(`Status:     ${importable.length} importable, ${excluded.length} excluded\n`);
+  console.log('');
 
   const app = initAdmin(config);
   const db = app.firestore();

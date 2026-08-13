@@ -41,22 +41,21 @@ export const IDENTITY_COLUMN = 'ticketRef';
 // ── Status ─────────────────────────────────────────────────────────────────
 
 /**
- * Statuses that mean "this person has a valid ticket and may be checked in".
+ * The only status that gets imported.
  *
- * Compared lowercased and trimmed.
+ * Everything else — pending, expired, cancelled, refunded, blank, anything the
+ * form grows later — is treated as if the registration does not exist. That is
+ * the organisers' rule, not an inference: during the festival, unpaid is the
+ * same as absent.
  *
- * TODO: confirm against the real Sheet — run `npm run headers`, which prints
- * every distinct status value and how many rows carry it.
+ * Compared lowercased and trimmed, so "Paid", "PAID" and " paid " all match.
+ *
+ * The importer does not refuse to run on an unfamiliar status, but every dry run
+ * prints a breakdown of what it excluded and why. Worth actually reading: a
+ * value like "Paid (bank transfer)" would be silently skipped by this rule, and
+ * the guest would be missing at the door.
  */
-export const IMPORTABLE_STATUSES = ['paid', 'confirmed', 'approved'];
-
-/**
- * Statuses that mean "deliberately not importable". Listing them is not
- * bureaucracy: the importer **refuses to run** when it meets a status in neither
- * list, rather than guessing. Guessing wrong in one direction checks in someone
- * who never paid; in the other it turns a paying guest away at the door.
- */
-export const NON_IMPORTABLE_STATUSES = ['pending', 'unpaid', 'expired', 'cancelled', 'refunded', 'declined'];
+export const IMPORTABLE_STATUSES = ['paid'];
 
 // ── Privacy ────────────────────────────────────────────────────────────────
 
@@ -135,11 +134,6 @@ export function toSearchTokens({ name, ticketType }) {
 /** Is this row's status one we import? */
 export function isImportableStatus(status) {
   return IMPORTABLE_STATUSES.includes(normaliseStatus(status));
-}
-
-export function isKnownStatus(status) {
-  const s = normaliseStatus(status);
-  return IMPORTABLE_STATUSES.includes(s) || NON_IMPORTABLE_STATUSES.includes(s);
 }
 
 export function normaliseStatus(status) {

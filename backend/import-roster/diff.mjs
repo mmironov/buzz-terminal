@@ -11,7 +11,6 @@ import {
   IMPORT_OWNED_FIELDS,
   initialFestivalState,
   isImportableStatus,
-  isKnownStatus,
   normaliseStatus,
   toDocumentId,
   toRosterFields,
@@ -116,30 +115,29 @@ export function validateIdentity(rows) {
 }
 
 /**
- * Split rows by their Status column.
+ * Split rows on the Status column: `Paid` in, everything else out.
  *
- * A status in neither list is not a judgement call the importer gets to make —
- * guessing "importable" checks in somebody who never paid, guessing the opposite
- * turns a paying guest away at the door. `unknown` is non-empty → the CLI aborts.
+ * Unpaid is treated as absent during the festival. `breakdown` counts what was
+ * excluded, by status, so a dry run shows exactly what is being left behind —
+ * the cheap check against a status value nobody anticipated.
  */
 export function partitionByStatus(rows) {
   const importable = [];
   const excluded = [];
-  const unknown = new Map();
+  const breakdown = new Map();
 
   for (const row of rows) {
     const status = normaliseStatus(row.status);
-    if (!isKnownStatus(status)) {
-      const seen = unknown.get(status) ?? [];
-      seen.push(row.__sheetRow);
-      unknown.set(status, seen);
+    if (isImportableStatus(status)) {
+      importable.push(row);
       continue;
     }
-    if (isImportableStatus(status)) importable.push(row);
-    else excluded.push({ ...row, __status: status });
+    excluded.push({ ...row, __status: status });
+    const key = status || '(blank)';
+    breakdown.set(key, (breakdown.get(key) ?? 0) + 1);
   }
 
-  return { importable, excluded, unknown };
+  return { importable, excluded, breakdown };
 }
 
 /**

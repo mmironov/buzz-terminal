@@ -22,7 +22,6 @@ import {
   COLUMNS,
   IDENTITY_COLUMN,
   IMPORTABLE_STATUSES,
-  NON_IMPORTABLE_STATUSES,
   toDocumentId,
   toRosterFields,
 } from './mapping.mjs';
@@ -201,32 +200,36 @@ test('the identity column is one of the mapped columns', () => {
 
 // ── Status ─────────────────────────────────────────────────────────────────
 
-test('splits importable rows from excluded ones', () => {
+test('imports Paid and nothing else', () => {
   const rows = rowsFrom([
     row({ id: '1', name: 'Paid Person', status: 'Paid' }),
     row({ id: '2', name: 'Waiting Person', status: 'Pending' }),
     row({ id: '3', name: 'Gone Person', status: 'Cancelled' }),
-    row({ id: '4', name: 'Confirmed Person', status: 'CONFIRMED' }),
+    row({ id: '4', name: 'Shouty Person', status: 'PAID' }),
+    row({ id: '5', name: 'Spaced Person', status: '  paid ' }),
+    row({ id: '6', name: 'Blank Person', status: '' }),
   ]);
-  const { importable, excluded, unknown } = partitionByStatus(rows);
-  assert.equal(unknown.size, 0);
-  assert.deepEqual(importable.map((r) => r.__id), ['1', '4']);
-  assert.deepEqual(excluded.map((r) => r.__id), ['2', '3']);
+  const { importable, excluded } = partitionByStatus(rows);
+  // Case and stray whitespace must not decide whether somebody gets in.
+  assert.deepEqual(importable.map((r) => r.__id), ['1', '4', '5']);
+  assert.deepEqual(excluded.map((r) => r.__id), ['2', '3', '6']);
 });
 
-test('an unrecognised status is reported, never guessed at', () => {
-  // Guessing "importable" checks in somebody who never paid; guessing the
-  // opposite turns a paying guest away at the door. Neither is the importer's
-  // call to make.
+test('counts what it skipped, by status', () => {
+  // Not decoration: a value like "Paid (bank transfer)" is excluded by the
+  // Paid-only rule, and this breakdown is the only place that shows up before
+  // the guest is missing at the door.
   const rows = rowsFrom([
-    row({ id: '1', name: 'Odd One', status: 'Partially paid' }),
-    row({ id: '2', name: 'Blank One', status: '' }),
-    row({ id: '3', name: 'Fine One', status: 'Paid' }),
+    row({ id: '1', name: 'A', status: 'Paid' }),
+    row({ id: '2', name: 'B', status: 'Pending' }),
+    row({ id: '3', name: 'C', status: 'Pending' }),
+    row({ id: '4', name: 'D', status: 'Paid (bank transfer)' }),
+    row({ id: '5', name: 'E', status: '' }),
   ]);
-  const { importable, unknown } = partitionByStatus(rows);
-  assert.equal(importable.length, 1);
-  assert.deepEqual([...unknown.keys()].sort(), ['', 'partially paid']);
-  assert.deepEqual(unknown.get('partially paid'), [2]);
+  const { breakdown } = partitionByStatus(rows);
+  assert.equal(breakdown.get('pending'), 2);
+  assert.equal(breakdown.get('paid (bank transfer)'), 1);
+  assert.equal(breakdown.get('(blank)'), 1);
 });
 
 test('an unpaid person is never created in Firestore', () => {
@@ -257,7 +260,8 @@ test('someone refunded AFTER checking in is reported with their balance intact',
   assert.equal(creates.length + updates.length, 0);
 });
 
-test('every status the mapping declares is unambiguous', () => {
-  const overlap = IMPORTABLE_STATUSES.filter((s) => NON_IMPORTABLE_STATUSES.includes(s));
-  assert.deepEqual(overlap, [], `a status cannot be both: ${overlap.join(', ')}`);
+test('Paid is the only importable status', () => {
+  // Pinned deliberately. Widening this is an organiser decision about who may be
+  // checked in, not a refactor.
+  assert.deepEqual(IMPORTABLE_STATUSES, ['paid']);
 });
