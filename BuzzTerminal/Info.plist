@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Staff Terminal</string>
+
+	<!-- Archivo is the one typeface Modernist uses. Files listed here are
+	     registered at launch; the path is the bundle-root filename, because
+	     Copy Bundle Resources flattens the Resources/Fonts folder. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>Archivo.ttf</string>
+	</array>
+
+	<!-- Portrait only. This is a terminal held in one hand while the other
+	     holds a guest's wrist; there is no landscape design and rotating it
+	     mid-scan would be actively unhelpful. -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

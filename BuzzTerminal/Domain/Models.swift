@@ -1,0 +1,212 @@
+import Foundation
+
+// MARK: - Staff
+
+/// Which terminal mode a signed-in staff member gets. The festival runs the same
+/// binary at reception and behind the bar; the account decides the flow.
+enum StaffRole: String, Hashable, Sendable {
+    case reception
+    case bar
+
+    var label: String {
+        switch self {
+        case .reception: "Reception"
+        case .bar: "Bar"
+        }
+    }
+
+    /// Caption under the device frame in the design; also the screen a fresh
+    /// sign-in lands on.
+    var homeScreen: Screen {
+        switch self {
+        case .reception: .receptionHome
+        case .bar: .barMenu
+        }
+    }
+}
+
+// MARK: - Screens
+
+/// Every distinct state the terminal UI can be in.
+///
+/// This is a flat enum rather than a `NavigationStack` path on purpose — see
+/// `AppModel` for the reasoning.
+enum Screen: Hashable, Sendable {
+    case signIn
+    // Reception
+    case receptionHome
+    case assign
+    case participant
+    case blocked
+    case topUp
+    // Bar
+    case barMenu
+    case cart
+    case payReview
+    // Shared
+    case receipt
+}
+
+// MARK: - Bracelets
+
+/// The NFC chip UID, as printed in the design (`04:B4:2F:11`).
+///
+/// A distinct type rather than a bare `String` so a bracelet id can never be
+/// passed where a participant id is expected.
+struct BraceletID: Hashable, Sendable, CustomStringConvertible {
+    let rawValue: String
+    init(_ rawValue: String) { self.rawValue = rawValue }
+    var description: String { rawValue }
+}
+
+/// A bracelet the prototype can simulate reading. Real Core NFC scanning lands
+/// in iteration 3; until then `SimulatedBraceletReader` picks from this list.
+struct SimulatedBracelet: Identifiable, Hashable, Sendable {
+    let id: BraceletID
+    /// Human hint shown in the prototype-only simulator panel.
+    let hint: String
+}
+
+// MARK: - People
+
+/// Somebody who has been checked in and has a bracelet paired to them.
+struct Participant: Identifiable, Hashable, Sendable {
+    var id: BraceletID
+    var name: String
+    var pass: String
+    var balance: Money
+    /// Display string as in the design (`"Fri 17:12"`, or `"now"` right after check-in).
+    var checkedInAt: String
+    var isBlocked: Bool = false
+    /// Why an organiser froze the bracelet, shown verbatim on the blocked screen.
+    var blockReason: String?
+
+    var checkedInLabel: String {
+        checkedInAt == "now" ? "Checked in just now" : "Checked in \(checkedInAt)"
+    }
+}
+
+/// Somebody who bought a ticket and has arrived, but has no bracelet yet.
+struct WaitingGuest: Identifiable, Hashable, Sendable {
+    var id: String
+    var name: String
+    var pass: String
+    var city: String
+}
+
+extension WaitingGuest {
+    /// Does this guest match what reception typed into the search box?
+    ///
+    /// An empty or whitespace-only query matches everybody.
+    ///
+    /// Case- and diacritic-insensitive substring match against the guest's name
+    /// or their ticket type. Deliberately *not* the city: the row displays it,
+    /// but the field's placeholder only promises "participant or ticket".
+    ///
+    /// Note that a query of `"pass"` matches every guest, since every ticket
+    /// type ends in it. Acceptable for a list this short; a real desk would
+    /// probably want the ticket match to be prefix-only.
+    func matches(query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmed.isEmpty else { return true }
+        
+        return name.localizedCaseInsensitiveContains(trimmed) || pass.localizedCaseInsensitiveContains(trimmed)
+    }
+}
+
+// MARK: - Bar
+
+struct Drink: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let price: Money
+}
+
+/// One line of the current round: a drink and how many of it.
+struct CartLine: Identifiable, Hashable, Sendable {
+    var id: String { drink.id }
+    var drink: Drink
+    var quantity: Int
+
+    var total: Money { drink.price * quantity }
+    /// `"2 × Draught beer"` as in the design.
+    var label: String { "\(quantity) × \(drink.name)" }
+    var unitLabel: String { "\(drink.price) each" }
+}
+
+/// The bar's current round, keyed by drink id.
+struct Cart: Equatable, Sendable {
+    private var quantities: [String: Int] = [:]
+
+    var isEmpty: Bool { quantities.values.allSatisfy { $0 <= 0 } }
+    var itemCount: Int { quantities.values.reduce(0, +) }
+
+    func quantity(of drink: Drink) -> Int { quantities[drink.id] ?? 0 }
+
+    /// Lines in menu order, so the cart does not reshuffle as staff tap.
+    func lines(in menu: [Drink]) -> [CartLine] {
+        menu.compactMap { drink in
+            let qty = quantities[drink.id] ?? 0
+            return qty > 0 ? CartLine(drink: drink, quantity: qty) : nil
+        }
+    }
+
+    func total(in menu: [Drink]) -> Money {
+        lines(in: menu).reduce(Money.zero) { $0 + $1.total }
+    }
+
+    /// Add or remove one; a line that reaches zero disappears.
+    mutating func bump(_ drink: Drink, by delta: Int) {
+        let next = max(0, (quantities[drink.id] ?? 0) + delta)
+        if next == 0 {
+            quantities.removeValue(forKey: drink.id)
+        } else {
+            quantities[drink.id] = next
+        }
+    }
+
+    mutating func removeAll() { quantities.removeAll() }
+}
+
+// MARK: - Receipts
+
+/// The confirmation screen shared by all three successful outcomes.
+struct Receipt: Hashable, Sendable {
+    enum Kind: Hashable, Sendable { case checkIn, topUp, payment }
+
+    var kind: Kind
+    var title: String
+    var note: String
+    var rows: [Row]
+    var balance: Money
+    /// Whether the transaction went into the offline queue instead of the server.
+    var queuedOffline: Bool = false
+
+    struct Row: Hashable, Sendable, Identifiable {
+        var id: String { key }
+        var key: String
+        var value: String
+    }
+
+    /// The band across the top of the receipt.
+    var bandText: String {
+        switch kind {
+        case .payment: queuedOffline ? "Approved · offline" : "Payment approved"
+        case .topUp: "Top-up approved"
+        case .checkIn: "Check-in complete"
+        }
+    }
+
+    var primaryActionLabel: String {
+        switch kind {
+        case .payment: "New order"
+        case .topUp: "Read next bracelet"
+        case .checkIn: "Top up now"
+        }
+    }
+
+    var secondaryActionLabel: String {
+        kind == .payment ? "Back to menu" : "Done"
+    }
+}

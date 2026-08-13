@@ -1,0 +1,33 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Per-user Xcode state. The shared scheme in xcshareddata IS committed, so
+# `xcodebuild -scheme BuzzTerminal` works on a fresh clone.
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Firebase — added in iteration 2. Never commit these: the plist identifies the
+# project and the service account key is a credential.
+GoogleService-Info.plist
+serviceAccountKey.json
+.firebaserc
+firebase-debug.log
+
+# macOS
+.DS_Store
+
+# Local scratch
+/screenshots/
