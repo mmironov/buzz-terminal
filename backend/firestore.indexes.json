@@ -20,15 +20,7 @@
       ]
     },
     {
-      "//": "End-of-night reconciliation across every participant's ledger: all transactions in a time window, newest first. Collection-group scope because transactions are nested per participant.",
-      "collectionGroup": "transactions",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "//": "Per-terminal cash-up: what did this device take tonight.",
+      "//": "Per-terminal cash-up: what did this device take tonight. Composite, so it belongs here rather than in fieldOverrides.",
       "collectionGroup": "transactions",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -46,5 +38,20 @@
       ]
     }
   ],
-  "fieldOverrides": []
+
+  "//": "End-of-night reconciliation reads every participant's ledger at once: a collection-group query ordered by createdAt alone. That is a SINGLE-field index, and Firestore rejects single-field indexes declared in the composite list ('this index is not necessary, configure using single field index controls'). Single-field indexes already exist automatically, but only at COLLECTION scope — the COLLECTION_GROUP variant has to be requested explicitly, which is what a fieldOverride does.",
+
+  "fieldOverrides": [
+    {
+      "collectionGroup": "transactions",
+      "fieldPath": "createdAt",
+      "ttl": false,
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
 }
