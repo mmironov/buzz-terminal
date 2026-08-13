@@ -1,0 +1,227 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Swing Buzz Staff Terminal — Firestore security rules
+//
+//  The terminals write to Firestore directly rather than through Cloud
+//  Functions. That is a deliberate choice: the bar needs to keep taking orders
+//  when the wifi drops, and Firestore's offline persistence only works for
+//  client writes — a callable function simply fails when offline. So the money
+//  rules have to live here, where they are enforced no matter what the app
+//  binary does.
+//
+//  Three invariants these rules exist to hold:
+//
+//    1. A balance can only move by exactly the amount of a matching ledger
+//       entry, written in the same transaction. No naked balance writes.
+//    2. Reception can only credit; the bar can only debit. Enforced from the
+//       staff member's custom claim, not from anything the client sends.
+//    3. The ledger is append-only, and a transaction's document id IS its
+//       idempotency key — so a replayed offline write collides instead of
+//       double-charging.
+//
+//  Roster fields (name, ticket type, city) are never client-writable. They come
+//  from the Google Sheet import, which runs with the Admin SDK and bypasses
+//  these rules entirely.
+//
+//  See docs/firestore-schema.md for the model and the reasoning.
+// ═══════════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Identity ───────────────────────────────────────────────────────────
+
+    // `role` is a custom claim set by an admin, never by the client. A staff
+    // member cannot promote themselves from bar to reception.
+    function role() {
+      return request.auth.token.get('role', '');
+    }
+    function isStaff() {
+      return request.auth != null && role() in ['reception', 'bar'];
+    }
+    function isReception() {
+      return isStaff() && role() == 'reception';
+    }
+    function isBar() {
+      return isStaff() && role() == 'bar';
+    }
+
+    // ── Document refs ──────────────────────────────────────────────────────
+
+    function participantRef(pid) {
+      return /databases/$(database)/documents/participants/$(pid);
+    }
+    function txRef(pid, txId) {
+      return /databases/$(database)/documents/participants/$(pid)/transactions/$(txId);
+    }
+    function braceletRef(chipUid) {
+      return /databases/$(database)/documents/bracelets/$(chipUid);
+    }
+
+    // ── Participants ───────────────────────────────────────────────────────
+
+    match /participants/{participantId} {
+
+      allow read: if isStaff();
+
+      // The roster is import-only. Nobody checks a person in who did not buy a
+      // ticket, and nobody deletes a person mid-festival.
+      allow create, delete: if false;
+
+      allow update: if isStaff()
+        && touchesOnlyTerminalFields()
+        && blockStaysUntouched()
+        && pairingIsLegal(participantId)
+        && balanceMovesOnlyWithLedger(participantId);
+
+      // Everything else — name, ticketType, city, isBlocked — is off limits.
+      function touchesOnlyTerminalFields() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['balance', 'lastTxId', 'braceletId', 'checkedInAt', 'updatedAt']);
+      }
+
+      function changed(field) {
+        return field in request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      // A blocked bracelet is frozen: an organiser lifts it from the web admin
+      // panel, and no terminal may either lift it or move money on it.
+      function blockStaysUntouched() {
+        return !changed('isBlocked')
+          && resource.data.get('isBlocked', false) == false;
+      }
+
+      // "This bracelet is permanently paired with …" — the design means it.
+      // Pairing is reception-only, one-way, and must agree with the reverse
+      // lookup document written in the same transaction.
+      function pairingIsLegal(pid) {
+        return !changed('braceletId')
+          || (
+            isReception()
+            && resource.data.get('braceletId', null) == null
+            && request.resource.data.braceletId is string
+            && getAfter(braceletRef(request.resource.data.braceletId)).data.participantId == pid
+          );
+      }
+
+      // The invariant that matters. Either the balance did not move, or it moved
+      // by exactly the signed amount of a brand-new ledger entry written by the
+      // same staff member in the same transaction.
+      function balanceMovesOnlyWithLedger(pid) {
+        return (
+          !changed('balance') && !changed('lastTxId')
+        ) || (
+          changed('balance')
+          && changed('lastTxId')
+          && request.resource.data.lastTxId is string
+          && request.resource.data.lastTxId != resource.data.get('lastTxId', '')
+          && ledgerEntryBacksTheDelta(pid)
+        );
+      }
+
+      function ledgerEntryBacksTheDelta(pid) {
+        let entry = getAfter(txRef(pid, request.resource.data.lastTxId)).data;
+        return request.resource.data.balance == resource.data.balance + entry.signedAmount
+          && entry.staffUid == request.auth.uid;
+      }
+
+      // ── The ledger ───────────────────────────────────────────────────────
+
+      match /transactions/{txId} {
+
+        allow read: if isStaff();
+
+        // Append-only. A dispute at the bar is answered by reading history, so
+        // history must not be editable — not even by the person who wrote it.
+        allow update, delete: if false;
+
+        allow create: if isStaff()
+          && idIsTheIdempotencyKey()
+          && shapeIsExact()
+          && signAgreesWithRole()
+          && participantAcceptsMoney()
+          && doesNotOverdraw();
+
+        // The client generates a UUID per attempt and uses it as the document
+        // id. Iteration 3's offline queue can therefore replay a write blindly:
+        // if it already landed, the create fails on "already exists" instead of
+        // charging the guest twice. Idempotency by construction, not by check.
+        function idIsTheIdempotencyKey() {
+          return txId == request.resource.data.clientTxId;
+        }
+
+        function shapeIsExact() {
+          let d = request.resource.data;
+          return d.keys().hasOnly([
+                   'clientTxId', 'type', 'amount', 'signedAmount',
+                   'staffUid', 'terminalId', 'createdAt', 'queuedOffline'
+                 ])
+            && d.keys().hasAll([
+                 'clientTxId', 'type', 'amount', 'signedAmount',
+                 'staffUid', 'terminalId', 'createdAt'
+               ])
+            && d.type in ['topup', 'charge']
+            && d.amount is int
+            && d.amount > 0
+            && d.signedAmount is int
+            && d.signedAmount == (d.type == 'topup' ? d.amount : -d.amount)
+            && d.staffUid == request.auth.uid
+            && d.terminalId is string
+            // Server clock, not the phone's. An offline terminal with a wrong
+            // date must not be able to backdate a charge.
+            && d.createdAt == request.time;
+        }
+
+        // Reception takes cash and credits. The bar serves drinks and debits.
+        // Neither can do the other's job, whatever the app is compiled to send.
+        function signAgreesWithRole() {
+          let type = request.resource.data.type;
+          return (isReception() && type == 'topup')
+              || (isBar() && type == 'charge');
+        }
+
+        function participantAcceptsMoney() {
+          let p = get(participantRef(participantId)).data;
+          return p.get('isBlocked', false) == false
+            && p.get('braceletId', null) != null;
+        }
+
+        // No credit at this festival.
+        function doesNotOverdraw() {
+          return getAfter(participantRef(participantId)).data.balance >= 0;
+        }
+      }
+    }
+
+    // ── Bracelet → participant reverse lookup ──────────────────────────────
+    //
+    // Document id is the NFC chip UID, so a scan is a single point read by id:
+    // no query, no index, and it works straight out of the offline cache.
+
+    match /bracelets/{chipUid} {
+
+      allow read: if isStaff();
+
+      allow create: if isReception()
+        && request.resource.data.keys().hasOnly(['participantId', 'staffUid', 'pairedAt'])
+        && request.resource.data.staffUid == request.auth.uid
+        && request.resource.data.pairedAt == request.time
+        && getAfter(participantRef(request.resource.data.participantId)).data.braceletId == chipUid;
+
+      // Permanent pairing. Re-assigning a chip to a different guest would
+      // silently transfer their balance; a fresh bracelet is the answer.
+      allow update, delete: if false;
+    }
+
+    // ── Drinks menu ────────────────────────────────────────────────────────
+
+    match /drinks/{drinkId} {
+      allow read: if isStaff();
+      // Prices are set by organisers, not by the bar.
+      allow write: if false;
+    }
+
+    // Anything not matched above is denied by default.
+  }
+}

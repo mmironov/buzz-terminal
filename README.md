@@ -18,20 +18,20 @@ Tools, which stops `xcodebuild` from running. Fix it once:
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ```
 
-The scripts in `scripts/` set `DEVELOPER_DIR` themselves so they work either way,
+The scripts in `ios/scripts/` set `DEVELOPER_DIR` themselves so they work either way,
 but Xcode's own simulator tooling and the live-preview integrations need the
 pointer to be correct.
 
 ## Running it
 
 ```bash
-open BuzzTerminal.xcodeproj
+open ios/BuzzTerminal.xcodeproj
 ```
 
 ⌘R runs it. Or from the command line:
 
 ```bash
-./scripts/run.sh
+./ios/scripts/run.sh
 ```
 
 Sign in with either demo account on the login screen — the buttons fill the
@@ -53,9 +53,9 @@ There is no NFC hardware on the Simulator, so the scan sheet offers a
 `LaunchOverrides` is the debug-only port of the design prototype's props panel:
 
 ```bash
-./scripts/run.sh -sbScreen participant
-./scripts/run.sh -sbScreen bar -sbOffline
-./scripts/run.sh -sbScreen payreview-blocked
+./ios/scripts/run.sh -sbScreen participant
+./ios/scripts/run.sh -sbScreen bar -sbOffline
+./ios/scripts/run.sh -sbScreen payreview-blocked
 ```
 
 Screens: `reception`, `bar`, `assign`, `participant`, `blocked`, `topup`,
@@ -64,20 +64,20 @@ Screens: `reception`, `bar`, `assign`, `participant`, `blocked`, `topup`,
 `-sbScanning`. In Xcode the same arguments go in Scheme ▸ Run ▸ Arguments.
 
 ```bash
-./scripts/screenshots.sh   # every screen to ./screenshots/
+./ios/scripts/screenshots.sh   # every screen to ios/screenshots/
 ```
 
 ## Tests
 
 ```bash
-./scripts/test.sh
+./ios/scripts/test.sh
 ```
 
 25 tests across 4 suites, all green.
 
 The three pieces of domain logic that carry real rules — the keypad, the check-in
 search, and the charge decision — have dedicated regression cover in
-`BuzzTerminalTests/DomainTests.swift`. They are the parts most likely to be
+`ios/BuzzTerminalTests/DomainTests.swift`. They are the parts most likely to be
 broken by a well-meaning change, so run the suite before you push.
 
 ---
@@ -85,15 +85,29 @@ broken by a well-meaning change, so run the suite before you push.
 ## How it is put together
 
 ```
-BuzzTerminal/
-  App/           entry point, the state machine, debug launch overrides
-  DesignSystem/  Modernist tokens, typography, components, glyphs
-  Domain/        models and business rules — no SwiftUI import anywhere
-  Data/          repository + bracelet-reader protocols and their mocks
-  Features/      one folder per flow, one file per screen
-  Resources/     Archivo (variable font) and the asset catalogue
-BuzzTerminalTests/
+ios/                       the SwiftUI app
+  BuzzTerminal.xcodeproj
+  BuzzTerminal/
+    App/                   entry point, the state machine, debug launch overrides
+    DesignSystem/          Modernist tokens, typography, components, glyphs
+    Domain/                models and business rules — no SwiftUI import anywhere
+    Data/                  repository + bracelet-reader protocols and their mocks
+    Features/              one folder per flow, one file per screen
+    Resources/             Archivo (variable font) and the asset catalogue
+  BuzzTerminalTests/
+  scripts/                 build, test, run, screenshots
+backend/                   shared by every client
+  firestore.rules          the money invariants
+  firestore.indexes.json
+  firebase.json
+  import-roster/           Google Sheet → Firestore
+docs/                      schema, setup, per-iteration walkthroughs
+android/                   iteration 4
 ```
+
+Nothing under `backend/` is part of the Xcode project — the two synchronized
+folder groups are `BuzzTerminal/` and `BuzzTerminalTests/`, so the Node tooling
+cannot affect an app build.
 
 Three boundaries do the load-bearing work:
 
@@ -146,12 +160,16 @@ Two intentional deviations from the prototype, both improvements:
 1. ✅ **Iteration 1** — project, Modernist design system in SwiftUI, all 10
    screens on an in-memory repository, 25 tests green.
    See `docs/iteration-01.md`.
-2. **Iteration 2** — Firebase Auth + Firestore behind `TerminalRepository`,
-   security rules, atomic balance transactions.
+2. **Iteration 2** — Firebase. Backend design done and committed:
+   `docs/firestore-schema.md`, `backend/firestore.rules`,
+   `backend/firestore.indexes.json`, and `backend/import-roster/`
+   (Google Sheet → Firestore, roster fields only).
+   Follow `docs/firebase-setup.md` to create the project; the Swift side
+   (`FirebaseTerminalRepository`) lands once `GoogleService-Info.plist` exists.
 3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
 4. **Iteration 4** — Android app in Jetpack Compose against the same backend.
 
 ## Credits
 
 Archivo by Omnibus-Type, under the SIL Open Font License — see
-`BuzzTerminal/Resources/Fonts/OFL.txt`.
+`ios/BuzzTerminal/Resources/Fonts/OFL.txt`.

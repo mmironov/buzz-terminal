@@ -201,7 +201,7 @@ reviewed now, ready for the real write-behind queue in iteration 3.
 
 Not "it compiles" — actually run and looked at.
 
-- `./scripts/build.sh` — clean build, no warnings from project code.
+- `./ios/scripts/build.sh` — clean build, no warnings from project code.
   Three rounds of fixes got there:
   - colour tokens declared on `Color` would not resolve in `ShapeStyle`
     position, so they moved to `extension ShapeStyle where Self == Color`;
@@ -219,7 +219,7 @@ Not "it compiles" — actually run and looked at.
   button was pinned to the bottom of the screen instead of sitting under the
   keypad. A suspected third — a tint inside the scan target — turned out to be a
   screenshot-scaling artifact; the pixels are `#F3F2F2` inside and out.
-- `./scripts/test.sh` — 25 tests, `Money` suite green, the 19 failures are the
+- `./ios/scripts/test.sh` — 25 tests, `Money` suite green, the 19 failures are the
   three exercises.
 
 One caveat on this machine: `xcodebuild test` prints a stray
@@ -271,7 +271,7 @@ covered, and the two seams for the real backend are in place.
 
 **Iteration 2 — Firebase.** Blocked on one thing only: a Firebase project has to
 be created in the console, and `GoogleService-Info.plist` dropped into
-`BuzzTerminal/Resources/` (already gitignored). Then:
+`ios/BuzzTerminal/Resources/` (already gitignored). Then:
 
 - `FirebaseTerminalRepository` implementing the existing protocol. No view
   changes — that is the whole point of how the protocol was shaped.

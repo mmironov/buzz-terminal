@@ -19,15 +19,23 @@ xcuserdata/
 .swiftpm/
 Package.resolved
 
-# Firebase — added in iteration 2. Never commit these: the plist identifies the
-# project and the service account key is a credential.
+# Node (the roster importer)
+node_modules/
+npm-debug.log*
+
+# Firebase. Never commit these: the plist identifies the project, and a
+# service-account key is full admin access to it.
 GoogleService-Info.plist
 serviceAccountKey.json
+*-serviceAccount*.json
 .firebaserc
+.firebase/
 firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
 # macOS
 .DS_Store
 
 # Local scratch
-/screenshots/
+screenshots/

@@ -1,0 +1,50 @@
+{
+  "indexes": [
+    {
+      "//": "The check-in list: everyone who has arrived but has no bracelet yet, in name order. Firestore supports equality against null, so this is the query behind the 'Who is this?' screen.",
+      "collectionGroup": "participants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "braceletId", "order": "ASCENDING" },
+        { "fieldPath": "nameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "Prefix search on the check-in list, for when the roster outgrows loading it whole. See docs/firestore-schema.md, 'Search'.",
+      "collectionGroup": "participants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "braceletId", "order": "ASCENDING" },
+        { "fieldPath": "searchTokens", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "nameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "End-of-night reconciliation across every participant's ledger: all transactions in a time window, newest first. Collection-group scope because transactions are nested per participant.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "Per-terminal cash-up: what did this device take tonight.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "terminalId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "Per-staff-member cash-up, for the same reason.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "staffUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

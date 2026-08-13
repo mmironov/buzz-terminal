@@ -41,4 +41,4 @@ shoot 12-payreview-short -sbScreen payreview-short
 shoot 13-payreview-blocked -sbScreen payreview-blocked
 shoot 14-payreview-unassigned -sbScreen payreview-unassigned
 shoot 15-offline         -sbScreen reception -sbOffline
-echo "→ ./screenshots/"
+echo "→ ios/screenshots/"
