@@ -17,7 +17,9 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
+# Package.resolved IS committed. That convention ("ignore it") is for libraries,
+# whose consumers resolve their own versions. This is an application: pinning the
+# exact Firebase graph means a fresh clone, and a future CI, build the same bytes.
 
 # Node (the roster importer)
 node_modules/
