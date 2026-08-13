@@ -119,26 +119,29 @@ app downloads their own.
 Skip the console's "add the SDK" instructions — the SPM wiring is my job once the
 plist is in place.
 
-## 6. Optional but recommended: the emulator
-
-Lets you test the security rules without touching real data, and lets me write
-executable tests for them. Needs a Java runtime, which is why it is not set up
-yet:
+## 6. The emulator and the rules tests — done
 
 ```bash
-brew install --cask temurin        # a JDK; no sudo needed
-firebase emulators:start
+cd backend/rules-tests && ./test.sh
 ```
 
-The rules in `backend/firestore.rules` guard real money and have **never been executed**
-— only reasoned about. I would rather they had tests before a festival relies on
-them. Say the word once Java is installed.
+36 tests against a throwaway Firestore emulator; nothing touches the real
+database. See `backend/rules-tests/README.md` for what is covered.
+
+The emulator needs a JDK. Installed via the Homebrew **formula**
+(`brew install openjdk`) rather than the `temurin` cask: the formula needs no
+sudo and stays inside the Homebrew prefix. It is keg-only, so `test.sh` locates
+it rather than requiring anything on your `PATH`.
+
+Run these before deploying a rules change. `firebase deploy` will happily ship a
+rules file that locks out every terminal, or one that lets the bar credit itself.
 
 ## 7. Tell me
 
 - ~~The **project id**~~ — `swing-buzz`, wired into `backend/.firebaserc`
 - ~~The Firestore **region**~~ — `europe-west10` (Berlin), `(default)` database
-- That the plist is in `ios/BuzzTerminal/Resources/`
+- ~~The **plist**~~ — in place; the app logs "Firebase configured for project
+  swing-buzz" at launch
 - The Sheet's **header row**, and which column is the stable unique key
 
 Then I will do the Swift side: the `Domain/` change described at the end of
