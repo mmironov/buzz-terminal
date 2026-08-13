@@ -4,6 +4,8 @@
 // Writing is opt-in: every command that changes Firestore requires --apply.
 // Without it you get a diff and nothing else.
 
+import { existsSync, readFileSync } from 'node:fs';
+
 import { buildPlan, findOrphans, parseRows, resolveColumns, validateIdentity } from './diff.mjs';
 import { IDENTITY_COLUMN } from './mapping.mjs';
 // `./sheets.mjs` and `./firestore.mjs` are imported lazily inside the commands
@@ -34,9 +36,21 @@ const option = (name, fallback) => {
   return hit ? hit.slice(name.length + 3) : fallback;
 };
 
+/// The Firebase CLI already knows which project this is — it is in
+/// ../.firebaserc, which is committed. Read it rather than making every command
+/// carry --project.
+function projectFromFirebaserc() {
+  try {
+    const rc = JSON.parse(readFileSync(new URL('../.firebaserc', import.meta.url), 'utf8'));
+    return rc?.projects?.default;
+  } catch {
+    return undefined;
+  }
+}
+
 const config = {
   keyFile: option('key', process.env.GOOGLE_APPLICATION_CREDENTIALS ?? './serviceAccountKey.json'),
-  projectId: option('project', process.env.FIREBASE_PROJECT_ID),
+  projectId: option('project', process.env.FIREBASE_PROJECT_ID ?? projectFromFirebaserc()),
   spreadsheetId: option('sheet', process.env.SHEET_ID),
   range: option('range', process.env.SHEET_RANGE ?? 'Participants!A1:Z10000'),
   apply: flag('apply'),
@@ -54,7 +68,25 @@ function requireSheet() {
 }
 
 function requireProject() {
-  if (!config.projectId) fail('No Firebase project id. Pass --project=<id> or set FIREBASE_PROJECT_ID.');
+  if (!config.projectId) {
+    fail(
+      'No Firebase project id.\n' +
+        '  Normally read from ../.firebaserc — check that it exists and has projects.default.\n' +
+        '  Otherwise pass --project=<id> or set FIREBASE_PROJECT_ID.'
+    );
+  }
+}
+
+/// The Admin SDK fails obscurely on a missing key file; say the useful thing.
+function requireKeyFile() {
+  if (!existsSync(config.keyFile)) {
+    fail(
+      `No service-account key at ${config.keyFile}.\n` +
+        '  Firebase console → Project settings → Service accounts → Generate new private key,\n' +
+        '  save it as backend/import-roster/serviceAccountKey.json (gitignored),\n' +
+        '  or point at it with --key=<path>.'
+    );
+  }
 }
 
 // ── commands ───────────────────────────────────────────────────────────────
@@ -73,6 +105,7 @@ async function cmdImport() {
   requireSheet();
   requireProject();
 
+  requireKeyFile();
   const { readSheet, initAdmin, fetchParticipants, applyPlan } = await cloud();
   const { header, rows: cells } = await readSheet(config);
   const resolved = resolveColumns(header);
@@ -154,6 +187,7 @@ async function cmdSetRole() {
   const [email, role] = positional;
   if (!email || !role) fail('Usage: npm run set-role -- <email> <reception|bar> --apply');
 
+  requireKeyFile();
   const { initAdmin, setRole, describeUser } = await cloud();
   initAdmin(config);
   if (!config.apply) {
@@ -172,6 +206,7 @@ async function cmdSetRole() {
 
 async function cmdSeedDrinks() {
   requireProject();
+  requireKeyFile();
   const { initAdmin, seedDrinks, DEFAULT_DRINKS } = await cloud();
   const app = initAdmin(config);
   if (!config.apply) {
@@ -201,7 +236,7 @@ Swing Buzz roster importer
 Configuration, as flags or environment variables:
   --sheet=<id>       SHEET_ID                     from the Sheet URL
   --range=<a1>       SHEET_RANGE                  default Participants!A1:Z10000
-  --project=<id>     FIREBASE_PROJECT_ID
+  --project=<id>     FIREBASE_PROJECT_ID             defaults to ../.firebaserc
   --key=<path>       GOOGLE_APPLICATION_CREDENTIALS   default ./serviceAccountKey.json
 
 Nothing is written without --apply.

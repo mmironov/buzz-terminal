@@ -30,13 +30,15 @@ copy the `client_email` value (it looks like
 `something@your-project.iam.gserviceaccount.com`), and share the Sheet with that
 address as **Viewer**. Viewer is enough — this tool only ever reads.
 
-**4. Point it at your project and Sheet:**
+**4. Point it at the Sheet:**
 
 ```bash
-export FIREBASE_PROJECT_ID=your-project-id
 export SHEET_ID=1AbC…            # the long string in the Sheet URL between /d/ and /edit
 export SHEET_RANGE='Participants!A1:Z10000'
 ```
+
+The Firebase project id is read from `../.firebaserc`, so it needs no flag.
+Override with `--project=<id>` if you ever point this at a staging project.
 
 ## Then
 
