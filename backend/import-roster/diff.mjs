@@ -10,6 +10,9 @@ import {
   IDENTITY_COLUMN,
   IMPORT_OWNED_FIELDS,
   initialFestivalState,
+  isImportableStatus,
+  isKnownStatus,
+  normaliseStatus,
   toDocumentId,
   toRosterFields,
 } from './mapping.mjs';
@@ -113,6 +116,55 @@ export function validateIdentity(rows) {
 }
 
 /**
+ * Split rows by their Status column.
+ *
+ * A status in neither list is not a judgement call the importer gets to make —
+ * guessing "importable" checks in somebody who never paid, guessing the opposite
+ * turns a paying guest away at the door. `unknown` is non-empty → the CLI aborts.
+ */
+export function partitionByStatus(rows) {
+  const importable = [];
+  const excluded = [];
+  const unknown = new Map();
+
+  for (const row of rows) {
+    const status = normaliseStatus(row.status);
+    if (!isKnownStatus(status)) {
+      const seen = unknown.get(status) ?? [];
+      seen.push(row.__sheetRow);
+      unknown.set(status, seen);
+      continue;
+    }
+    if (isImportableStatus(status)) importable.push(row);
+    else excluded.push({ ...row, __status: status });
+  }
+
+  return { importable, excluded, unknown };
+}
+
+/**
+ * People whose status says "do not import" but who are already in Firestore.
+ *
+ * Someone who paid, checked in, loaded 40 € onto a bracelet and was then marked
+ * refunded is not a row to silently skip. Reported, never deleted — the money is
+ * real and what happens to it is an organiser decision.
+ */
+export function findRevoked(excluded, existing) {
+  return excluded
+    .filter((row) => existing.has(row.__id))
+    .map((row) => {
+      const doc = existing.get(row.__id);
+      return {
+        id: row.__id,
+        name: doc.name ?? row.name,
+        status: row.__status,
+        checkedIn: doc.braceletId != null,
+        balance: doc.balance ?? 0,
+      };
+    });
+}
+
+/**
  * Build the write plan.
  *
  * @param rows      output of validateIdentity().usable
@@ -178,7 +230,7 @@ export function assertTouchesOnlyImportOwnedFields(data) {
 
 /** Human-readable field changes for the dry-run output. */
 function describeChanges(current, roster) {
-  const interesting = ['name', 'ticketType', 'city', 'ticketRef'];
+  const interesting = ['name', 'ticketType', 'country', 'ticketRef'];
   return interesting
     .filter((k) => current[k] !== roster[k])
     .map((k) => `${k}: ${JSON.stringify(current[k] ?? null)} → ${JSON.stringify(roster[k])}`);

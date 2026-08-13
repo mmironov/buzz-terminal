@@ -6,8 +6,16 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 
-import { buildPlan, findOrphans, parseRows, resolveColumns, validateIdentity } from './diff.mjs';
-import { IDENTITY_COLUMN } from './mapping.mjs';
+import {
+  buildPlan,
+  findOrphans,
+  findRevoked,
+  parseRows,
+  partitionByStatus,
+  resolveColumns,
+  validateIdentity,
+} from './diff.mjs';
+import { COLUMNS, IDENTITY_COLUMN, normaliseStatus } from './mapping.mjs';
 // `./sheets.mjs` and `./firestore.mjs` are imported lazily inside the commands
 // that need them, so `npm test` and the usage text work before `npm install`.
 async function cloud() {
@@ -98,6 +106,23 @@ async function cmdHeaders() {
   console.log(`\nSheet "${config.range}" — ${rows.length} populated data rows.\n`);
   console.log('Header row:\n');
   header.forEach((h, i) => console.log(`  [${String(i).padStart(2)}]  ${h}`));
+  const statusAt = header.findIndex(
+    (h) => String(h).trim().toLowerCase() === String(COLUMNS.status).trim().toLowerCase()
+  );
+  if (statusAt >= 0) {
+    const counts = new Map();
+    for (const cells of rows) {
+      const value = normaliseStatus(cells[statusAt]);
+      counts.set(value || '(blank)', (counts.get(value || '(blank)') ?? 0) + 1);
+    }
+    console.log(`\nDistinct values in "${COLUMNS.status}" — counts only, no personal data:\n`);
+    for (const [value, count] of [...counts].sort((a, b) => b[1] - a[1])) {
+      console.log(`  ${String(count).padStart(5)}  ${value}`);
+    }
+    console.log(`\nEvery one of these must appear in IMPORTABLE_STATUSES or`);
+    console.log(`NON_IMPORTABLE_STATUSES in mapping.mjs, or the import will refuse to run.`);
+  }
+
   console.log(`\nPut these column names into mapping.mjs, then run: npm run import\n`);
 }
 
@@ -134,13 +159,30 @@ async function cmdImport() {
     );
   }
 
+  const { importable, excluded, unknown } = partitionByStatus(usable);
+
+  if (unknown.size) {
+    fail(
+      `Unrecognised values in the "${COLUMNS.status}" column:\n` +
+        [...unknown].map(([value, rowNumbers]) =>
+          `    "${value || '(blank)'}" on sheet row(s) ${rowNumbers.slice(0, 8).join(', ')}` +
+          (rowNumbers.length > 8 ? ` … and ${rowNumbers.length - 8} more` : '')
+        ).join('\n') +
+        `\n\n  Add each to IMPORTABLE_STATUSES or NON_IMPORTABLE_STATUSES in mapping.mjs.\n` +
+        `  Guessing checks in somebody who never paid, or turns a paying guest away.`
+    );
+  }
+
+  console.log(`Status:     ${importable.length} importable, ${excluded.length} excluded\n`);
+
   const app = initAdmin(config);
   const db = app.firestore();
   const existing = await fetchParticipants(db);
   console.log(`Firestore:  ${existing.size} participants already present\n`);
 
-  const plan = buildPlan(usable, existing);
-  const orphans = findOrphans(usable, existing);
+  const plan = buildPlan(importable, existing);
+  const orphans = findOrphans(importable, existing);
+  const revoked = findRevoked(excluded, existing);
 
   console.log(`  create     ${plan.creates.length}`);
   console.log(`  update     ${plan.updates.length}   (roster fields only)`);
@@ -156,6 +198,17 @@ async function cmdImport() {
     console.log(`  ~ ${u.id.padEnd(24)} ${u.changes.join('; ')}`);
   }
   if (plan.updates.length > 20) console.log(`    … and ${plan.updates.length - 20} more`);
+
+  if (revoked.length) {
+    console.log(`\n  Status is no longer importable, but they are already in Firestore:`);
+    for (const r of revoked.slice(0, 20)) {
+      const state = r.checkedIn ? `checked in, ${(r.balance / 100).toFixed(2)} €` : 'not checked in';
+      console.log(`  ! ${r.id.padEnd(24)} ${r.name}  [${r.status}]  (${state})`);
+    }
+    console.log(`    NOT touched. Somebody who paid, checked in and loaded money onto a`);
+    console.log(`    bracelet before being refunded still has that money. What happens to`);
+    console.log(`    it is an organiser decision, not this script's.`);
+  }
 
   if (orphans.length) {
     console.log(`\n  Present in Firestore, absent from the Sheet — NOT deleted:`);

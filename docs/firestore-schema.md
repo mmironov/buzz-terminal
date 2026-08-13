@@ -7,7 +7,7 @@ Source of truth for the backend model. `backend/firestore.rules` enforces it;
 
 | Data | Owner | Written by |
 | --- | --- | --- |
-| Who bought a ticket (name, ticket type, city) | the Google Sheet | the import script, via Admin SDK |
+| Who bought a ticket (name, ticket type, country) | the Google Sheet | the import script, via Admin SDK |
 | Which chip belongs to whom | the reception terminal | the app, at check-in |
 | Balance and its history | the terminals | the app, in Firestore transactions |
 | Blocks | organisers | the web admin panel (not built yet) |
@@ -34,9 +34,9 @@ participants/tkt-10432
   ticketRef:     "TKT-10432"        // as printed on their ticket
   name:          "Amélie Roux"
   nameLower:     "amélie roux"      // for ordered queries and prefix search
-  searchTokens:  ["amélie", "roux", "full pass"]
+  searchTokens:  ["amélie", "roux", "full", "pass"]
   ticketType:    "Full pass"
-  city:          "Lyon"
+  country:       "France"          // the Sheet asks for a country, not a city
   importedAt:    <timestamp>
   rosterHash:    "9f2c…"            // skip the write when the row is unchanged
 
@@ -129,6 +129,7 @@ people or overwrites a checked-in guest's balance.
 Good keys, in order of preference:
 
 1. A ticket or order reference from the ticketing system — unique by construction.
+   **This is what we use: the `Id` column of the registrations sheet.**
 2. Email address — unique in practice, but people mistype it and it changes.
 3. A Sheet row number — **not stable.** Sorting or inserting a row reassigns it.
 4. Name, or name + city — **not safe.** Festivals get two Anna Kowalskis.

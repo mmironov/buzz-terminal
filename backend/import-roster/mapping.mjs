@@ -1,61 +1,103 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  THE ONE FILE YOU EDIT when the Google Sheet's columns are known.
+//  Mapping from the Swing Buzz registrations Sheet to the Firestore roster.
 //
-//  Run `npm run headers` first — it prints the Sheet's actual header row and
-//  exits. Copy the column names into COLUMNS below, set IDENTITY_COLUMN, and
-//  the importer will do the rest.
+//  This is the file to edit when the Sheet changes. `npm run headers` prints the
+//  Sheet's current header row and the distinct values in the status column.
 //
-//  Nothing here talks to Google or Firebase, so it is unit-testable and cheap
-//  to get wrong safely. See diff.test.mjs.
+//  Nothing here talks to Google or Firebase, so it is unit-testable and cheap to
+//  get wrong safely. See diff.test.mjs.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Map Sheet header names → the fields the schema wants.
+ * Our field → the EXACT header text in the Sheet.
  *
- * Left side is our field, right side is the EXACT header text in the Sheet
- * (case- and whitespace-insensitive when matched, but spell it as it appears).
- * Set a value to `null` if the Sheet has no such column.
+ * Matched case- and whitespace-insensitively, but spell it as it appears. A
+ * header listed here that is not in the Sheet aborts the import and prints the
+ * headers that actually exist.
+ *
+ * The Sheet is a Google Form response sheet, so the form owner can append
+ * columns at any time. That is fine — anything not named here is ignored, and
+ * every run logs what it ignored.
  */
 export const COLUMNS = {
-  // The stable unique key. See IDENTITY_COLUMN below.
-  ticketRef: 'Ticket ID',
-
+  /// The registration id. Unique, stable, never edited — see IDENTITY_COLUMN.
+  ticketRef: 'Id',
   name: 'Full Name',
-  ticketType: 'Ticket Type',
-  city: 'City',
+  /// A fixed set: "Full pass", "Party pass", "Weekend pass".
+  ticketType: 'Pass Type',
+  /// The Sheet asks for a country, not a city. Named for what it holds.
+  country: 'Which country are you coming from?',
+  /// Decides whether the row is importable at all. See IMPORTABLE_STATUSES.
+  status: 'Status',
 };
 
 /**
- * Which of the above is the stable, unique, never-edited key per row.
- *
- * `participantId` is derived from it, so a re-import recognises rows it has
- * already seen. If this column is missing, blank, or duplicated, the importer
- * refuses to run rather than guess — getting this wrong either duplicates people
- * or overwrites a checked-in guest's balance.
- *
- * Do NOT point this at a row number (not stable under sorting) or at a name
- * (festivals get two Anna Kowalskis).
+ * The stable unique key. `participantId` is derived from it, so a re-import
+ * recognises rows it has already seen rather than duplicating people or
+ * overwriting a checked-in guest's balance.
  */
 export const IDENTITY_COLUMN = 'ticketRef';
 
+// ── Status ─────────────────────────────────────────────────────────────────
+
 /**
- * Columns to read but deliberately NOT copy into Firestore.
+ * Statuses that mean "this person has a valid ticket and may be checked in".
  *
- * Anything here stays in the Sheet. Every field that reaches Firestore is
- * readable by every signed-in terminal, including the bar — so email addresses,
- * phone numbers, dietary notes and accessibility needs do not belong there
- * unless a terminal actually needs them to do its job.
+ * Compared lowercased and trimmed.
  *
- * List the header names you want explicitly dropped; the importer logs anything
- * it saw and ignored, so nothing leaks by being forgotten.
+ * TODO: confirm against the real Sheet — run `npm run headers`, which prints
+ * every distinct status value and how many rows carry it.
+ */
+export const IMPORTABLE_STATUSES = ['paid', 'confirmed', 'approved'];
+
+/**
+ * Statuses that mean "deliberately not importable". Listing them is not
+ * bureaucracy: the importer **refuses to run** when it meets a status in neither
+ * list, rather than guessing. Guessing wrong in one direction checks in someone
+ * who never paid; in the other it turns a paying guest away at the door.
+ */
+export const NON_IMPORTABLE_STATUSES = ['pending', 'unpaid', 'expired', 'cancelled', 'refunded', 'declined'];
+
+// ── Privacy ────────────────────────────────────────────────────────────────
+
+/**
+ * Columns read from the Sheet and deliberately NOT copied into Firestore.
+ *
+ * Every field that reaches Firestore is readable by every signed-in terminal,
+ * including the bar. A bartender needs a name, a ticket type and a balance. They
+ * do not need somebody's phone number, dietary notes, or who they are dancing
+ * with.
+ *
+ * Listed explicitly so the intent is on the record; the importer logs every
+ * column it ignored on each run, so a newly added form question cannot leak by
+ * being forgotten.
  */
 export const EXCLUDED_COLUMNS = [
+  'Клеймо за време',       // Google Forms timestamp
   'Email',
-  'Phone',
-  'Notes',
-  'Dietary requirements',
-  'Amount paid',
+  'Phone Number',
+  'Role',                   // DANCE role (leader/follower) — NOT StaffRole. See below.
+  'Level',
+  'Are you registering with a partner',
+  "If you are registering with a partner, write down your partner's email.",
+  'Festival T-Shirt and tote bag. Choose your Swing Buzz attire.',
+  'T-Shirt Size',
+  'T-Shirt Color',
+  'Comments',               // free text; could contain anything
+  'Terms and Conditions',
+  'Code of Conduct',
+  'expiry_date',
+  'reminder_sent',
+  'expired_sent',
+  'Receipt',
 ];
+
+// NOTE ON `Role`. In this Sheet, "Role" is the dance role — leader or follower.
+// In the app, `StaffRole` is reception or bar, and it decides who may credit a
+// balance. They are unrelated concepts that share a word. Do not map one onto the
+// other, and do not import this column into a field called `role`: the security
+// rules read a `role` custom claim, and a collision there would be an
+// authorisation bug rather than a display bug.
 
 // ── Derivations ────────────────────────────────────────────────────────────
 
@@ -73,11 +115,12 @@ export function toDocumentId(identityValue) {
 }
 
 /**
- * Lowercased, diacritic-preserving sort/search key.
+ * Lowercased sort/search key.
  *
  * Deliberately keeps accents: the app matches with
  * `localizedCaseInsensitiveContains`, and "Amélie" should sort next to "Amelie"
- * rather than being silently rewritten.
+ * rather than being silently rewritten. Names in this roster are Bulgarian,
+ * Swedish, Portuguese and more, so this is not a hypothetical.
  */
 export function toSortKey(name) {
   return String(name).trim().toLowerCase();
@@ -87,6 +130,20 @@ export function toSortKey(name) {
 export function toSearchTokens({ name, ticketType }) {
   const words = `${name} ${ticketType}`.toLowerCase().split(/\s+/).filter(Boolean);
   return [...new Set(words)];
+}
+
+/** Is this row's status one we import? */
+export function isImportableStatus(status) {
+  return IMPORTABLE_STATUSES.includes(normaliseStatus(status));
+}
+
+export function isKnownStatus(status) {
+  const s = normaliseStatus(status);
+  return IMPORTABLE_STATUSES.includes(s) || NON_IMPORTABLE_STATUSES.includes(s);
+}
+
+export function normaliseStatus(status) {
+  return String(status ?? '').trim().toLowerCase();
 }
 
 /**
@@ -103,7 +160,7 @@ export function toRosterFields(row) {
       ticketType: row.ticketType ?? '',
     }),
     ticketType: String(row.ticketType ?? '').trim(),
-    city: String(row.city ?? '').trim(),
+    country: String(row.country ?? '').trim(),
   };
 }
 
@@ -131,7 +188,7 @@ export const IMPORT_OWNED_FIELDS = [
   'nameLower',
   'searchTokens',
   'ticketType',
-  'city',
+  'country',
   'rosterHash',
   'importedAt',
 ];

@@ -11,20 +11,38 @@ import { test } from 'node:test';
 import {
   buildPlan,
   findOrphans,
+  findRevoked,
   parseRows,
+  partitionByStatus,
   resolveColumns,
   rosterHash,
   validateIdentity,
 } from './diff.mjs';
-import { COLUMNS, IDENTITY_COLUMN, toDocumentId, toRosterFields } from './mapping.mjs';
+import {
+  COLUMNS,
+  IDENTITY_COLUMN,
+  IMPORTABLE_STATUSES,
+  NON_IMPORTABLE_STATUSES,
+  toDocumentId,
+  toRosterFields,
+} from './mapping.mjs';
 
 // A header row matching the placeholder mapping.mjs, in a deliberately awkward
 // order and with stray whitespace and casing.
-const HEADER = ['  full name', 'Email', 'TICKET ID', 'City', 'Ticket type'];
+// The real registrations sheet's headers, in their real order, with the casing
+// and stray whitespace a hand-maintained Google Form sheet actually has.
+const HEADER = [
+  'Id', 'Клеймо за време', ' Full Name', 'Email', 'Phone Number', 'Role',
+  'PASS TYPE', 'Level', 'Which country are you coming from?', 'Comments', 'Status',
+];
+
+const row = ({ id, name, pass = 'Full pass', country = 'Bulgaria', status = 'Paid' }) =>
+  [id, '2026-07-01 10:00:00', name, `${id}@example.com`, '+359000000', 'Follower',
+   pass, 'Intermediate', country, '', status];
 
 const SHEET = [
-  ['Amélie Roux', 'a@example.com', 'TKT-10432', 'Lyon', 'Full pass'],
-  ['Tomás Herrera', 't@example.com', 'TKT-10433', 'Madrid', 'Full pass'],
+  row({ id: '1041', name: 'Amélie Roux', country: 'France' }),
+  row({ id: '1042', name: 'Tomás Herrera', country: 'Spain' }),
 ];
 
 function rowsFrom(cells, header = HEADER) {
@@ -34,15 +52,16 @@ function rowsFrom(cells, header = HEADER) {
 
 test('resolves columns despite case and whitespace differences', () => {
   const resolved = resolveColumns(HEADER);
-  assert.equal(resolved.name, 0);
-  assert.equal(resolved.ticketRef, 2);
-  assert.equal(resolved.city, 3);
-  assert.equal(resolved.ticketType, 4);
+  assert.equal(resolved.ticketRef, 0);
+  assert.equal(resolved.name, 2);
+  assert.equal(resolved.ticketType, 6);
+  assert.equal(resolved.country, 8);
+  assert.equal(resolved.status, 10);
 });
 
 test('a missing column fails loudly and lists the real headers', () => {
   assert.throws(
-    () => resolveColumns(['Name', 'City']),
+    () => resolveColumns(['Name', 'Country']),
     (err) => {
       assert.match(err.message, /were not found in the Sheet/);
       assert.match(err.message, /Headers actually present/);
@@ -53,17 +72,14 @@ test('a missing column fails loudly and lists the real headers', () => {
 });
 
 test('derives stable document ids from the identity column', () => {
-  assert.equal(toDocumentId('TKT-10432'), 'tkt-10432');
-  assert.equal(toDocumentId('  tkt/10432  '), 'tkt-10432');
+  assert.equal(toDocumentId('1041'), '1041');
+  assert.equal(toDocumentId('  TKT/10432  '), 'tkt-10432');
   assert.throws(() => toDocumentId('///'));
 });
 
 test('blank identity values are reported, not guessed at', () => {
   const resolved = resolveColumns(HEADER);
-  const rows = parseRows(
-    [['No Ticket', 'x@example.com', '   ', 'Porto', 'Party pass'], ...SHEET],
-    resolved
-  );
+  const rows = parseRows([row({ id: '   ', name: 'No Id' }), ...SHEET], resolved);
   const { usable, blank } = validateIdentity(rows);
   assert.deepEqual(blank, [2]); // sheet row 2, the first data row
   assert.equal(usable.length, 2);
@@ -84,18 +100,24 @@ test('first import creates everyone with zero balance and no bracelet', () => {
   assert.equal(updates.length, 0);
   assert.equal(unchanged.length, 0);
 
-  const amelie = creates.find((c) => c.id === 'tkt-10432');
+  const amelie = creates.find((c) => c.id === '1041');
   assert.equal(amelie.data.name, 'Amélie Roux');
   assert.equal(amelie.data.nameLower, 'amélie roux');
+  assert.equal(amelie.data.country, 'France');
   assert.equal(amelie.data.balance, 0);
   assert.equal(amelie.data.braceletId, null);
   assert.equal(amelie.data.isBlocked, false);
 });
 
-test('email is not carried into Firestore even though it is in the Sheet', () => {
+test('personal data in the Sheet does not reach Firestore', () => {
   const { creates } = buildPlan(rowsFrom(SHEET), new Map());
   const fields = Object.keys(creates[0].data);
-  assert.ok(!fields.some((f) => /email|phone/i.test(f)), fields.join(','));
+  for (const forbidden of [/email/i, /phone/i, /comment/i, /level/i, /shirt/i]) {
+    assert.ok(!fields.some((f) => forbidden.test(f)), `${forbidden} leaked into ${fields.join(',')}`);
+  }
+  // `Role` in this Sheet is the DANCE role. It must never land in a field called
+  // `role`, which is what the security rules read for authorisation.
+  assert.ok(!fields.includes('role'), fields.join(','));
 });
 
 test('re-running with an unchanged Sheet writes nothing', () => {
@@ -116,14 +138,14 @@ test('THE IMPORTANT ONE: a corrected name does not disturb festival state', () =
   // Amélie is already checked in, has 42.00 € on her bracelet, and someone fixes
   // the spelling of her name in the Sheet.
   const before = toRosterFields({
-    ticketRef: 'TKT-10432',
+    ticketRef: '1041',
     name: 'Amelie Roux',
     ticketType: 'Full pass',
-    city: 'Lyon',
+    country: 'France',
   });
   const existing = new Map([
     [
-      'tkt-10432',
+      '1041',
       {
         ...before,
         rosterHash: rosterHash(before),
@@ -160,12 +182,12 @@ test('THE IMPORTANT ONE: a corrected name does not disturb festival state', () =
 
 test('people removed from the Sheet are reported, never deleted', () => {
   const existing = new Map([
-    ['tkt-10432', { name: 'Amélie Roux', balance: 0, braceletId: null }],
-    ['tkt-99999', { name: 'Refunded Person', balance: 1500, braceletId: '04:AA:BB:CC' }],
+    ['1041', { name: 'Amélie Roux', balance: 0, braceletId: null }],
+    ['9999', { name: 'Removed From Sheet', balance: 1500, braceletId: '04:AA:BB:CC' }],
   ]);
   const orphans = findOrphans(rowsFrom(SHEET), existing);
   assert.equal(orphans.length, 1);
-  assert.equal(orphans[0].id, 'tkt-99999');
+  assert.equal(orphans[0].id, '9999');
   assert.equal(orphans[0].checkedIn, true);
   assert.equal(orphans[0].balance, 1500);
 });
@@ -175,4 +197,67 @@ test('the identity column is one of the mapped columns', () => {
     Object.keys(COLUMNS).includes(IDENTITY_COLUMN),
     `IDENTITY_COLUMN "${IDENTITY_COLUMN}" must be a key of COLUMNS`
   );
+});
+
+// ── Status ─────────────────────────────────────────────────────────────────
+
+test('splits importable rows from excluded ones', () => {
+  const rows = rowsFrom([
+    row({ id: '1', name: 'Paid Person', status: 'Paid' }),
+    row({ id: '2', name: 'Waiting Person', status: 'Pending' }),
+    row({ id: '3', name: 'Gone Person', status: 'Cancelled' }),
+    row({ id: '4', name: 'Confirmed Person', status: 'CONFIRMED' }),
+  ]);
+  const { importable, excluded, unknown } = partitionByStatus(rows);
+  assert.equal(unknown.size, 0);
+  assert.deepEqual(importable.map((r) => r.__id), ['1', '4']);
+  assert.deepEqual(excluded.map((r) => r.__id), ['2', '3']);
+});
+
+test('an unrecognised status is reported, never guessed at', () => {
+  // Guessing "importable" checks in somebody who never paid; guessing the
+  // opposite turns a paying guest away at the door. Neither is the importer's
+  // call to make.
+  const rows = rowsFrom([
+    row({ id: '1', name: 'Odd One', status: 'Partially paid' }),
+    row({ id: '2', name: 'Blank One', status: '' }),
+    row({ id: '3', name: 'Fine One', status: 'Paid' }),
+  ]);
+  const { importable, unknown } = partitionByStatus(rows);
+  assert.equal(importable.length, 1);
+  assert.deepEqual([...unknown.keys()].sort(), ['', 'partially paid']);
+  assert.deepEqual(unknown.get('partially paid'), [2]);
+});
+
+test('an unpaid person is never created in Firestore', () => {
+  const rows = rowsFrom([row({ id: '7', name: 'Never Paid', status: 'Pending' })]);
+  const { importable } = partitionByStatus(rows);
+  const { creates, updates } = buildPlan(importable, new Map());
+  assert.equal(creates.length, 0);
+  assert.equal(updates.length, 0);
+});
+
+test('someone refunded AFTER checking in is reported with their balance intact', () => {
+  const rows = rowsFrom([row({ id: '1041', name: 'Amélie Roux', status: 'Refunded' })]);
+  const { importable, excluded } = partitionByStatus(rows);
+  assert.equal(importable.length, 0);
+
+  const existing = new Map([
+    ['1041', { name: 'Amélie Roux', balance: 4000, braceletId: '04:B4:2F:11' }],
+  ]);
+  const revoked = findRevoked(excluded, existing);
+  assert.equal(revoked.length, 1);
+  assert.equal(revoked[0].status, 'refunded');
+  assert.equal(revoked[0].checkedIn, true);
+  assert.equal(revoked[0].balance, 4000);
+
+  // And crucially the plan does not touch them: 40 € on a bracelet is real money,
+  // and what happens to it is an organiser decision.
+  const { creates, updates } = buildPlan(importable, existing);
+  assert.equal(creates.length + updates.length, 0);
+});
+
+test('every status the mapping declares is unambiguous', () => {
+  const overlap = IMPORTABLE_STATUSES.filter((s) => NON_IMPORTABLE_STATUSES.includes(s));
+  assert.deepEqual(overlap, [], `a status cannot be both: ${overlap.join(', ')}`);
 });
