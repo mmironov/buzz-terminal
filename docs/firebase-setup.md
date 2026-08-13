@@ -13,7 +13,8 @@ iOS app.
 [console.firebase.google.com](https://console.firebase.google.com) → *Add project*.
 
 - Name it something like `swing-buzz` — note the **project id** it generates
-  (often `swing-buzz-a1b2c`), which is what the tooling wants.
+  (often with a suffix, `swing-buzz-a1b2c`), which is what the tooling wants.
+  **Done: this project is `swing-buzz`.**
 - Google Analytics: not needed, skip it.
 - **Stay on the free Spark plan.** Nothing in this design needs Blaze: no Cloud
   Functions, no Cloud Scheduler. The importer runs on your Mac.
@@ -22,12 +23,31 @@ iOS app.
 
 *Build → Firestore Database → Create database*.
 
+- **Standard edition**, not Enterprise. Enterprise is Firestore with MongoDB
+  compatibility — accessed through MongoDB drivers, for teams migrating off
+  MongoDB. It does not use Firebase Security Rules, which is our entire
+  access-control model, and it is not on the free tier. If a description mentions
+  *MongoDB compatibility*, that is the wrong one.
+- **Native mode**, if asked. The Firebase console picks this for you; the Google
+  Cloud console asks. Datastore mode has no real-time listeners and no mobile SDK.
 - Start in **production mode**. Not test mode — test mode leaves the database
   world-readable for 30 days, and this one holds people's names and balances.
   The real rules go in at step 4.
-- Location: pick the region closest to the festival and note it. **This cannot be
-  changed later.** `europe-west3` (Frankfurt) or `europe-west1` (Belgium) are the
-  usual European choices.
+- Location: pick the region closest to the festival. **This cannot be changed
+  later** — an existing database's region is fixed for its lifetime.
+  **Done: `europe-west10` (Berlin), single-region.**
+
+All four are effectively permanent: edition, mode and region cannot be converted
+on an existing database, so getting one wrong means deleting and recreating.
+
+> **What happened here.** The console defaulted the location to `nam5` (US
+> multi-region). Caught while the database was still empty and recreated in
+> `europe-west10`. Two reasons: every scan, top-up and charge from a European
+> venue was crossing the Atlantic — roughly 100–150 ms per round trip on a device
+> being used one-handed with a queue at the bar — and the roster is names, cities
+> and ticket purchases of EU residents, which is far simpler to reason about when
+> it never leaves the EU. Deleting an empty database costs nothing; migrating a
+> populated one costs a lot.
 
 ## 3. Authentication
 
@@ -51,9 +71,13 @@ You will need the Firebase CLI for the rules:
 npm install -g firebase-tools
 cd backend
 firebase login
-firebase use --add        # pick the project, alias it "default"
 firebase deploy --only firestore:rules,firestore:indexes
 ```
+
+No `firebase use --add` needed: `backend/.firebaserc` already aliases `swing-buzz`
+as the default project. It is committed on purpose — a project id is not a secret
+(it ships inside every app binary via the plist) and committing it means anyone
+with access can deploy without guessing.
 
 `firestore.rules` and `firestore.indexes.json` live in `backend/`, alongside the
 `firebase.json` that points at them — which is why the CLI is run from there.
@@ -112,8 +136,8 @@ them. Say the word once Java is installed.
 
 ## 7. Tell me
 
-- The **project id**
-- The Firestore **region** you picked
+- ~~The **project id**~~ — `swing-buzz`, wired into `backend/.firebaserc`
+- ~~The Firestore **region**~~ — `europe-west10` (Berlin), `(default)` database
 - That the plist is in `ios/BuzzTerminal/Resources/`
 - The Sheet's **header row**, and which column is the stable unique key
 

@@ -28,7 +28,6 @@ npm-debug.log*
 GoogleService-Info.plist
 serviceAccountKey.json
 *-serviceAccount*.json
-.firebaserc
 .firebase/
 firebase-debug.log
 firestore-debug.log
