@@ -35,6 +35,15 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Signing and distribution. The .p8 App Store Connect key is downloadable exactly
+# once and authorises uploads as your team; ExportOptions.plist is generated per
+# build and carries the team id.
+AuthKey_*.p8
+*.p12
+*.mobileprovision
+*.certSigningRequest
+ExportOptions.plist
+
 # macOS
 .DS_Store
 

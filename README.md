@@ -93,6 +93,28 @@ repository rather than from fixtures. All DEBUG-only.
 Drop `-sbEmulator` to talk to the real `swing-buzz` project. Do that deliberately:
 those writes are real, and the ledger is append-only by design.
 
+### Onto staff phones
+
+TestFlight, with a public link — no App Store listing, no UDIDs. Full runbook in
+`docs/distribution.md`; it needs an Apple Developer Program membership.
+
+```bash
+DEVELOPMENT_TEAM=A1B2C3D4E5 ./ios/scripts/release.sh --upload
+```
+
+The build number is `git rev-list --count HEAD`, so it always rises and the same
+commit always yields the same number — App Store Connect rejects a repeat.
+
+```bash
+./ios/scripts/release.sh --unsigned
+```
+
+Archives for a real device with no team and no certificates, which is how to check
+the archive still builds before any of the Apple paperwork exists.
+
+⚠️ **TestFlight builds expire after 90 days and an expired build refuses to
+launch.** Upload a fresh one the week of the festival.
+
 ### Testing on the live project, then starting clean
 
 Testing against production is the only way to prove the real thing works, and it
@@ -232,7 +254,7 @@ Honest list of what is still faked, and when it stops being faked.
 | NFC | simulated chip picker | 3 — Core NFC (needs a device + entitlement) |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
 | Localisation | English strings inline; `"23.50 €"` is locale-independent by design | later |
-| App icon | placeholder slot, no artwork | later |
+| App icon | generated, on-brand, deliberately plain — `ios/scripts/makeicon.swift` redraws it | when someone wants real artwork |
 
 Two intentional deviations from the prototype, both improvements:
 
