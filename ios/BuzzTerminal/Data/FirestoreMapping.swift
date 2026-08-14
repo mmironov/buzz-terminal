@@ -52,9 +52,35 @@ enum Fire {
         static let terminalId = "terminalId"
         static let createdAt = "createdAt"
         static let queuedOffline = "queuedOffline"
+        /// What a charge bought. Absent on a top-up — cash over the counter buys
+        /// nothing, and the rules refuse an itemised one.
+        static let items = "items"
 
         static let typeTopUp = "topup"
         static let typeCharge = "charge"
+
+        /// The most distinct drinks one charge may itemise.
+        ///
+        /// Not a product decision: `firestore.rules` has to verify that the lines
+        /// add up to the amount charged, rules cannot loop, and the unrolled sum
+        /// costs expressions against Firestore's budget of 1,000 per request. Eight
+        /// is what fits inside a money batch that is already paying for the balance
+        /// invariant. A ninth line is refused by the server, so the app checks
+        /// first and says something useful instead.
+        static let maxItems = 8
+    }
+
+    /// One line of a charge: a snapshot of what the drink was called and cost at
+    /// the moment of sale, not a reference to the menu.
+    ///
+    /// Snapshotted so that a price change tomorrow cannot rewrite today's receipt,
+    /// and so an organiser can delete a drink without orphaning the history that
+    /// names it.
+    enum TransactionItem {
+        static let drinkId = "drinkId"
+        static let name = "name"
+        static let unitPrice = "unitPrice"
+        static let quantity = "quantity"
     }
 
     enum Bracelet {
@@ -159,4 +185,35 @@ extension Participant {
 
 extension CartLine {
     var ledgerLabel: String { label }
+
+    /// This line as the ledger stores it.
+    ///
+    /// The shape is checked by `itemisationAddsUp` in `firestore.rules`, including
+    /// that no other key rides along: `hasOnly` means an extra field here is a
+    /// PERMISSION_DENIED at the bar, not a harmless annotation.
+    var ledgerItem: [String: Any] {
+        [
+            Fire.TransactionItem.drinkId: drink.id,
+            Fire.TransactionItem.name: drink.name,
+            Fire.TransactionItem.unitPrice: drink.price.cents,
+            Fire.TransactionItem.quantity: quantity,
+        ]
+    }
+}
+
+extension Array where Element == CartLine {
+    /// The `items` array for a charge, or `nil` when there is nothing to itemise.
+    ///
+    /// Pure, so it is testable without a network: the rules are unforgiving about
+    /// this shape and the failure mode is a declined payment mid-service, which is
+    /// the worst possible place to discover a typo in a field name.
+    var ledgerItems: [[String: Any]] {
+        map(\.ledgerItem)
+    }
+
+    /// What the lines add up to. The rules require this to equal the amount the
+    /// balance moves by, so both must come from here rather than be computed twice.
+    var ledgerTotal: Money {
+        reduce(Money.zero) { $0 + $1.total }
+    }
 }

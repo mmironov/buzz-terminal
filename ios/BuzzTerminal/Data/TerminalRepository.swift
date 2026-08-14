@@ -70,6 +70,7 @@ enum TerminalError: Error, Equatable, LocalizedError {
     case eveningSequenceExhausted
     case braceletBlocked
     case insufficientFunds(balance: Money, required: Money)
+    case tooManyDrinksInOneRound(limit: Int)
     case offline
 
     var errorDescription: String? {
@@ -96,6 +97,11 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "This bracelet is blocked. An organiser must lift the block."
         case .insufficientFunds(let balance, let required):
             "Balance is \(balance) but the round costs \(required)."
+        case .tooManyDrinksInOneRound(let limit):
+            // Quantities are unlimited; it is the number of *different* drinks
+            // that is capped, so the fix is to split the round rather than to
+            // reduce it.
+            "A round can list at most \(limit) different drinks. Split it into two."
         case .offline:
             "No connection to the festival server."
         }

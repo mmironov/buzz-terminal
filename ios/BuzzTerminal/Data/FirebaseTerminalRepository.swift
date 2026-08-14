@@ -249,11 +249,20 @@ actor FirebaseTerminalRepository: TerminalRepository {
     }
 
     func charge(bracelet: BraceletID, lines: [CartLine]) async throws -> Participant {
-        let total = lines.reduce(Money.zero) { $0 + $1.total }
+        // Checked here so the operator gets a sentence rather than a
+        // PERMISSION_DENIED. The server refuses a ninth line either way; see
+        // `Fire.Transaction.maxItems` for why the ceiling exists at all.
+        guard lines.count <= Fire.Transaction.maxItems else {
+            throw TerminalError.tooManyDrinksInOneRound(limit: Fire.Transaction.maxItems)
+        }
         return try await moveMoney(
             bracelet: bracelet,
             type: Fire.Transaction.typeCharge,
-            amount: total
+            // The same array produces both the total and the itemisation, because
+            // the rules check one against the other. Computing them apart is how
+            // they would come to disagree.
+            amount: lines.ledgerTotal,
+            items: lines.ledgerItems
         )
     }
 
@@ -269,7 +278,8 @@ actor FirebaseTerminalRepository: TerminalRepository {
     private func moveMoney(
         bracelet: BraceletID,
         type: String,
-        amount: Money
+        amount: Money,
+        items: [[String: Any]]? = nil
     ) async throws -> Participant {
         guard amount.isPositive else { throw TerminalError.insufficientFunds(balance: .zero, required: amount) }
         let uid = try requireStaffUid()
@@ -288,7 +298,7 @@ actor FirebaseTerminalRepository: TerminalRepository {
         let txId = UUID().uuidString
         let batch = db.batch()
 
-        batch.setData([
+        var entry: [String: Any] = [
             Fire.Transaction.clientTxId: txId,
             Fire.Transaction.type: type,
             Fire.Transaction.amount: amount.cents,
@@ -296,7 +306,13 @@ actor FirebaseTerminalRepository: TerminalRepository {
             Fire.Transaction.staffUid: uid,
             Fire.Transaction.terminalId: terminalId,
             Fire.Transaction.createdAt: FieldValue.serverTimestamp(),
-        ], forDocument: transactionDocument(current.id, txId))
+        ]
+        // Set, never present-and-empty: the rules require a charge to carry at
+        // least one line and a top-up to carry none at all.
+        if let items, !items.isEmpty {
+            entry[Fire.Transaction.items] = items
+        }
+        batch.setData(entry, forDocument: transactionDocument(current.id, txId))
 
         batch.updateData([
             Fire.Participant.balance: after.cents,
