@@ -34,7 +34,7 @@ address as **Viewer**. Viewer is enough — this tool only ever reads.
 
 ```bash
 export SHEET_ID=1AbC…            # the long string in the Sheet URL between /d/ and /edit
-export SHEET_RANGE='Participants!A1:Z10000'
+export SHEET_RANGE='Registrations!A1:Z10000'   # optional; defaults to the first tab
 ```
 
 The Firebase project id is read from `../.firebaserc`, so it needs no flag.

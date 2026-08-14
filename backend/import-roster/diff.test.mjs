@@ -22,6 +22,8 @@ import {
   COLUMNS,
   IDENTITY_COLUMN,
   IMPORTABLE_STATUSES,
+  isCanonicalPassType,
+  normaliseTicketType,
   toDocumentId,
   toRosterFields,
 } from './mapping.mjs';
@@ -298,4 +300,59 @@ test('an evening ticket is never updated by the importer', () => {
   assert.equal(updates.length, 0);
   assert.equal(unchanged.length, 0);
   assert.deepEqual(creates.map((c) => c.id), ['1041', '1042']);
+});
+
+// ── Pass types ─────────────────────────────────────────────────────────────
+
+test('THE TRAP: longest match wins, so Gold is never filed as plain Full Pass', () => {
+  // "Full Pass Gold - 239 €" starts with "Full Pass". A naive prefix scan
+  // silently downgrades every Gold holder, and nothing would look wrong.
+  assert.equal(normaliseTicketType('Full Pass Gold - 239 € (EARLY BIRD pricing)'), 'Full Pass Gold');
+  assert.equal(normaliseTicketType('Full Pass Gold - 130 € (First Installment 50%)'), 'Full Pass Gold');
+  assert.equal(normaliseTicketType('Full Pass Gold - 259 €'), 'Full Pass Gold');
+  assert.equal(normaliseTicketType('Party Pass Plus - 135 € (EARLY BIRD pricing)'), 'Party Pass Plus');
+  assert.equal(normaliseTicketType('Party Pass Plus - 155 €'), 'Party Pass Plus');
+});
+
+test('reduces every value the real Sheet actually contains', () => {
+  // Taken verbatim from the first import of the live registrations sheet.
+  const cases = {
+    'Full Pass - 185 € (EARLY BIRD pricing)': 'Full Pass',
+    'Full Pass - 205 €': 'Full Pass',
+    'Full Pass - 80 € (EARLY BIRD pricing) - Discounted Party Pass amount': 'Full Pass',
+    'Full Pass - 205 € (Upgrade from Party - 135€ + 70€)': 'Full Pass',
+    'Full Pass - Dragon Swing Winner': 'Full Pass',
+    'Full Pass - 85 € - Discounted Party Pass amount': 'Full Pass',
+    'Party Pass - 105 € (EARLY BIRD pricing)': 'Party Pass',
+    'Party Pass - 120 €': 'Party Pass',
+    'Jazz Performance Track - 185 €': 'Jazz Performance Track',
+  };
+  for (const [raw, expected] of Object.entries(cases)) {
+    assert.equal(normaliseTicketType(raw), expected, raw);
+  }
+});
+
+test('ignores case and surrounding whitespace', () => {
+  assert.equal(normaliseTicketType('  full pass gold - 239 €  '), 'Full Pass Gold');
+  assert.equal(normaliseTicketType('FULL PASS - 205 €'), 'Full Pass');
+});
+
+test('keeps an unrecognised pass type rather than dropping or guessing it', () => {
+  // A new pass type should look odd on a screen, not vanish from the roster.
+  assert.equal(normaliseTicketType('Sunday Brunch Pass - 30 €'), 'Sunday Brunch Pass - 30 €');
+  assert.equal(isCanonicalPassType('Sunday Brunch Pass - 30 €'), false);
+  assert.equal(normaliseTicketType(''), '');
+});
+
+test('the price paid does not reach Firestore', () => {
+  const fields = toRosterFields({
+    ticketRef: '104', name: 'Ivan Naydenov',
+    ticketType: 'Full Pass - 185 € (EARLY BIRD pricing)', country: 'Bulgaria',
+  });
+  assert.equal(fields.ticketType, 'Full Pass');
+  const serialised = JSON.stringify(fields);
+  assert.ok(!serialised.includes('185'), serialised);
+  assert.ok(!serialised.includes('EARLY BIRD'), serialised);
+  // …and the search tokens use the clean name, not the invoice line.
+  assert.deepEqual(fields.searchTokens.sort(), ['full', 'ivan', 'naydenov', 'pass']);
 });

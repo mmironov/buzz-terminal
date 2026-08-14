@@ -57,6 +57,61 @@ export const IDENTITY_COLUMN = 'ticketRef';
  */
 export const IMPORTABLE_STATUSES = ['paid'];
 
+// ── Pass types ─────────────────────────────────────────────────────────────
+
+/**
+ * The pass types the festival sells, as they should appear on a terminal.
+ *
+ * The Sheet's `Pass Type` column carries far more than this — the price, the
+ * pricing tier, and sometimes a note:
+ *
+ *     "Full Pass - 185 € (EARLY BIRD pricing)"
+ *     "Full Pass Gold - 130 € (First Installment 50%)"
+ *     "Full Pass - 205 € (Upgrade from Party - 135€ + 70€)"
+ *     "Full Pass - Dragon Swing Winner"
+ *
+ * 14 distinct strings for 5 actual pass types, as of the first real import. None
+ * of that belongs on an 11pt row next to somebody's name, and leaving it raw would
+ * split "Full Pass" across five values for any grouping or reporting.
+ */
+export const CANONICAL_PASS_TYPES = [
+  'Party Pass',
+  'Party Pass Plus',
+  'Full Pass',
+  'Full Pass Gold',
+  'Jazz Performance Track',
+  /// Never in the Sheet; minted by reception at the door.
+  'Evening Ticket',
+];
+
+/**
+ * Reduce a Sheet value to its canonical pass type.
+ *
+ * **Longest match first.** This is the whole difficulty: "Full Pass Gold - 239 €"
+ * starts with "Full Pass", and a naive prefix scan would file every Gold holder as
+ * a plain Full Pass. Same for "Party Pass Plus" against "Party Pass". Sorting by
+ * length rather than relying on the order of the array above means reordering that
+ * list cannot reintroduce the bug.
+ *
+ * An unrecognised value is returned unchanged rather than dropped or guessed at —
+ * a new pass type should show up on a screen looking odd, not vanish. The import
+ * reports how many it could not recognise.
+ */
+export function normaliseTicketType(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) return '';
+  const lower = value.toLowerCase();
+  const byLongest = [...CANONICAL_PASS_TYPES].sort((a, b) => b.length - a.length);
+  for (const canonical of byLongest) {
+    if (lower.startsWith(canonical.toLowerCase())) return canonical;
+  }
+  return value;
+}
+
+export function isCanonicalPassType(value) {
+  return CANONICAL_PASS_TYPES.includes(value);
+}
+
 // ── Privacy ────────────────────────────────────────────────────────────────
 
 /**
@@ -145,15 +200,16 @@ export function normaliseStatus(status) {
  * Everything absent from this object is festival state the import must not touch.
  */
 export function toRosterFields(row) {
+  // Normalised, and the Sheet's raw text is deliberately NOT carried across: the
+  // price each person paid stays in the Sheet. Everything that reaches Firestore
+  // is readable by every terminal, and a bartender has no use for it.
+  const ticketType = normaliseTicketType(row.ticketType);
   return {
     ticketRef: String(row.ticketRef ?? '').trim(),
     name: String(row.name ?? '').trim(),
     nameLower: toSortKey(row.name ?? ''),
-    searchTokens: toSearchTokens({
-      name: row.name ?? '',
-      ticketType: row.ticketType ?? '',
-    }),
-    ticketType: String(row.ticketType ?? '').trim(),
+    searchTokens: toSearchTokens({ name: row.name ?? '', ticketType }),
+    ticketType,
     country: String(row.country ?? '').trim(),
   };
 }

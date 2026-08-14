@@ -15,7 +15,13 @@ import {
   resolveColumns,
   validateIdentity,
 } from './diff.mjs';
-import { COLUMNS, IDENTITY_COLUMN, normaliseStatus } from './mapping.mjs';
+import {
+  COLUMNS,
+  IDENTITY_COLUMN,
+  IMPORTABLE_STATUSES,
+  isCanonicalPassType,
+  normaliseStatus,
+} from './mapping.mjs';
 // `./sheets.mjs` and `./firestore.mjs` are imported lazily inside the commands
 // that need them, so `npm test` and the usage text work before `npm install`.
 async function cloud() {
@@ -60,7 +66,7 @@ const config = {
   keyFile: option('key', process.env.GOOGLE_APPLICATION_CREDENTIALS ?? './serviceAccountKey.json'),
   projectId: option('project', process.env.FIREBASE_PROJECT_ID ?? projectFromFirebaserc()),
   spreadsheetId: option('sheet', process.env.SHEET_ID),
-  range: option('range', process.env.SHEET_RANGE ?? 'Participants!A1:Z10000'),
+  range: option('range', process.env.SHEET_RANGE ?? 'A1:Z10000'),
   apply: flag('apply'),
 };
 
@@ -119,8 +125,28 @@ async function cmdHeaders() {
     for (const [value, count] of [...counts].sort((a, b) => b[1] - a[1])) {
       console.log(`  ${String(count).padStart(5)}  ${value}`);
     }
-    console.log(`\nEvery one of these must appear in IMPORTABLE_STATUSES or`);
-    console.log(`NON_IMPORTABLE_STATUSES in mapping.mjs, or the import will refuse to run.`);
+    console.log(`\nOnly ${JSON.stringify(IMPORTABLE_STATUSES)} is imported. Everything else is`);
+    console.log(`treated as if the registration does not exist. Read the list above: a value`);
+    console.log(`that ought to count as paid, but is not spelled "paid", is a guest missing`);
+    console.log(`at the door.`);
+  }
+
+  // Same treatment for pass types. The design assumes a short label; a Sheet
+  // that also carries the price and the pricing tier in this column is something
+  // to see before it reaches a 16pt row on a phone.
+  const passAt = header.findIndex(
+    (h) => String(h).trim().toLowerCase() === String(COLUMNS.ticketType).trim().toLowerCase()
+  );
+  if (passAt >= 0) {
+    const counts = new Map();
+    for (const cells of rows) {
+      const value = String(cells[passAt] ?? '').trim() || '(blank)';
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    console.log(`\nDistinct values in "${COLUMNS.ticketType}" — counts only:\n`);
+    for (const [value, count] of [...counts].sort((a, b) => b[1] - a[1])) {
+      console.log(`  ${String(count).padStart(5)}  ${value}`);
+    }
   }
 
   console.log(`\nPut these column names into mapping.mjs, then run: npm run import\n`);
@@ -179,6 +205,23 @@ async function cmdImport() {
   const plan = buildPlan(importable, existing);
   const orphans = findOrphans(importable, existing);
   const revoked = findRevoked(excluded, existing);
+
+  // A pass type nobody anticipated would otherwise reach a phone screen as a
+  // 46-character invoice line, and group as its own category in any report.
+  const unrecognised = new Map();
+  for (const op of [...plan.creates, ...plan.updates]) {
+    const type = op.data.ticketType;
+    if (type && !isCanonicalPassType(type)) {
+      unrecognised.set(type, (unrecognised.get(type) ?? 0) + 1);
+    }
+  }
+  if (unrecognised.size) {
+    console.log(`  Pass types not recognised — kept verbatim, so they will show as-is:`);
+    for (const [type, count] of [...unrecognised].sort((a, b) => b[1] - a[1])) {
+      console.log(`      ${String(count).padStart(3)}  ${type}`);
+    }
+    console.log('');
+  }
 
   console.log(`  create     ${plan.creates.length}`);
   console.log(`  update     ${plan.updates.length}   (roster fields only)`);
@@ -284,7 +327,7 @@ Swing Buzz roster importer
 
 Configuration, as flags or environment variables:
   --sheet=<id>       SHEET_ID                     from the Sheet URL
-  --range=<a1>       SHEET_RANGE                  default Participants!A1:Z10000
+  --range=<a1>       SHEET_RANGE                  default A1:Z10000 (first tab)
   --project=<id>     FIREBASE_PROJECT_ID             defaults to ../.firebaserc
   --key=<path>       GOOGLE_APPLICATION_CREDENTIALS   default ./serviceAccountKey.json
 
