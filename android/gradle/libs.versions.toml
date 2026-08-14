@@ -1,7 +1,11 @@
 [versions]
 # Toolchain
 kotlin = "2.4.10"
-agp = "9.3.1"
+# Pinned to what the installed Android Studio supports, not to the newest
+# release: Studio refuses to open a project whose AGP is ahead of it, and being
+# unable to open the project in the IDE is a worse problem than being one
+# version behind. Raise this when Studio itself is updated.
+agp = "9.2.1"
 jvmTarget = "21"
 
 # AndroidX / Compose — not used by :domain, listed here so the app module in the
