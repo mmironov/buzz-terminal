@@ -12,7 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
-import fest.swingbuzz.terminal.designsystem.DesignSystemGallery
+import androidx.lifecycle.viewmodel.compose.viewModel
+import fest.swingbuzz.terminal.app.RootScreen
 import fest.swingbuzz.terminal.designsystem.SB
 import fest.swingbuzz.terminal.designsystem.sbBody
 
@@ -45,10 +46,7 @@ fun BuzzTerminalApp() {
                 .background(SB.background)
                 .safeDrawingPadding()
         ) {
-            // Placeholder until the sign-in flow lands: the design system, on
-            // the glass, where variable-font weights and stroke widths can
-            // actually be judged.
-            DesignSystemGallery()
+            RootScreen(viewModel())
         }
     }
 }
