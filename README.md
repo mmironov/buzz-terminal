@@ -186,14 +186,17 @@ Two intentional deviations from the prototype, both improvements:
 1. ✅ **Iteration 1** — project, Modernist design system in SwiftUI, all 10
    screens on an in-memory repository, 25 tests green.
    See `docs/iteration-01.md`.
-2. **Iteration 2** — Firebase. Backend design done and committed:
+2. **Iteration 2** — Firebase. Backend:
    `docs/firestore-schema.md`, `backend/firestore.rules`,
    `backend/firestore.indexes.json`, and `backend/import-roster/`
    (Google Sheet → Firestore, roster fields only).
    Follow `docs/firebase-setup.md` to create the project; the Swift side
    (`FirebaseTerminalRepository`) lands once `GoogleService-Info.plist` exists.
-3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
-4. **Iteration 4** — Android app in Jetpack Compose against the same backend.
+3. ✅ **Iteration 2 complete** — the terminal runs on Firestore against enforced
+   rules; reception and bar flows and all three refusals verified through the UI.
+   See `docs/iteration-02.md`.
+4. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
+5. **Iteration 4** — Android app in Jetpack Compose against the same backend.
 
 ## Credits
 
