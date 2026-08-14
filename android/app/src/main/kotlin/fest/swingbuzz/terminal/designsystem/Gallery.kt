@@ -16,6 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -64,6 +67,29 @@ fun DesignSystemGallery(modifier: Modifier = Modifier) {
             text = "Bracelet check-in, balance top-up and bar payments.",
             style = sbBody(13.sp, lineHeightMultiple = 1.6f),
             color = SB.ink(0.6f),
+        )
+
+        // ── Weight check ──
+        // Worth its space, because the failure this guards against does not look
+        // like a failure. Archivo's variable default is wght 600, so a family
+        // that loaded but never applied its variation settings renders every
+        // weight at semibold — plausible, and wrong everywhere. Archivo Regular
+        // also resembles Roboto closely enough at 13sp to fool the eye, so the
+        // platform default on the last line is the control: if an Archivo line
+        // matches it, that weight is falling back.
+        SBDivider()
+        SBKicker("Weight check")
+        for (weight in listOf(400, 600, 700, 800)) {
+            Text(
+                text = "Participant 123 — Archivo $weight",
+                style = SBFont.style(15.sp, FontWeight(weight)),
+                color = SB.ink,
+            )
+        }
+        Text(
+            text = "Participant 123 — platform default",
+            style = TextStyle(fontFamily = FontFamily.Default, fontSize = 15.sp),
+            color = SB.ink,
         )
 
         // ── Glyphs ──
