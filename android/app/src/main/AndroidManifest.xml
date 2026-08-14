@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      Firestore's own manifest merges these in, so they are strictly redundant.
+      Declared anyway: a terminal that cannot reach the network is useless, and
+      that fact belongs in our manifest rather than being inherited invisibly
+      from a dependency that could be swapped out.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="false"
         android:label="@string/app_name"
