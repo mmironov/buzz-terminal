@@ -203,15 +203,49 @@ plays with `DEVELOPER_DIR`.
 
 ### What works today
 
-Sign-in against the fixture backend, on the real design system: the demo
-accounts, the inline refusal with its leading accent rule, and a signed-in
-session that has loaded the catalogue. Every other screen lands on a placeholder
-that names itself, so a wrong transition is loud rather than blank.
+All eleven screens, against Firestore. Sign-in reads the staff role from the
+same custom claim the iOS app does, reception checks a bracelet in and takes
+cash, the bar charges a round, and all four refusals — not recognised, blocked,
+not enough balance, no role — reach the glass. The `when` over `Screen` is
+exhaustive; there is no placeholder left to land on.
 
-`TerminalRepository` and `AppModel` are complete ports, so what remains is
-screens rather than plumbing. The Firebase implementation is not written yet —
-Android currently runs on fixtures only, which is the one place it is behind iOS
-by design rather than by omission.
+**Firestore is the default backend**, in debug and release alike, for the reason
+the iOS app has it that way: different defaults per build type means you exercise
+the fixtures all week and ship the real backend. `--es sbBackend memory` opts out
+to the fixtures, and a clone with no `google-services.json` lands there anyway,
+so the app stays walkable for someone who has not been through
+`docs/firebase-setup.md`. A release build is not given that latitude — with no
+configuration it refuses to start rather than put a convincing fake till in a
+bartender's hands.
+
+Against the emulators:
+
+```bash
+cd backend && firebase emulators:start --only firestore,auth --project swing-buzz
+cd backend && ./seed-emulator.sh
+```
+
+```bash
+adb reverse tcp:8080 tcp:8080 && adb reverse tcp:9099 tcp:9099
+adb shell am start -n fest.swingbuzz.terminal/.MainActivity --ez sbEmulator true
+```
+
+Those two `adb reverse` lines are not optional, and the reason is worth knowing
+before it costs an afternoon. The documented way for an Android emulator to reach
+its host is `10.0.2.2`, and it does not work for an app on a current AVD:
+`ip route` shows `10.0.2.0/24` on both `eth0` (the QEMU NAT, where that alias
+lives) and `wlan0` (the emulated access point, where it does not). App traffic
+binds to Wi-Fi, so the packets go to the virtual AP and vanish. From `adb shell`
+the same address answers — measured here, the shell got HTTP 200 while the app's
+own uid timed out after ten seconds and the Auth emulator logged neither. It
+reads exactly like a broken app. `adb reverse` sidesteps the routing entirely and
+works on a USB-attached phone too. `--es sbEmulatorHost <ip>` overrides it for a
+device on the same wifi.
+
+Debug builds carry a `network-security-config` permitting cleartext to those
+loopback hosts only, because the emulators speak plain HTTP and Android has
+refused cleartext by default since API 28. It lives in `src/debug/`, so a release
+build keeps the platform default of refusing it everywhere.
 
 Archivo comes across as the same variable `.ttf` the iOS app carries, asked for
 four weights through `FontVariation` rather than shipped as four static cuts.
@@ -403,11 +437,15 @@ Two intentional deviations from the prototype, both improvements:
    NFC needs a physical device and the entitlement, so it is the first thing here
    the Simulator cannot verify.
 4. 🔄 **Iteration 4** — Android app in Jetpack Compose against the same backend.
-   In progress: Gradle project, the domain ported with its tests, Modernist in
-   Compose, the repository seam, the `AppModel` state machine, and sign-in
-   running on fixtures. Still to do: the reception and bar screens, then a
-   `FirebaseTerminalRepository` so it talks to `swing-buzz` rather than to
-   `SampleData`. Details in "The Android app" above.
+   Done: the Gradle project, the domain ported with its tests, Modernist in
+   Compose, the `AppModel` state machine, all eleven screens, and a
+   `FirebaseTerminalRepository` that writes the same documents the Swift one
+   does — verified against the emulator, the same way iteration 2 was. Details in
+   "The Android app" above.
+
+   Still to do: the offline queue and real NFC, which are iteration 3's work on
+   both platforms, and a run against production, which has not happened from
+   Android at all.
 
 The production menu is **Water 2 €, Beer 4 €, Gin & Tonic 6 €**, seeded by
 `npm run seed-drinks -- --apply` and owned by the web admin panel once that exists.

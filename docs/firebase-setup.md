@@ -3,8 +3,8 @@
 Everything here needs your Google account, so it is yours to do. I cannot create
 the project, generate credentials, or share the Sheet on your behalf.
 
-Work through it in order. Steps 1–4 unblock the importer; steps 5–7 unblock the
-iOS app.
+Work through it in order. Steps 1–4 unblock the importer; step 5 unblocks the iOS
+app and step 6 the Android one.
 
 ---
 
@@ -119,7 +119,37 @@ app downloads their own.
 Skip the console's "add the SDK" instructions — the SPM wiring is my job once the
 plist is in place.
 
-## 6. The emulator and the rules tests — done
+## 6. Register the Android app
+
+Same project, same database, same staff accounts. An Android app is another
+*client* of `swing-buzz`, not a second backend — nothing from steps 1–4 is
+repeated, and the role claims you set in 4c already work for it.
+
+*Project settings → General → Your apps → Add app → Android.*
+
+- Package name: **`fest.swingbuzz.terminal`** — must match exactly, it is the
+  `applicationId` in `android/app/build.gradle.kts`. Note it is **not** the iOS
+  bundle id: `fest.swingbuzz.BuzzTerminal` is already taken by the iOS app
+  record, and the two conventions differ (reverse-DNS is lowercase on Android).
+- App nickname: anything.
+- **Debug signing certificate SHA-1: leave it empty.** The console asks, and the
+  field is genuinely optional. It exists for Google Sign-In, phone auth, Dynamic
+  Links and App Check — none of which we use. We sign in with email and password,
+  which needs no certificate fingerprint. It can be added later if that changes.
+- Download `google-services.json` and put it at
+  **`android/app/google-services.json`** — the module directory, next to
+  `build.gradle.kts`, not the project root. The Gradle plugin looks there.
+
+Gitignored, for the same reason as the plist: it is not a secret like a
+service-account key, but it identifies your project and pins the API keys.
+Verified that the existing rule covers this exact path.
+
+Skip the console's "add the SDK" pages — the Gradle wiring is my job once the
+file is in place. The `google-services` plugin and the Firebase BoM are already
+pinned in `android/gradle/libs.versions.toml`; they are just not applied yet,
+because applying them without the JSON breaks the build for everyone.
+
+## 7. The emulator and the rules tests — done
 
 ```bash
 cd backend/rules-tests && ./test.sh
@@ -136,17 +166,23 @@ it rather than requiring anything on your `PATH`.
 Run these before deploying a rules change. `firebase deploy` will happily ship a
 rules file that locks out every terminal, or one that lets the bar credit itself.
 
-## 7. Tell me
+Pointing an app at the emulators is `-sbEmulator` on iOS and
+`--ez sbEmulator true` on Android. The Android side additionally needs
+`adb reverse` for the app to reach the host at all — README, "The Android app",
+explains why the documented `10.0.2.2` is not enough.
+
+## 8. Tell me
 
 - ~~The **project id**~~ — `swing-buzz`, wired into `backend/.firebaserc`
 - ~~The Firestore **region**~~ — `europe-west10` (Berlin), `(default)` database
 - ~~The **plist**~~ — in place; the app logs "Firebase configured for project
   swing-buzz" at launch
-- The Sheet's **header row**, and which column is the stable unique key
+- ~~The Sheet's **header row**~~ — mapped, roster imported
+- **`google-services.json`** in `android/app/` — the one thing outstanding
 
-Then I will do the Swift side: the `Domain/` change described at the end of
-`docs/firestore-schema.md`, the SPM dependency, and `FirebaseTerminalRepository`
-behind the existing `TerminalRepository` protocol.
+Then I will do the Kotlin side: the `google-services` plugin, the Firebase
+dependencies, and `FirebaseTerminalRepository` behind the existing
+`TerminalRepository` interface — the Android app's last gap behind iOS.
 
 ---
 
