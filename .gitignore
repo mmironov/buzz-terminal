@@ -33,6 +33,14 @@ local.properties
 .kotlin/
 .cxx/
 
+# Android Studio's project files, which it rewrites as you use it — window
+# layouts, the last device you deployed to, caches. Everything needed to build
+# is in the Gradle files, and what was tracked here was Studio's own defaults
+# (KOTLIN_OFFICIAL, the stock XML arrangement) rather than anything chosen. Note
+# the contrast with xcshareddata above, which IS committed because a scheme is a
+# real build input.
+.idea/
+
 # Firebase. Never commit these: the plist and the json identify the project, and
 # a service-account key is full admin access to it.
 GoogleService-Info.plist
