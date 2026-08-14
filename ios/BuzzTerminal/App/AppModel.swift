@@ -24,12 +24,21 @@ final class AppModel {
     private let repository: TerminalRepository
     private let reader: BraceletReader
 
+    /// Whether the demo-account shortcuts mean anything.
+    ///
+    /// They fill fixture credentials that only `InMemoryTerminalRepository`
+    /// recognises. Against Firebase they cannot succeed, so offering them there is
+    /// an invitation to misread a real authentication failure as a broken app —
+    /// which is exactly what happened the first time this ran on production.
+    let offersDemoAccounts: Bool
+
     init(
         repository: TerminalRepository = InMemoryTerminalRepository(),
         reader: BraceletReader = SimulatedBraceletReader()
     ) {
         self.repository = repository
         self.reader = reader
+        self.offersDemoAccounts = repository is InMemoryTerminalRepository
     }
 
     // MARK: Session

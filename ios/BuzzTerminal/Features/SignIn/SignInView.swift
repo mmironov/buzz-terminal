@@ -71,8 +71,10 @@ struct SignInView: View {
             .disabled(model.isWorking)
             .padding(.top, SBSpace.x3)
 
-            demoAccounts
-                .padding(.top, 26)
+            if model.offersDemoAccounts {
+                demoAccounts
+                    .padding(.top, 26)
+            }
 
             Spacer(minLength: 0)
         }

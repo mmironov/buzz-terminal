@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OSLog
 
 /// The real backend.
 ///
@@ -15,6 +16,12 @@ import Foundation
 /// choice that would work slightly worse — it is rejected. The 49 tests in
 /// `backend/rules-tests/` are the specification for the shapes below.
 actor FirebaseTerminalRepository: TerminalRepository {
+
+    /// `static` so `signInFailure` can log without needing actor isolation.
+    private static let log = Logger(
+        subsystem: "fest.swingbuzz.BuzzTerminal",
+        category: "repository"
+    )
 
     private let db: Firestore
     private let auth: Auth
@@ -53,7 +60,7 @@ actor FirebaseTerminalRepository: TerminalRepository {
         do {
             result = try await auth.signIn(withEmail: email, password: password)
         } catch {
-            throw TerminalError.unknownAccount
+            throw Self.signInFailure(error)
         }
 
         // Force a refresh: a role granted after this device last signed in would
@@ -70,6 +77,45 @@ actor FirebaseTerminalRepository: TerminalRepository {
 
     func signOut() async {
         try? auth.signOut()
+    }
+
+    /// Turn an Auth failure into something an operator can act on — and log the
+    /// underlying code, which is the part that actually matters at 2am.
+    ///
+    /// The first version of this was `catch { throw .unknownAccount }`. It cost a
+    /// packet trace to find out that a real sign-in had failed on a 400 from
+    /// identitytoolkit, because the one fact worth keeping had been discarded at the
+    /// point of failure. A wrong password and a dropped wifi need different
+    /// reactions from whoever is standing at the desk.
+    ///
+    /// Wrong password and unknown email are not separated, because the server
+    /// refuses to separate them: with email enumeration protection on, both arrive
+    /// as `invalidCredential`.
+    private static func signInFailure(_ error: Error) -> TerminalError {
+        let nsError = error as NSError
+        let code = AuthErrorCode(rawValue: nsError.code)
+
+        // The numeric code, not `String(describing: code)`. `AuthErrorCode` is a
+        // struct with static members rather than an enum, so describing it prints
+        // the useless "FirebaseAuth.AuthErrorCode" — which is exactly what the
+        // first version of this logged. 17004 is worth searching for; a type name
+        // is not.
+        log.error("""
+            Sign-in failed: \(nsError.domain, privacy: .public) \
+            \(nsError.code, privacy: .public) — \
+            \(error.localizedDescription, privacy: .public)
+            """)
+
+        switch code {
+        case .networkError:
+            return .offline
+        case .userDisabled:
+            return .accountDisabled
+        case .tooManyRequests:
+            return .tooManyAttempts
+        default:
+            return .unknownAccount
+        }
     }
 
     private func requireStaffUid() throws -> String {

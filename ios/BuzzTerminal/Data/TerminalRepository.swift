@@ -63,6 +63,8 @@ protocol TerminalRepository: Sendable {
 enum TerminalError: Error, Equatable, LocalizedError {
     case unknownAccount
     case noRoleAssigned
+    case accountDisabled
+    case tooManyAttempts
     case braceletNotAssigned
     case braceletAlreadyPaired
     case eveningSequenceExhausted
@@ -73,7 +75,15 @@ enum TerminalError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unknownAccount:
+            // Deliberately ambiguous, and not only out of politeness: with email
+            // enumeration protection enabled on the project, Firebase returns one
+            // generic code for "no such user" and "wrong password", so naming
+            // either would be a guess dressed up as a fact.
             "Unknown account or wrong password."
+        case .accountDisabled:
+            "This account has been disabled. An organiser must re-enable it."
+        case .tooManyAttempts:
+            "Too many failed attempts. Wait a minute, then try again."
         case .noRoleAssigned:
             "This account has no role yet. An organiser must grant reception or bar access."
         case .braceletNotAssigned:
