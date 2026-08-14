@@ -345,6 +345,15 @@ class AppModel(
     }
 
     /**
+     * Cancelling a door sale. Back to the check-in list rather than home,
+     * because the bracelet on the desk has still been scanned and is still the
+     * thing being dealt with.
+     */
+    fun backToAssign() {
+        screen = Screen.Assign
+    }
+
+    /**
      * Sell an evening ticket on the bracelet that was just scanned.
      *
      * Anonymous: nothing is asked of the guest and nothing is stored about them.

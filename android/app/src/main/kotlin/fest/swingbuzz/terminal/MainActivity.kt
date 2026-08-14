@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -40,12 +39,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun BuzzTerminalApp() {
     CompositionLocalProvider(LocalTextStyle provides sbBody(14.sp).copy(color = SB.ink)) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(SB.background)
-                .safeDrawingPadding()
-        ) {
+        // No safe-area inset here on purpose: `RootScreen` applies it to the
+        // screen content, so the scan overlay can still reach the status bar
+        // and the gesture bar. From targetSdk 35 the window is edge-to-edge
+        // whether we ask for it or not, so this is the only place that choice
+        // can be made.
+        Box(Modifier.fillMaxSize().background(SB.background)) {
             RootScreen(viewModel())
         }
     }

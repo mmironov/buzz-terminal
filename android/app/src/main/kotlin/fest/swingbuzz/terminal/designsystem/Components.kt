@@ -276,6 +276,42 @@ fun SBTextField(
     }
 }
 
+/** The bare `.input` without a `.field` label, as used for search. */
+@Composable
+fun SBSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "Search participant or ticket",
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SB.surface)
+            .border(SBRule.hairline, SB.divider)
+            .defaultMinSize(minHeight = 36.dp)
+            .padding(horizontal = 10.dp),
+        textStyle = sbBody(14.sp).copy(color = SB.ink),
+        singleLine = true,
+        cursorBrush = SolidColor(SB.accent),
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrectEnabled = false,
+            imeAction = ImeAction.Search,
+        ),
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) {
+                    Text(placeholder, style = sbBody(14.sp), color = SB.ink(0.35f))
+                }
+                innerTextField()
+            }
+        },
+    )
+}
+
 // ─── Status bands ───────────────────────────────────────────────────────────
 
 enum class SBBandTone(val fill: Color) {
