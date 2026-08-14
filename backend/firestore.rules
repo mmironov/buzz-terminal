@@ -10,7 +10,7 @@ rules_version = '2';
 //  rules have to live here, where they are enforced no matter what the app
 //  binary does.
 //
-//  Three invariants these rules exist to hold:
+//  Four invariants these rules exist to hold:
 //
 //    1. A balance can only move by exactly the amount of a matching ledger
 //       entry, written in the same transaction. No naked balance writes.
@@ -19,10 +19,19 @@ rules_version = '2';
 //    3. The ledger is append-only, and a transaction's document id IS its
 //       idempotency key — so a replayed offline write collides instead of
 //       double-charging.
+//    4. A charge's itemisation adds up to the amount charged. The receipt the
+//       admin panel shows and the money that left the bracelet are the same
+//       fact, not two facts that happen to agree.
 //
 //  Roster fields (name, ticket type, city) are never client-writable. They come
 //  from the Google Sheet import, which runs with the Admin SDK and bypasses
 //  these rules entirely.
+//
+//  There are three roles, and they are disjoint. `reception` and `bar` are the
+//  terminals; `admin` is the web panel in `web-admin/`, which blocks bracelets
+//  and owns the drinks catalogue. An admin deliberately CANNOT move money: no
+//  balance write, no ledger entry, no pairing. Blocking is the organiser's lever,
+//  and every euro on a bracelet stays accounted for by the ledger.
 //
 //  See docs/firestore-schema.md for the model and the reasoning.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -32,8 +41,9 @@ service cloud.firestore {
 
     // ── Identity ───────────────────────────────────────────────────────────
 
-    // `role` is a custom claim set by an admin, never by the client. A staff
-    // member cannot promote themselves from bar to reception.
+    // `role` is a custom claim set with the Admin SDK, never by the client. A
+    // staff member cannot promote themselves from bar to reception, and nobody
+    // can promote themselves to admin.
     function role() {
       return request.auth.token.get('role', '');
     }
@@ -45,6 +55,16 @@ service cloud.firestore {
     }
     function isBar() {
       return isStaff() && role() == 'bar';
+    }
+
+    // The organiser at the web admin panel. Note that `admin` is NOT a member of
+    // isStaff(), which is what keeps it out of every money rule below by
+    // construction rather than by remembering to exclude it.
+    function isAdmin() {
+      return request.auth != null && role() == 'admin';
+    }
+    function canRead() {
+      return isStaff() || isAdmin();
     }
 
     // ── Document refs ──────────────────────────────────────────────────────
@@ -63,7 +83,7 @@ service cloud.firestore {
 
     match /participants/{participantId} {
 
-      allow read: if isStaff();
+      allow read: if canRead();
 
       // Nobody deletes a person mid-festival.
       allow delete: if false;
@@ -128,6 +148,33 @@ service cloud.firestore {
         && pairingIsLegal(participantId)
         && balanceMovesOnlyWithLedger(participantId);
 
+      // The admin panel's one write to a person: freeze the bracelet, or thaw
+      // it. Deliberately the narrowest hole that does the job — an organiser can
+      // stop a bracelet being used and can say why, and can do nothing else.
+      // Not the balance: money moved by a ledger entry stays that way, and an
+      // adjustment that left no trace is exactly what the ledger exists to
+      // prevent. Not the roster either; that still belongs to the Sheet.
+      allow update: if isAdmin() && isBlockChange();
+
+      function isBlockChange() {
+        let after = request.resource.data;
+        return after.diff(resource.data).affectedKeys()
+                 .hasOnly(['isBlocked', 'blockReason', 'blockedBy', 'blockedAt'])
+          && after.isBlocked is bool
+          // Who and when, on the server's clock. A block is an organiser
+          // decision somebody has to be able to ask about afterwards.
+          && after.blockedBy == request.auth.uid
+          && after.blockedAt == request.time
+          // A block must say why: the reason is shown verbatim to the guest on
+          // the terminal's blocked screen, so an empty one is a dead end for
+          // whoever is standing at the desk.
+          && (after.isBlocked
+                ? (after.blockReason is string
+                     && after.blockReason.size() > 0
+                     && after.blockReason.size() <= 300)
+                : after.get('blockReason', null) == null);
+      }
+
       // Everything else — name, ticketType, city, isBlocked — is off limits.
       function touchesOnlyTerminalFields() {
         return request.resource.data.diff(resource.data).affectedKeys()
@@ -183,15 +230,18 @@ service cloud.firestore {
 
       match /transactions/{txId} {
 
-        allow read: if isStaff();
+        allow read: if canRead();
 
         // Append-only. A dispute at the bar is answered by reading history, so
         // history must not be editable — not even by the person who wrote it.
+        // The admin panel reads this and cannot write it, which is the point:
+        // the organiser sees the ledger, nobody edits the ledger.
         allow update, delete: if false;
 
         allow create: if isStaff()
           && idIsTheIdempotencyKey()
           && shapeIsExact()
+          && itemisationAddsUp()
           && signAgreesWithRole()
           && participantAcceptsMoney()
           && doesNotOverdraw();
@@ -208,7 +258,7 @@ service cloud.firestore {
           let d = request.resource.data;
           return d.keys().hasOnly([
                    'clientTxId', 'type', 'amount', 'signedAmount',
-                   'staffUid', 'terminalId', 'createdAt', 'queuedOffline'
+                   'staffUid', 'terminalId', 'createdAt', 'queuedOffline', 'items'
                  ])
             && d.keys().hasAll([
                  'clientTxId', 'type', 'amount', 'signedAmount',
@@ -224,6 +274,84 @@ service cloud.firestore {
             // Server clock, not the phone's. An offline terminal with a wrong
             // date must not be able to backdate a charge.
             && d.createdAt == request.time;
+        }
+
+        // ── Itemisation ──────────────────────────────────────────────────────
+        //
+        // A charge carries the round it paid for: `items`, one entry per distinct
+        // drink, each a snapshot of what that drink was called and cost AT THE
+        // MOMENT OF SALE. Snapshotted rather than referenced, because a price
+        // change next Tuesday must not rewrite last Friday's receipt — and because
+        // it lets an organiser delete a drink from the menu without orphaning the
+        // history that names it.
+        //
+        // The line totals must add up to `amount`, which is the number the balance
+        // actually moved by. Without that check the receipt would be a claim by
+        // the bar terminal rather than a fact about the money.
+        //
+        // **Rules cannot loop.** There is no reduce, no map, no recursion — so the
+        // sum below is unrolled, and the cap of eight lines is what makes the
+        // unrolling total rather than a check of the first few and a shrug at the
+        // rest. A ninth line is refused loudly rather than counted silently.
+        //
+        // Eight is not a taste decision. Firestore stops evaluating after 1,000
+        // expressions per request, and this whole check runs inside a two-document
+        // batch that is already spending expressions on the balance invariant.
+        // Ten lines exceeded that budget — found by running the tests, which
+        // failed with "maximum of 1000 expressions to evaluate has been reached"
+        // rather than by anything visible in the rule. Everything below is
+        // written for cheapness as much as clarity: each line is indexed once and
+        // handed to a helper, because `items[i]` repeated eight times costs eight
+        // times as much. Raising the cap means re-measuring, not just editing 8.
+        function itemisationAddsUp() {
+          let d = request.resource.data;
+          let items = d.get('items', []);
+          return d.type == 'topup'
+            // Cash over the counter buys nothing. There is no round to itemise.
+            ? !('items' in d)
+            : items is list
+              && items.size() >= 1
+              && items.size() <= 8
+              && lineAt(items, 0) && lineAt(items, 1)
+              && lineAt(items, 2) && lineAt(items, 3)
+              && lineAt(items, 4) && lineAt(items, 5)
+              && lineAt(items, 6) && lineAt(items, 7)
+              && itemsTotal(items) == d.amount;
+        }
+
+        // True for indices past the end, so the unrolled chain above terminates.
+        // `||` short-circuits, so `items[i]` is never evaluated out of bounds.
+        function lineAt(items, i) {
+          return i >= items.size() || lineIsWellFormed(items[i]);
+        }
+
+        function lineIsWellFormed(line) {
+          // `hasOnly` and nothing else: a missing key is caught by the type
+          // checks below, since reading one that is not there is an evaluation
+          // error and an evaluation error denies the write. So there is no
+          // `hasAll` here — it would cost a second pass over the keys to reject
+          // exactly the same documents.
+          return line.keys().hasOnly(['drinkId', 'name', 'unitPrice', 'quantity'])
+            && line.drinkId is string
+            && line.name is string
+            // Zero is allowed: a free glass of water is a menu item, and a round
+            // that is free in total is refused anyway by `amount > 0` above.
+            && line.unitPrice is int && line.unitPrice >= 0
+            && line.quantity is int && line.quantity > 0;
+        }
+
+        function itemsTotal(items) {
+          return lineTotal(items, 0) + lineTotal(items, 1) + lineTotal(items, 2)
+               + lineTotal(items, 3) + lineTotal(items, 4) + lineTotal(items, 5)
+               + lineTotal(items, 6) + lineTotal(items, 7);
+        }
+
+        function lineTotal(items, i) {
+          return i < items.size() ? lineSubtotal(items[i]) : 0;
+        }
+
+        function lineSubtotal(line) {
+          return line.unitPrice * line.quantity;
         }
 
         // Reception takes cash and credits. The bar serves drinks and debits.
@@ -254,7 +382,7 @@ service cloud.firestore {
 
     match /bracelets/{chipUid} {
 
-      allow read: if isStaff();
+      allow read: if canRead();
 
       allow create: if isReception()
         && request.resource.data.keys().hasOnly(['participantId', 'staffUid', 'pairedAt'])
@@ -270,9 +398,36 @@ service cloud.firestore {
     // ── Drinks menu ────────────────────────────────────────────────────────
 
     match /drinks/{drinkId} {
-      allow read: if isStaff();
-      // Prices are set by organisers, not by the bar.
-      allow write: if false;
+      allow read: if canRead();
+
+      // Prices are set by organisers, not by the bar. Until the admin panel
+      // existed this said `allow write: if false` and the menu was seeded with
+      // the Admin SDK; the authority has moved, not widened. No terminal can
+      // still write here, whatever it is compiled to send.
+      allow create, update: if isAdmin() && isWellFormedDrink();
+
+      // Deleting used to be forbidden on the grounds that it would orphan the
+      // ledger lines naming the drink. Those lines now snapshot the name and
+      // price at the moment of sale (see `itemisationAddsUp`), so history is
+      // self-contained and a drink entered by mistake can simply go.
+      //
+      // It is still the wrong tool for a drink that ran out: `isActive: false`
+      // takes it off the bar's menu instantly and can be undone. The panel
+      // offers both and says which is which.
+      allow delete: if isAdmin();
+
+      function isWellFormedDrink() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['name', 'price', 'sortOrder', 'isActive'])
+          && d.keys().hasAll(['name', 'price', 'sortOrder', 'isActive'])
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 60
+          // Cents, never a float — the same integer discipline as `balance`.
+          // Zero is a legitimate price; the ceiling is a typo bound, not a
+          // policy, and 1000 € is well clear of any real drink.
+          && d.price is int && d.price >= 0 && d.price <= 100000
+          && d.sortOrder is int && d.sortOrder >= 0
+          && d.isActive is bool;
+      }
     }
 
     // Anything not matched above is denied by default.

@@ -40,10 +40,13 @@ const OTHER_CHIP = '04:A1:9C:7E';
 
 const RECEPTION_UID = 'uid-reception';
 const BAR_UID = 'uid-bar';
+const ADMIN_UID = 'uid-admin';
 
 const reception = () =>
   testEnv.authenticatedContext(RECEPTION_UID, { role: 'reception' }).firestore();
 const bar = () => testEnv.authenticatedContext(BAR_UID, { role: 'bar' }).firestore();
+/** The web admin panel. Reads everything, blocks bracelets, owns the menu. */
+const admin = () => testEnv.authenticatedContext(ADMIN_UID, { role: 'admin' }).firestore();
 const roleless = () => testEnv.authenticatedContext('uid-nobody', {}).firestore();
 const anonymous = () => testEnv.unauthenticatedContext().firestore();
 
@@ -67,9 +70,16 @@ function rosterDoc(overrides = {}) {
   };
 }
 
-/** A well-formed ledger entry. `type` decides the sign. */
-function ledgerEntry({ txId, type, amount, staffUid }) {
-  return {
+/**
+ * A well-formed ledger entry. `type` decides the sign, and whether it carries an
+ * itemisation: a charge must say what was bought, a top-up must not.
+ *
+ * The default itemisation is one line priced at the whole amount, so every
+ * pre-existing money test keeps testing what it was written to test rather than
+ * tripping over the new rule.
+ */
+function ledgerEntry({ txId, type, amount, staffUid, items }) {
+  const entry = {
     clientTxId: txId,
     type,
     amount,
@@ -78,17 +88,24 @@ function ledgerEntry({ txId, type, amount, staffUid }) {
     terminalId: 'terminal-01',
     createdAt: serverTimestamp(),
   };
+  if (type === 'topup') return entry;
+  return { ...entry, items: items ?? [oneLine(amount)] };
+}
+
+/** A single itemised line worth exactly `cents`. */
+function oneLine(cents, quantity = 1) {
+  return { drinkId: 'beer', name: 'Draught beer', unitPrice: cents, quantity };
 }
 
 /**
  * The shape every money mutation takes: ledger entry and new balance, together.
  * Split into two writes and the rules reject it, which is the point.
  */
-function moneyBatch(db, { txId, type, amount, staffUid, balanceAfter, entry }) {
+function moneyBatch(db, { txId, type, amount, staffUid, balanceAfter, entry, items }) {
   const batch = writeBatch(db);
   batch.set(
     doc(db, 'participants', PARTICIPANT, 'transactions', txId),
-    entry ?? ledgerEntry({ txId, type, amount, staffUid })
+    entry ?? ledgerEntry({ txId, type, amount, staffUid, items })
   );
   batch.update(doc(db, 'participants', PARTICIPANT), {
     balance: balanceAfter,
@@ -452,13 +469,312 @@ describe('the ledger is append-only and replay-safe', () => {
   });
 
   it('refuses a negative or zero amount', async () => {
-    for (const amount of [0, -400]) {
-      await assertFails(
-        moneyBatch(bar(), {
-          txId: `tx-${amount}`, type: 'charge', amount,
-          staffUid: BAR_UID, balanceAfter: 2350 + amount,
-        })
-      );
+    // Zero is itemised honestly here — one line priced at 0 — so the only thing
+    // left to refuse it is `amount > 0`, which is what this test is about.
+    await assertFails(
+      moneyBatch(bar(), {
+        txId: 'tx-0', type: 'charge', amount: 0,
+        staffUid: BAR_UID, balanceAfter: 2350,
+      })
+    );
+    // A negative amount cannot be itemised at all (line prices are >= 0), so this
+    // one is refused twice over. Both refusals are correct.
+    await assertFails(
+      moneyBatch(bar(), {
+        txId: 'tx-neg', type: 'charge', amount: -400,
+        staffUid: BAR_UID, balanceAfter: 1950,
+      })
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Itemisation — the receipt and the money are one fact.
+//
+//  A charge carries the round it paid for, and the line totals must add up to the
+//  amount the balance moved by. The rules cannot loop, so the sum is unrolled to
+//  a fixed ten lines; these tests are what says the unrolling is total rather
+//  than a check of the first line and a shrug at the rest.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('a charge says what it bought', () => {
+  beforeEach(async () => {
+    await seedCheckedIn(2350);
+  });
+
+  const charge = (items, amount = 1400) =>
+    moneyBatch(bar(), {
+      txId: 'tx-1', type: 'charge', amount,
+      staffUid: BAR_UID, balanceAfter: 2350 - amount,
+      items,
+    });
+
+  it('accepts a round whose lines add up', async () => {
+    await assertSucceeds(
+      charge([
+        { drinkId: 'beer', name: 'Draught beer', unitPrice: 400, quantity: 3 },
+        { drinkId: 'water', name: 'Water', unitPrice: 200, quantity: 1 },
+      ])
+    );
+  });
+
+  it('THE ONE THAT MATTERS: refuses a round whose lines do not add up', async () => {
+    // The failure this exists to stop: a receipt saying "1 × Water" against 14 €
+    // off the bracelet. Off by one cent is still off.
+    await assertFails(charge([{ drinkId: 'water', name: 'Water', unitPrice: 200, quantity: 1 }]));
+    await assertFails(charge([{ drinkId: 'beer', name: 'Draught beer', unitPrice: 400, quantity: 3 }]));
+    await assertFails(charge([{ drinkId: 'beer', name: 'Draught beer', unitPrice: 1399, quantity: 1 }]));
+  });
+
+  it('refuses a charge with no itemisation at all', async () => {
+    await assertFails(
+      moneyBatch(bar(), {
+        txId: 'tx-1', type: 'charge', amount: 400, staffUid: BAR_UID, balanceAfter: 1950,
+        entry: {
+          clientTxId: 'tx-1', type: 'charge', amount: 400, signedAmount: -400,
+          staffUid: BAR_UID, terminalId: 'terminal-01', createdAt: serverTimestamp(),
+        },
+      })
+    );
+    await assertFails(charge([], 400));
+  });
+
+  it('refuses an itemised top-up', async () => {
+    // Cash over the counter buys nothing, so there is no round to describe. A
+    // top-up that claimed one would be a receipt for something that never
+    // happened.
+    await assertFails(
+      moneyBatch(reception(), {
+        txId: 'tx-1', type: 'topup', amount: 2000, staffUid: RECEPTION_UID, balanceAfter: 4350,
+        entry: {
+          ...ledgerEntry({ txId: 'tx-1', type: 'topup', amount: 2000, staffUid: RECEPTION_UID }),
+          items: [oneLine(2000)],
+        },
+      })
+    );
+  });
+
+  /** `n` distinct drinks at `unitPrice` each, one of every one. */
+  const distinctLines = (n, unitPrice) =>
+    Array.from({ length: n }, (_, i) => ({
+      drinkId: `d${i}`, name: `Drink ${i}`, unitPrice, quantity: 1,
+    }));
+
+  it('counts every line, not just the first few', async () => {
+    // Eight lines of 175 is the cap exactly, and the eighth has to be counted for
+    // the sum to reach 1400. If the unrolled chain were short by one term this
+    // would be rejected — which is the point of testing at the boundary rather
+    // than in the middle.
+    //
+    // This is also the expensive case. A cap of ten failed here with "maximum of
+    // 1000 expressions to evaluate has been reached", which is a production
+    // failure that no amount of reading the rule would have shown.
+    await assertSucceeds(charge(distinctLines(8, 175)));
+  });
+
+  it('refuses a ninth line rather than ignoring it', async () => {
+    // Past the cap the unrolled sum would stop counting, and a silently
+    // uncounted line is exactly the thing the sum exists to prevent. Refused
+    // loudly instead.
+    await assertFails(charge(distinctLines(9, 100), 900));
+  });
+
+  it('refuses a malformed line', async () => {
+    for (const line of [
+      { drinkId: 'beer', name: 'Draught beer', unitPrice: 1400 },              // no quantity
+      { drinkId: 'beer', name: 'Draught beer', quantity: 1 },                  // no price
+      { drinkId: 'beer', unitPrice: 1400, quantity: 1 },                       // no name
+      { name: 'Draught beer', unitPrice: 1400, quantity: 1 },                  // no drinkId
+      // Note 400.5 rather than 14.0: JavaScript has one number type, so a whole
+      // number reaches Firestore as an integer however it was written. Only a
+      // genuine fraction exercises `is int`.
+      { drinkId: 'beer', name: 'Draught beer', unitPrice: 400.5, quantity: 1 },
+      { drinkId: 'beer', name: 'Draught beer', unitPrice: 1400, quantity: 0 },
+      { drinkId: 'beer', name: 'Draught beer', unitPrice: -1400, quantity: -1 },
+      { drinkId: 'beer', name: 'Draught beer', unitPrice: 1400, quantity: 1, note: 'extra' },
+    ]) {
+      await assertFails(charge([line]));
+    }
+  });
+
+  it('allows a free line inside a paid round', async () => {
+    // Tap water alongside the beer. The round still costs something, which is
+    // what `amount > 0` cares about.
+    await assertSucceeds(
+      charge([
+        { drinkId: 'beer', name: 'Draught beer', unitPrice: 1400, quantity: 1 },
+        { drinkId: 'tap', name: 'Tap water', unitPrice: 0, quantity: 2 },
+      ])
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  The admin panel — `web-admin/`, role `admin`.
+//
+//  Two powers, and the tests below are mostly about everything it does NOT get.
+//  An organiser freezes a bracelet and edits the menu. An organiser does not
+//  move money: an adjustment that left no ledger entry behind is precisely what
+//  the ledger exists to make impossible, and giving the panel a balance write
+//  would reopen that hole from the other side.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('the admin panel', () => {
+  const blockFields = (reason) => ({
+    isBlocked: true,
+    blockReason: reason,
+    blockedBy: ADMIN_UID,
+    blockedAt: serverTimestamp(),
+  });
+
+  beforeEach(async () => {
+    await seedCheckedIn(2350);
+  });
+
+  it('reads everything it has to display', async () => {
+    await assertSucceeds(getDoc(doc(admin(), 'participants', PARTICIPANT)));
+    await assertSucceeds(getDoc(doc(admin(), 'bracelets', CHIP)));
+    await assertSucceeds(getDoc(doc(admin(), 'drinks', 'beer')));
+  });
+
+  it('reads a bracelet history', async () => {
+    await assertSucceeds(
+      moneyBatch(bar(), {
+        txId: 'tx-1', type: 'charge', amount: 400, staffUid: BAR_UID, balanceAfter: 1950,
+      })
+    );
+    await assertSucceeds(
+      getDoc(doc(admin(), 'participants', PARTICIPANT, 'transactions', 'tx-1'))
+    );
+  });
+
+  it('blocks a bracelet, and unblocks it again', async () => {
+    await assertSucceeds(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), blockFields('Lost at the door'))
+    );
+    await assertSucceeds(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), {
+        isBlocked: false, blockReason: null, blockedBy: ADMIN_UID, blockedAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it('requires a block to say why', async () => {
+    // The reason is shown verbatim on the terminal's blocked screen. An empty one
+    // leaves whoever is standing at the desk with nothing to act on.
+    await assertFails(updateDoc(doc(admin(), 'participants', PARTICIPANT), blockFields('')));
+    await assertFails(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), {
+        isBlocked: true, blockedBy: ADMIN_UID, blockedAt: serverTimestamp(),
+      })
+    );
+    await assertFails(updateDoc(doc(admin(), 'participants', PARTICIPANT), blockFields('x'.repeat(301))));
+  });
+
+  it('records who blocked it, on the server clock', async () => {
+    await assertFails(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), {
+        ...blockFields('Lost'), blockedBy: BAR_UID,          // somebody else
+      })
+    );
+    await assertFails(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), {
+        ...blockFields('Lost'), blockedAt: new Date('2020-01-01'),
+      })
+    );
+  });
+
+  it('THE ONE THAT MATTERS: cannot move money', async () => {
+    await assertFails(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), { balance: 999999 })
+    );
+    // Not even with a ledger entry to justify it — `admin` is not staff, so the
+    // create is refused before the arithmetic is ever reached.
+    await assertFails(
+      moneyBatch(admin(), {
+        txId: 'tx-1', type: 'topup', amount: 2000, staffUid: ADMIN_UID, balanceAfter: 4350,
+      })
+    );
+    await assertFails(
+      moneyBatch(admin(), {
+        txId: 'tx-2', type: 'charge', amount: 400, staffUid: ADMIN_UID, balanceAfter: 1950,
+      })
+    );
+  });
+
+  it('cannot rewrite the roster, the pairing, or history', async () => {
+    await assertFails(updateDoc(doc(admin(), 'participants', PARTICIPANT), { name: 'Someone Else' }));
+    await assertFails(updateDoc(doc(admin(), 'participants', PARTICIPANT), { braceletId: OTHER_CHIP }));
+    await assertFails(deleteDoc(doc(admin(), 'participants', PARTICIPANT)));
+    await assertFails(updateDoc(doc(admin(), 'bracelets', CHIP), { participantId: 'tkt-10002' }));
+    await assertFails(deleteDoc(doc(admin(), 'bracelets', CHIP)));
+  });
+
+  it('cannot smuggle another field alongside a block', async () => {
+    await assertFails(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), {
+        ...blockFields('Lost'), balance: 999999,
+      })
+    );
+  });
+
+  it('cannot sell an evening ticket', async () => {
+    // Minting participants is reception's hole, not the organiser's.
+    const db = admin();
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'participants', 'ev-friday-14'), {
+      source: 'evening', ticketType: 'Evening Ticket', evening: 'friday', eveningNumber: 14,
+      ticketRef: 'EV-FRIDAY-14', name: 'Evening #14', nameLower: 'evening #14',
+      searchTokens: [], country: '', braceletId: '04:E7:3A:2C',
+      checkedInAt: serverTimestamp(), balance: 0, lastTxId: null,
+      isBlocked: false, blockReason: null, createdBy: ADMIN_UID,
+    });
+    batch.set(doc(db, 'bracelets', '04:E7:3A:2C'), {
+      participantId: 'ev-friday-14', staffUid: ADMIN_UID, pairedAt: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
+  });
+});
+
+describe('the drinks menu belongs to the admin panel', () => {
+  const drink = (overrides = {}) => ({
+    name: 'Espresso Martini', price: 900, sortOrder: 3, isActive: true, ...overrides,
+  });
+
+  it('lets an admin add, edit, retire and delete a drink', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'drinks', 'espresso'), drink()));
+    await assertSucceeds(
+      setDoc(doc(admin(), 'drinks', 'espresso'), drink({ price: 950 }))
+    );
+    await assertSucceeds(
+      setDoc(doc(admin(), 'drinks', 'espresso'), drink({ isActive: false }))
+    );
+    await assertSucceeds(deleteDoc(doc(admin(), 'drinks', 'espresso')));
+  });
+
+  it('refuses a malformed drink', async () => {
+    for (const bad of [
+      drink({ price: 9.5 }),                    // euros, not cents
+      drink({ price: -100 }),
+      drink({ price: 100001 }),                 // past the typo ceiling
+      drink({ name: '' }),
+      drink({ name: 'x'.repeat(61) }),
+      drink({ sortOrder: -1 }),
+      drink({ isActive: 'yes' }),
+      { ...drink(), tagline: 'the good one' },  // an extra field
+      { name: 'Espresso Martini', price: 900 }, // missing sortOrder and isActive
+    ]) {
+      await assertFails(setDoc(doc(admin(), 'drinks', 'espresso'), bad));
+    }
+  });
+
+  it('refuses every write from a terminal, still', async () => {
+    // This is the rule that used to be `allow write: if false`. The authority
+    // moved to the admin panel; it did not widen.
+    for (const db of [bar(), reception(), roleless(), anonymous()]) {
+      await assertFails(setDoc(doc(db, 'drinks', 'espresso'), drink()));
+      await assertFails(updateDoc(doc(db, 'drinks', 'beer'), { price: 1 }));
+      await assertFails(deleteDoc(doc(db, 'drinks', 'beer')));
     }
   });
 });
