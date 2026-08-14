@@ -14,7 +14,13 @@ kotlin {
 }
 
 dependencies {
+    // The repository seam is `suspend`, exactly as the Swift one is `async`, so
+    // coroutines-core comes along. It is a plain JVM library — nothing Android
+    // about it — so this does not compromise the module's independence.
+    api(libs.kotlinx.coroutines.core)
+
     testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 tasks.test {

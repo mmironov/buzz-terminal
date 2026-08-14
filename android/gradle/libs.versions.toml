@@ -7,6 +7,7 @@ kotlin = "2.4.10"
 # version behind. Raise this when Studio itself is updated.
 agp = "9.2.1"
 jvmTarget = "21"
+coroutines = "1.11.0"
 
 # AndroidX / Compose — not used by :domain, listed here so the app module in the
 # next step has one place to take them from.
@@ -20,7 +21,10 @@ firebaseBom = "34.17.0"
 googleServices = "4.5.0"
 
 [libraries]
-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+
+compose-bom ={ group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
