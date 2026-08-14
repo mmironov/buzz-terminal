@@ -3,10 +3,11 @@
 Festival staff app for bracelet check-in, balance top-up and bar payments.
 Ported from the Claude Design prototype `Swing Buzz Staff App.dc.html` on the
 **Modernist** design system: SwiftUI in `ios/`, Jetpack Compose in `android/`,
-both against the same Firebase backend in `backend/`.
+React in `web-admin/`, all three against the same Firebase backend in `backend/`.
 
 iOS is the finished one and everything down to "The Android app" describes it.
-Android is in progress; that section says exactly how far.
+Android is in progress; that section says exactly how far. `web-admin/` is the
+organiser panel — blocks and the drinks menu — and has its own section below.
 
 ---
 
@@ -294,25 +295,78 @@ address into the sign-in field impossible from the host keyboard.
 
 ---
 
+## The organiser panel
+
+`web-admin/` — React and TypeScript on Vite, the same Modernist look, the same
+`swing-buzz` project. Two screens, and the interesting part is what it cannot do.
+
+**Participants.** The whole roster live, searchable by name, ticket reference, pass
+type or chip id, showing each person's bracelet, balance and block state. Expanding
+a row gives their ledger: every top-up and every round, newest first, itemised —
+`3 × Beer (4.00 € each)` — with the prices as they were at the moment of sale, and
+a footer saying whether the entries add up to the balance on the bracelet.
+
+**Bar.** The drinks catalogue: add, rename, reprice, reorder, take off the menu,
+delete. Taking off the menu (`isActive: false`) is the reversible one for a keg that
+ran out; deleting is for something entered by mistake.
+
+Blocking a bracelet is the panel's only write to a person. It cannot adjust a
+balance, edit the roster, pair a chip or touch history — enforced by
+`firestore.rules`, not by the panel's own code, so removing a check there produces
+permission errors rather than extra authority. `docs/firestore-schema.md`, "Roles",
+has the table.
+
+Getting in needs an account whose token carries `role: admin`:
+
+```bash
+cd backend/import-roster && npm run set-role -- you@swingbuzz.fest admin --apply
+```
+
+An `admin` cannot sign into the terminal apps, and reception and bar accounts
+cannot sign into the panel. Running it locally against the emulators needs no
+Firebase project at all:
+
+```bash
+cd backend && firebase emulators:start --only firestore,auth --project swing-buzz
+cd backend && ./seed-emulator.sh          # accounts, three participants, the menu
+cd web-admin && npm run seed:history      # bracelets, top-ups, itemised rounds
+cd web-admin && npm run dev:emulator      # localhost:5173, prefilled sign-in
+```
+
+`seed:history` deliberately avoids the Admin SDK: it signs in as reception and bar
+with the client SDK and sends exactly the batches the two apps send, so every write
+goes through the rules and a wrong shape fails loudly. Full runbook, including
+`npm run deploy` to Firebase Hosting, in `web-admin/README.md`.
+
 ## Tests
 
-Four suites, four runners, **182 tests**, all green.
+Four runners, **218 tests**, all green: 41 iOS, 67 Android, 69 rules, 41 importer.
 
 ```bash
 ./ios/scripts/test.sh
 ```
 
-**35 iOS tests in 6 suites.** The domain logic that carries real rules — the
+**41 iOS tests in 7 suites.** The domain logic that carries real rules — the
 keypad, the check-in search, the charge decision, participant lifecycle, evening
 tickets, money arithmetic. `Domain/` imports `Foundation` only, so the whole run
 finishes in 0.02s once it has built. These are the parts most likely to be broken
 by a well-meaning change, so run them before you push.
 
+The seventh suite is the odd one out: it covers the ledger itemisation a charge
+carries, which is a Firestore payload rather than domain logic. It is there because
+the field names are a security contract, and because writing the line total where
+the unit price belongs would still add up against a total computed the same wrong
+way — the rules would accept a receipt claiming beer costs 12 €, and nothing
+downstream would notice.
+
 ```bash
 cd android && ./scripts/test.sh
 ```
 
-**57 Android tests in 13 suites**, plain JVM, no emulator. Thirty-six of them are
+**67 Android tests**, plain JVM, no emulator. Sixty are in `:domain`, and seven in
+`:app` — the mirror of the iOS itemisation suite, and the only tests that module
+has, because the Firestore field names are a contract `:domain` deliberately cannot
+see. Thirty-six of the domain tests are
 the iOS suite case for case — same rules, same order — so a change to one side
 should show up as a change to both, and a divergence in the two apps' behaviour
 is a failing test rather than a discovery at the festival. The keypad's 999 €
@@ -331,7 +385,7 @@ landing.
 cd backend/rules-tests && ./test.sh
 ```
 
-**49 rules tests in 7 suites**, against a throwaway Firestore emulator that the
+**69 rules tests in 10 suites**, against a throwaway Firestore emulator that the
 script starts and tears down itself — it needs a JDK, which it will find even when
 Homebrew has kept it off your `PATH`. Nothing here touches the real database: the
 emulator comes up empty and each test writes its own fixtures as an admin.
@@ -339,8 +393,15 @@ emulator comes up empty and each test writes its own fixtures as an admin.
 This is where the money invariants are actually enforced, so this is where they
 are actually tested: a balance moving without a ledger entry to justify it, a bar
 terminal trying to credit, a replayed transaction id, a second desk claiming
-evening ticket #14. Expect `PERMISSION_DENIED` noise in the output — those are the
-passing tests.
+evening ticket #14, a charge whose itemisation does not add up to what left the
+bracelet, and an organiser panel trying to move money. Expect `PERMISSION_DENIED`
+noise in the output — those are the passing tests.
+
+One of these tests earns its place by being expensive rather than by being clever:
+the eight-line charge at the itemisation cap. Rules cannot loop, so that sum is
+unrolled, and at ten lines it exceeded Firestore's budget of 1,000 expressions per
+request — a production-only failure that the rule text gives no hint of, found
+because the test ran.
 
 ```bash
 cd backend/import-roster && npm test
@@ -349,9 +410,13 @@ cd backend/import-roster && npm test
 **41 importer tests** over the Sheet mapping, the drinks menu and the reset, against
 pure functions and a fake Firestore — no network, no emulator. Four earn their keep
 on their own: the one that stops `Full Pass Gold` being filed as plain `Full Pass`,
-the one asserting no personal data can reach Firestore, the one pinning a withdrawn
-drink to `isActive: false` rather than deleted so the ledger lines that name it still
-resolve, and the one refusing a reset whose `--confirm` names a different project.
+the one asserting no personal data can reach Firestore, the one pinning a drink the
+seed no longer lists to `isActive: false` rather than deleted, and the one refusing a
+reset whose `--confirm` names a different project.
+
+The panel has no test runner of its own. `npm run build` typechecks it, and what it
+does is checked where the authority actually lives: the rules tests assert every
+power it has and every one it does not, from both directions.
 
 Reasoning about security rules is not testing them — `docs/iteration-02.md` has
 the case where my rules were right and my confident assertion about them was
@@ -376,13 +441,17 @@ ios/                       the SwiftUI app
 backend/                   shared by every client
   firestore.rules          the money invariants
   firestore.indexes.json
-  firebase.json
+  firebase.json            rules, indexes, hosting for web-admin, emulators
   import-roster/           Google Sheet → Firestore
+  rules-tests/             the emulator harness
 docs/                      schema, setup, per-iteration walkthroughs
 android/                   the Jetpack Compose app
   domain/                  models, rules, the repository seam — no Android
   app/                     Compose UI, AppModel, the Android-only bits
   scripts/                 build, test, run
+web-admin/                 the organiser panel (React, Vite)
+  src/schema.ts            the field names, hand-written like both apps' mappings
+  scripts/                 emulator fixtures, written through the rules
 ```
 
 Nothing under `backend/` is part of the Xcode project — the two synchronized
@@ -471,9 +540,20 @@ Two intentional deviations from the prototype, both improvements:
    Still to do: the offline queue and real NFC, which are iteration 3's work on
    both platforms, and a run against production, which has not happened from
    Android at all.
+5. ✅ **Iteration 5** — the organiser panel, `web-admin/`. Blocks with an audit
+   trail, purchase history, and the drinks menu moved out of a seed script and into
+   an organiser's hands. It also added itemisation to the ledger, which is a change
+   to the money rules and therefore to both apps: a charge now records what it
+   bought, and the lines must add up to what left the bracelet. Section above,
+   walkthrough in `docs/iteration-05.md`, runbook in `web-admin/README.md`.
 
-The production menu is **Water 2 €, Beer 4 €, Gin & Tonic 6 €**, seeded by
-`npm run seed-drinks -- --apply` and owned by the web admin panel once that exists.
+   Not verified against production: the panel has only ever run against the
+   emulator. Pointing it at the live project needs a web app registered in the
+   Firebase console and an `admin` claim granted.
+
+The production menu is **Water 2 €, Beer 4 €, Gin & Tonic 6 €**, bootstrapped by
+`npm run seed-drinks -- --apply` and now owned by the organiser panel — re-running
+that seed against a live festival would overwrite what an organiser has done there.
 The ten drinks in `SampleData` are the design prototype's invention and stay on the
 fixture path only.
 

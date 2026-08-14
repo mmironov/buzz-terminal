@@ -25,6 +25,9 @@ suite otherwise.
 
 ## What is covered
 
+69 tests. Every rule is asserted from both directions, so the count is roughly
+double the number of rules.
+
 - **Access.** Anonymous denied. Signed in with no `role` claim denied — that is
   the state of a freshly created staff account, and it should be able to do
   nothing until an admin grants a role.
@@ -43,6 +46,16 @@ suite otherwise.
   deleted. A client-supplied `createdAt` is refused, so a terminal with a wrong
   clock cannot backdate a charge. Sign must agree with type. Zero and negative
   amounts refused.
+- **Itemisation.** A charge must say what it bought and the lines must add up to
+  the amount charged; a mismatch, a missing itemisation and an itemised top-up are
+  all refused. Tested **at the eight-line cap**, because the sum is unrolled and a
+  chain one term short would silently stop counting. A ninth line is refused rather
+  than ignored. A free line inside a paid round is allowed.
+- **The admin panel.** It can block and unblock, with a reason, attributed, on the
+  server clock — and it cannot move money, not even with a ledger entry to justify
+  it; cannot rewrite the roster or a pairing; cannot smuggle a balance change in
+  alongside a block; cannot sell an evening ticket. It owns `drinks`, where a
+  malformed drink is refused and every write from a terminal still is.
 
 ## Two things worth knowing before editing
 

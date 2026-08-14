@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run the unit tests. 64 tests; all should pass.
+# Run the unit tests. 67 tests — 60 in :domain, 7 in :app; all should pass.
 #
 # `:domain` is plain JVM — no emulator, no device, no Android SDK involved —
 # which is the whole reason it is a separate module. `:app` has exactly one test

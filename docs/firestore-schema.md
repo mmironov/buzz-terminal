@@ -10,8 +10,8 @@ Source of truth for the backend model. `backend/firestore.rules` enforces it;
 | Who bought a ticket (name, ticket type, country) | the Google Sheet, `Status = Paid` only | the import script, via Admin SDK |
 | Which chip belongs to whom | the reception terminal | the app, at check-in |
 | Balance and its history | the terminals | the app, in Firestore transactions |
-| Blocks | organisers | the web admin panel (not built yet) |
-| Drinks and prices | organisers | console or a future admin panel |
+| Blocks | organisers | the web admin panel, `web-admin/` |
+| Drinks and prices | organisers | the web admin panel; `npm run seed-drinks` bootstraps a fresh project |
 
 The important line is the first one: **the Sheet owns identity, Firestore owns
 everything that happens during the festival.** The import never writes a balance
@@ -60,7 +60,9 @@ participants/tkt-10432
 
   // ── organiser state: from the admin panel ──
   isBlocked:     false
-  blockReason:   null | "Blocked in the admin panel on Sat 01:20 — …"
+  blockReason:   null | "Bracelet handed in at the door, Sat 01:20"
+  blockedBy:     null | "<uid of the organiser who did it>"
+  blockedAt:     null | <server timestamp>
 ```
 
 Notes on specific fields:
@@ -75,6 +77,12 @@ Notes on specific fields:
   against the ledger entry that justifies it. It is not otherwise interesting.
 - **`rosterHash`** lets a re-import skip untouched rows, so running it mid-festival
   costs a read per row and almost no writes.
+- **`blockReason` is required when `isBlocked` is true**, and cleared when it is
+  false. The terminals show it verbatim on the blocked screen, so an empty one
+  leaves whoever is standing at the desk with nothing to act on. `blockedBy` and
+  `blockedAt` are the audit trail — a block is an organiser decision somebody will
+  ask about afterwards — and the rules pin `blockedAt` to `request.time`, so it is
+  the server's clock.
 
 ## `participants/{participantId}/transactions/{clientTxId}`
 
@@ -91,6 +99,12 @@ participants/tkt-10432/transactions/8f14e45f-ceea-…
   terminalId:    "reception-02"        // which physical device
   createdAt:     <server timestamp>
   queuedOffline: true                  // optional; set when replayed from the queue
+
+  // charges only — what the round bought
+  items: [
+    { drinkId: "beer",  name: "Beer",  unitPrice: 400, quantity: 3 },
+    { drinkId: "water", name: "Water", unitPrice: 200, quantity: 1 },
+  ]
 ```
 
 **The document id is the idempotency key.** The client generates a UUID per
@@ -101,6 +115,34 @@ Double-charging is prevented structurally, not by a check that could be forgotte
 
 `createdAt` must equal `request.time`, so it is the server's clock. An offline
 terminal with a wrong date cannot backdate a charge.
+
+### `items`: the receipt and the money are one fact
+
+A charge must carry `items`; a top-up must not, because cash over the counter buys
+nothing. **The line totals must equal `amount`**, and the rules check it. Without
+that, the itemisation would be a claim by the bar terminal rather than a fact about
+the money — a receipt reading "1 × Water" against 14 € off the bracelet.
+
+Each line **snapshots** the drink's name and price as they were at the moment of
+sale rather than referencing `drinks/{drinkId}`. Two consequences worth having:
+repricing a drink tomorrow cannot rewrite tonight's receipt, and a drink can be
+deleted from the catalogue without orphaning the history that names it. The second
+is why `drinks` is now deletable at all — see below.
+
+**At most eight distinct drinks per charge.** Quantities are unlimited; it is the
+number of different drinks that is capped, and the cap is measured rather than
+chosen. Rules cannot loop — no reduce, no map, no recursion — so the sum is
+unrolled to a fixed eight terms, and Firestore stops evaluating after 1,000
+expressions per request, inside a batch that is already spending its budget on the
+balance invariant. Ten lines exceeded it: the rules tests failed with *"maximum of
+1000 expressions to evaluate has been reached"*, which is a production failure that
+reading the rule would never have revealed. The apps check the count first so the
+bar gets "split the round" instead of a PERMISSION_DENIED. Raising the cap means
+re-measuring, not just editing the number.
+
+Charges written before this existed have no `items`, and the admin panel says
+*"Itemisation not recorded"* rather than rendering an empty list that would read
+like "bought nothing".
 
 ## Evening tickets
 
@@ -178,14 +220,20 @@ drinks/beer
   isActive:  true
 ```
 
-Read-only to every terminal — `allow write: if false`. Prices are an organiser
-decision, not a bar one, so the menu is written by the Admin SDK
-(`npm run seed-drinks`) until the web admin panel takes it over.
+Read-only to every terminal. Prices are an organiser decision, not a bar one, so
+writes are granted to the `admin` claim alone — the web admin panel owns this
+collection. `npm run seed-drinks` still exists to put something on the bar's screen
+on a fresh project, and re-running it against a live festival would overwrite what
+an organiser has since done, including reactivating a drink they took off tonight.
 
-A withdrawn drink is set `isActive: false`, never deleted. The bar queries on
-`isActive`, so deactivating removes it from the menu at once, while deleting would
-orphan the ledger lines that name it — a drink that stopped being sold still
-happened.
+Two ways to stop selling something, and they are different:
+
+- **`isActive: false`** — the bar queries `isActive == true`, so it leaves the menu
+  at once and comes back with one click. This is the one for a keg that ran out.
+- **Delete** — for a drink entered by mistake. This used to be forbidden outright,
+  on the grounds that it would orphan the ledger lines naming the drink. Those lines
+  now snapshot the name and price at the moment of sale, so history is
+  self-contained and the objection no longer holds.
 
 That query — `isActive == true` ordered by `sortOrder` — is composite, so it needs
 an index. Nothing local catches a missing one: **the emulator does not enforce
@@ -231,16 +279,51 @@ roster grows.
 
 ## Roles
 
-`role` is a **custom claim** on the Firebase Auth user, either `"reception"` or
-`"bar"`. The rules read it from the token, so a bar account cannot credit a
+`role` is a **custom claim** on the Firebase Auth user: `"reception"`, `"bar"` or
+`"admin"`. The rules read it from the token, so a bar account cannot credit a
 balance no matter what the app sends.
 
 Custom claims can only be set with the Admin SDK — they are not settable from the
-console UI. `backend/import-roster/` ships a `set-role` command for this; a proper
-admin panel can take it over later.
+console UI. `backend/import-roster/` ships a `set-role` command for this.
+
+```bash
+npm run set-role -- bar@swingbuzz.fest bar --apply
+npm run set-role -- you@swingbuzz.fest admin --apply
+```
 
 This replaces the current prefix check in `InMemoryTerminalRepository.signIn`,
 where the client decides its own role from the email address.
+
+### The three are disjoint
+
+`reception` and `bar` are the terminals. `admin` is the web panel in `web-admin/`,
+and in the rules it is **not** a member of `isStaff()` — which is what keeps it out
+of every money rule by construction rather than by remembering to exclude it from
+each one.
+
+| | reception | bar | admin |
+| --- | --- | --- | --- |
+| Read everything | ✓ | ✓ | ✓ |
+| Credit a balance (top-up) | ✓ | | |
+| Debit a balance (charge) | | ✓ | |
+| Pair a bracelet | ✓ | | |
+| Sell an evening ticket | ✓ | | |
+| Block / unblock a bracelet | | | ✓ |
+| Write the drinks menu | | | ✓ |
+| Edit the roster, or history | | | |
+
+The last row is empty on purpose: roster fields belong to the Sheet import, and the
+ledger is append-only for everybody.
+
+**An admin deliberately cannot move money.** Not a balance write, not a ledger
+entry. Money that moved is accounted for by an entry that says who moved it and
+when; an adjustment leaving no trace is precisely what the ledger exists to
+prevent, and granting the panel a balance write would reopen that hole from the
+other side. A guest who is owed money gets a top-up from reception, and history
+records it.
+
+An `admin` account also cannot sign into the terminal apps, which refuse any role
+that is not reception or bar.
 
 ---
 
