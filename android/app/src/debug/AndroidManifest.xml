@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only manifest additions, merged over src/main/AndroidManifest.xml.
+
+  `tools:replace` is not needed: the main manifest sets no
+  networkSecurityConfig, so this adds rather than overrides.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+
+</manifest>

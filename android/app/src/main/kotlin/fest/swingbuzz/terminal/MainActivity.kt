@@ -12,7 +12,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import fest.swingbuzz.terminal.app.AppModel
 import fest.swingbuzz.terminal.app.RootScreen
+import fest.swingbuzz.terminal.app.TerminalBackend
+import fest.swingbuzz.terminal.data.TerminalRepository
 import fest.swingbuzz.terminal.designsystem.SB
 import fest.swingbuzz.terminal.designsystem.sbBody
 
@@ -25,7 +30,14 @@ import fest.swingbuzz.terminal.designsystem.sbBody
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BuzzTerminalApp() }
+
+        // Chosen here rather than inside the ViewModel so that the decision — and
+        // the release build's refusal to run on fixtures — happens once, at
+        // launch, with a Context to hand. Nothing has touched Firestore yet,
+        // which is what lets the emulator override take effect.
+        val repository = TerminalBackend.choose(this, intent)
+
+        setContent { BuzzTerminalApp(repository) }
     }
 }
 
@@ -37,7 +49,7 @@ class MainActivity : ComponentActivity() {
  * as the default text style so nothing falls back to Roboto by omission.
  */
 @Composable
-fun BuzzTerminalApp() {
+fun BuzzTerminalApp(repository: TerminalRepository) {
     CompositionLocalProvider(LocalTextStyle provides sbBody(14.sp).copy(color = SB.ink)) {
         // No safe-area inset here on purpose: `RootScreen` applies it to the
         // screen content, so the scan overlay can still reach the status bar
@@ -45,7 +57,16 @@ fun BuzzTerminalApp() {
         // whether we ask for it or not, so this is the only place that choice
         // can be made.
         Box(Modifier.fillMaxSize().background(SB.background)) {
-            RootScreen(viewModel())
+            // A factory rather than `viewModel()`, so the repository chosen at
+            // launch is the one the model gets — while the ViewModel still
+            // outlives configuration changes, which is the whole point of it.
+            RootScreen(
+                viewModel(
+                    factory = viewModelFactory {
+                        initializer { AppModel(repository) }
+                    }
+                )
+            )
         }
     }
 }
