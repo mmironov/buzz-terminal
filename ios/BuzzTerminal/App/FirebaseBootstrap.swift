@@ -50,16 +50,25 @@ enum FirebaseBootstrap {
     /// rules — the same `backend/firestore.rules` the emulator loads for
     /// `backend/rules-tests` — without writing to a live festival database.
     static func useEmulators() {
+        // One settings assignment, applied before anything queries Firestore.
+        //
+        // `useEmulator(withHost:port:)` reads better and does NOT work here: it
+        // has to touch `Firestore.firestore()` to be called at all, and by then
+        // the instance exists. The transport config is then ignored while
+        // `settings.host` still reports the emulator — so the app looks correctly
+        // configured, every read silently resolves from an empty local cache, and
+        // the emulator logs zero incoming calls. Symptoms: queries return nothing
+        // with no error, and document reads fail as "client is offline".
         let settings = Firestore.firestore().settings
         settings.host = "127.0.0.1:8080"
         settings.isSSLEnabled = false
-        // No disk cache: an emulator run should start from nothing, not from
-        // whatever a previous run left behind.
+        // No disk cache: an emulator run should start from nothing rather than
+        // from what a previous run, with different data, left behind.
         settings.cacheSettings = MemoryCacheSettings()
         Firestore.firestore().settings = settings
 
         Auth.auth().useEmulator(withHost: "127.0.0.1", port: 9099)
-        log.notice("Using local emulators: Firestore :8080, Auth :9099")
+        log.notice("Emulators: Firestore \(Firestore.firestore().settings.host, privacy: .public), Auth :9099")
     }
     #endif
 }

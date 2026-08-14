@@ -13,6 +13,18 @@ AUTH=http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1
 FS="http://127.0.0.1:8080/v1/projects/$PROJECT/databases/(default)/documents"
 OWNER=(-H 'Authorization: Bearer owner' -H 'Content-Type: application/json')
 
+# Wait for BOTH emulators. Checking only Firestore's port races the Auth
+# emulator, and the failure looks like a JSON parse error rather than "not ready".
+for _ in $(seq 1 60); do
+  if curl -sf http://127.0.0.1:8080 >/dev/null 2>&1 \
+     && curl -sf "http://127.0.0.1:9099/emulator/v1/projects/$PROJECT/config" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+curl -sf "http://127.0.0.1:9099/emulator/v1/projects/$PROJECT/config" >/dev/null 2>&1 \
+  || { echo "Auth emulator not reachable on :9099 — is it running?" >&2; exit 1; }
+
 staff() {  # email, role
   local uid
   uid=$(curl -s -X POST "$AUTH/accounts:signUp?key=fake" -H 'Content-Type: application/json' \
