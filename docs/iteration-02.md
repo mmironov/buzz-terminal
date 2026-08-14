@@ -4,7 +4,7 @@ Goal: replace the in-memory fixtures with a real backend, without rewriting the
 app around it.
 
 Result: the whole terminal runs on Firestore against enforced security rules.
-Verified by driving the actual UI, not by reading code — 35 iOS, 19 importer and
+Verified by driving the actual UI, not by reading code — 35 iOS, 24 importer and
 49 rules tests green.
 
 ---
@@ -15,7 +15,7 @@ Verified by driving the actual UI, not by reading code — 35 iOS, 19 importer a
 | --- | --- |
 | `backend/firestore.rules` | the money invariants, with **49 executable tests** |
 | `backend/firestore.indexes.json` | composite indexes + one field override |
-| `backend/import-roster/` | Google Sheet → Firestore, `Status = Paid` only, 19 tests |
+| `backend/import-roster/` | Google Sheet → Firestore, `Status = Paid` only, 24 tests |
 | `backend/rules-tests/` | emulator harness |
 | `backend/seed-emulator.sh` | staff accounts with real claims, participants, drinks |
 | `ios/…/Data/FirebaseTerminalRepository.swift` | the real backend, an `actor` |

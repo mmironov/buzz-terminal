@@ -39,7 +39,7 @@ fields for you. Any address starting `reception` or `bar` works and the password
 is ignored (see *Known simplifications*).
 
 There is no NFC hardware on the Simulator, so the scan sheet offers a
-**"Prototype · simulate a bracelet"** panel with the four fixture chips:
+**"Prototype · simulate a bracelet"** panel with the five fixture chips:
 
 | Chip | What it exercises |
 | --- | --- |
@@ -95,16 +95,45 @@ those writes are real, and the ledger is append-only by design.
 
 ## Tests
 
+Three suites, three runners, **108 tests**, all green.
+
 ```bash
 ./ios/scripts/test.sh
 ```
 
-25 tests across 4 suites, all green.
+**35 iOS tests in 6 suites.** The domain logic that carries real rules — the
+keypad, the check-in search, the charge decision, participant lifecycle, evening
+tickets, money arithmetic. `Domain/` imports `Foundation` only, so the whole run
+finishes in 0.02s once it has built. These are the parts most likely to be broken
+by a well-meaning change, so run them before you push.
 
-The three pieces of domain logic that carry real rules — the keypad, the check-in
-search, and the charge decision — have dedicated regression cover in
-`ios/BuzzTerminalTests/DomainTests.swift`. They are the parts most likely to be
-broken by a well-meaning change, so run the suite before you push.
+```bash
+cd backend/rules-tests && ./test.sh
+```
+
+**49 rules tests in 7 suites**, against a throwaway Firestore emulator that the
+script starts and tears down itself — it needs a JDK, which it will find even when
+Homebrew has kept it off your `PATH`. Nothing here touches the real database: the
+emulator comes up empty and each test writes its own fixtures as an admin.
+
+This is where the money invariants are actually enforced, so this is where they
+are actually tested: a balance moving without a ledger entry to justify it, a bar
+terminal trying to credit, a replayed transaction id, a second desk claiming
+evening ticket #14. Expect `PERMISSION_DENIED` noise in the output — those are the
+passing tests.
+
+```bash
+cd backend/import-roster && npm test
+```
+
+**24 importer tests**, pure functions over the Sheet mapping, no network and no
+emulator. Two earn their keep on their own: the one that stops `Full Pass Gold`
+being filed as plain `Full Pass`, and the one asserting no personal data can
+reach Firestore.
+
+Reasoning about security rules is not testing them — `docs/iteration-02.md` has
+the case where my rules were right and my confident assertion about them was
+wrong.
 
 ---
 
@@ -155,7 +184,7 @@ and no merge conflict.
 
 ## Known simplifications
 
-Honest list of what is faked in iteration 1, and when it stops being faked.
+Honest list of what is still faked, and when it stops being faked.
 
 | Area | Current state | Fixed in |
 | --- | --- | --- |
@@ -173,30 +202,34 @@ Two intentional deviations from the prototype, both improvements:
 - **Money is `Int` cents, not a `Double`.** The prototype used a JS number; that
   cannot represent 0.10 exactly, and balances accumulate error under repeated
   top-ups. See `Domain/Money.swift`.
-- **The server re-checks the balance on charge.** `PaymentDecision` runs on the
-  client so the operator gets an instant answer, but
-  `InMemoryTerminalRepository.charge` verifies again — a second terminal may have
-  spent the money in between. Firestore transactions make this real in
-  iteration 2.
+- **The balance is re-checked, not trusted.** `PaymentDecision` runs on the client
+  so the operator gets an instant answer, and the repository verifies again — a
+  second terminal may have spent the money in between. On Firestore this is no
+  longer a courtesy: `firestore.rules` refuses any balance that does not agree with
+  the ledger entry written in the same batch, so a stale client cannot overdraw
+  even if it tries.
 
 ---
 
 ## Roadmap
 
-1. ✅ **Iteration 1** — project, Modernist design system in SwiftUI, all 10
-   screens on an in-memory repository, 25 tests green.
-   See `docs/iteration-01.md`.
-2. **Iteration 2** — Firebase. Backend:
-   `docs/firestore-schema.md`, `backend/firestore.rules`,
-   `backend/firestore.indexes.json`, and `backend/import-roster/`
-   (Google Sheet → Firestore, roster fields only).
-   Follow `docs/firebase-setup.md` to create the project; the Swift side
-   (`FirebaseTerminalRepository`) lands once `GoogleService-Info.plist` exists.
-3. ✅ **Iteration 2 complete** — the terminal runs on Firestore against enforced
-   rules; reception and bar flows and all three refusals verified through the UI.
-   See `docs/iteration-02.md`.
-4. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
-5. **Iteration 4** — Android app in Jetpack Compose against the same backend.
+1. ✅ **Iteration 1** — project, Modernist design system in SwiftUI, every screen
+   on an in-memory repository. See `docs/iteration-01.md`.
+2. ✅ **Iteration 2** — Firebase. The terminal runs on Firestore against enforced
+   rules; the reception and bar flows and all three refusals verified by driving
+   the UI, not by reading code. **83 paid participants live**, imported from the
+   Google Sheet. Schema in `docs/firestore-schema.md`, invariants in
+   `backend/firestore.rules`, project setup in `docs/firebase-setup.md`, walkthrough
+   in `docs/iteration-02.md`.
+3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
+   NFC needs a physical device and the entitlement, so it is the first thing here
+   the Simulator cannot verify.
+4. **Iteration 4** — Android app in Jetpack Compose against the same backend.
+
+Two things stand between iteration 2 and a festival: the production `drinks`
+collection is **empty** (the fixture prices are invented, and inventing prices for
+a live till is worse than an empty menu), and Firebase is still opt-in — see the
+table above.
 
 ## Credits
 
