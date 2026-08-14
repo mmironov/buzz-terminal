@@ -25,9 +25,18 @@ xcuserdata/
 node_modules/
 npm-debug.log*
 
-# Firebase. Never commit these: the plist identifies the project, and a
-# service-account key is full admin access to it.
+# Android / Gradle. The wrapper (gradlew, gradle/wrapper/) IS committed — same
+# reasoning as Package.resolved above: a fresh clone must build the same bytes
+# without anyone choosing a Gradle version by hand.
+.gradle/
+local.properties
+.kotlin/
+.cxx/
+
+# Firebase. Never commit these: the plist and the json identify the project, and
+# a service-account key is full admin access to it.
 GoogleService-Info.plist
+google-services.json
 serviceAccountKey.json
 *-serviceAccount*.json
 .firebase/
