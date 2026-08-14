@@ -1,8 +1,11 @@
 #!/bin/bash
-# Run the domain unit tests. 57 tests across 13 suites; all should pass.
+# Run the unit tests. 64 tests; all should pass.
 #
-# These are plain JVM tests — no emulator, no device, no Android SDK involved —
-# which is the whole reason `:domain` is a separate module.
+# `:domain` is plain JVM — no emulator, no device, no Android SDK involved —
+# which is the whole reason it is a separate module. `:app` has exactly one test
+# class, for the Firestore field names, which are a security contract that
+# `:domain` deliberately cannot see. It compiles the app module, so it is the
+# slow half of this.
 set -euo pipefail
 source "$(dirname "$0")/_env.sh"
-./gradlew :domain:test "$@"
+./gradlew :domain:test :app:testDebugUnitTest "$@"

@@ -230,8 +230,21 @@ class FirebaseTerminalRepository(
         moveMoney(bracelet, Fire.Transaction.TYPE_TOP_UP, amount)
 
     override suspend fun charge(bracelet: BraceletID, lines: List<CartLine>): Participant {
-        val total = lines.fold(Money.ZERO) { running, line -> running + line.total }
-        return moveMoney(bracelet, Fire.Transaction.TYPE_CHARGE, total)
+        // Checked here so the operator gets a sentence rather than a
+        // PERMISSION_DENIED. The server refuses a ninth line either way; see
+        // `Fire.Transaction.MAX_ITEMS` for why the ceiling exists at all.
+        if (lines.size > Fire.Transaction.MAX_ITEMS) {
+            throw TerminalError.TooManyDrinksInOneRound(Fire.Transaction.MAX_ITEMS)
+        }
+        // The same list produces both the total and the itemisation, because the
+        // rules check one against the other. Computing them apart is how they
+        // would come to disagree.
+        return moveMoney(
+            bracelet,
+            Fire.Transaction.TYPE_CHARGE,
+            lines.ledgerTotal(),
+            lines.ledgerItems(),
+        )
     }
 
     /**
@@ -249,6 +262,7 @@ class FirebaseTerminalRepository(
         bracelet: BraceletID,
         type: String,
         amount: Money,
+        items: List<Map<String, Any>> = emptyList(),
     ): Participant {
         if (!amount.isPositive) {
             throw TerminalError.InsufficientFunds(Money.ZERO, amount)
@@ -269,15 +283,18 @@ class FirebaseTerminalRepository(
 
         batch.set(
             transactionDocument(current.id, txId),
-            mapOf(
-                Fire.Transaction.CLIENT_TX_ID to txId,
-                Fire.Transaction.TYPE to type,
-                Fire.Transaction.AMOUNT to amount.cents,
-                Fire.Transaction.SIGNED_AMOUNT to signed.cents,
-                Fire.Transaction.STAFF_UID to uid,
-                Fire.Transaction.TERMINAL_ID to terminalId,
-                Fire.Transaction.CREATED_AT to FieldValue.serverTimestamp(),
-            ),
+            buildMap {
+                put(Fire.Transaction.CLIENT_TX_ID, txId)
+                put(Fire.Transaction.TYPE, type)
+                put(Fire.Transaction.AMOUNT, amount.cents)
+                put(Fire.Transaction.SIGNED_AMOUNT, signed.cents)
+                put(Fire.Transaction.STAFF_UID, uid)
+                put(Fire.Transaction.TERMINAL_ID, terminalId)
+                put(Fire.Transaction.CREATED_AT, FieldValue.serverTimestamp())
+                // Set, never present-and-empty: the rules require a charge to
+                // carry at least one line and a top-up to carry none at all.
+                if (items.isNotEmpty()) put(Fire.Transaction.ITEMS, items)
+            },
         )
 
         batch.update(

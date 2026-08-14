@@ -3,6 +3,7 @@ package fest.swingbuzz.terminal.data
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import fest.swingbuzz.terminal.domain.BraceletID
+import fest.swingbuzz.terminal.domain.CartLine
 import fest.swingbuzz.terminal.domain.Drink
 import fest.swingbuzz.terminal.domain.Evening
 import fest.swingbuzz.terminal.domain.Money
@@ -64,8 +65,40 @@ object Fire {
         const val CREATED_AT = "createdAt"
         const val QUEUED_OFFLINE = "queuedOffline"
 
+        /**
+         * What a charge bought. Absent on a top-up — cash over the counter buys
+         * nothing, and the rules refuse an itemised one.
+         */
+        const val ITEMS = "items"
+
         const val TYPE_TOP_UP = "topup"
         const val TYPE_CHARGE = "charge"
+
+        /**
+         * The most distinct drinks one charge may itemise.
+         *
+         * Not a product decision: `firestore.rules` has to verify that the lines
+         * add up to the amount charged, rules cannot loop, and the unrolled sum
+         * costs expressions against Firestore's budget of 1,000 per request. Eight
+         * is what fits inside a money batch already paying for the balance
+         * invariant. A ninth line is refused by the server, so the app checks first
+         * and says something useful instead.
+         */
+        const val MAX_ITEMS = 8
+    }
+
+    /**
+     * One line of a charge: a snapshot of what the drink was called and cost at the
+     * moment of sale, not a reference to the menu.
+     *
+     * Snapshotted so a price change tomorrow cannot rewrite today's receipt, and so
+     * an organiser can delete a drink without orphaning the history that names it.
+     */
+    object TransactionItem {
+        const val DRINK_ID = "drinkId"
+        const val NAME = "name"
+        const val UNIT_PRICE = "unitPrice"
+        const val QUANTITY = "quantity"
     }
 
     object Bracelet {
@@ -164,6 +197,33 @@ fun Participant.eveningTicketDocument(createdBy: String): Map<String, Any?> {
  */
 private fun searchTokens(name: String, ticketType: String): List<String> =
     "$name $ticketType".lowercase().split(" ").filter { it.isNotEmpty() }.distinct()
+
+/**
+ * This cart line as the ledger stores it.
+ *
+ * The shape is checked by `itemisationAddsUp` in `firestore.rules`, including that
+ * no other key rides along: `hasOnly` means an extra field here is a
+ * PERMISSION_DENIED at the bar, not a harmless annotation.
+ */
+fun CartLine.ledgerItem(): Map<String, Any> = mapOf(
+    Fire.TransactionItem.DRINK_ID to drink.id,
+    Fire.TransactionItem.NAME to drink.name,
+    // The UNIT price, not the line total. Writing the line total would still add
+    // up against a total computed the same wrong way, so the rules would accept a
+    // receipt claiming beer costs 12 €.
+    Fire.TransactionItem.UNIT_PRICE to drink.price.cents,
+    Fire.TransactionItem.QUANTITY to quantity,
+)
+
+/** The `items` array for a charge. Empty when there is nothing to itemise. */
+fun List<CartLine>.ledgerItems(): List<Map<String, Any>> = map { it.ledgerItem() }
+
+/**
+ * What the lines add up to. The rules require this to equal the amount the balance
+ * moves by, so both must come from here rather than be computed twice.
+ */
+fun List<CartLine>.ledgerTotal(): Money =
+    fold(Money.ZERO) { running, line -> running + line.total }
 
 /** The reverse-lookup document that pairs a chip to an account. */
 fun braceletPairingDocument(participantId: ParticipantID, staffUid: String): Map<String, Any?> = mapOf(

@@ -129,5 +129,14 @@ sealed class TerminalError(override val message: String) : Exception(message) {
     data class InsufficientFunds(val balance: Money, val required: Money) :
         TerminalError("Balance is $balance but the round costs $required.")
 
+    /**
+     * Quantities are unlimited; it is the number of *different* drinks in one
+     * round that is capped, so the fix is to split the round rather than reduce
+     * it. The ceiling comes from what `firestore.rules` can verify — see
+     * `Fire.Transaction.MAX_ITEMS`.
+     */
+    data class TooManyDrinksInOneRound(val limit: Int) :
+        TerminalError("A round can list at most $limit different drinks. Split it into two.")
+
     data object Offline : TerminalError("No connection to the festival server.")
 }

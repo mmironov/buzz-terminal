@@ -91,10 +91,19 @@ android {
         // at all — see FirebaseBootstrap.
         buildConfig = true
     }
+
 }
 
 kotlin {
     jvmToolchain(libs.versions.jvmTarget.get().toInt())
+}
+
+// Name each test as it runs, matching what `:domain` prints. Without this a
+// passing run is silent and a failing one says only that the task failed.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("passed", "failed", "skipped")
+    }
 }
 
 dependencies {
@@ -117,6 +126,13 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
+
+    // Plain JVM tests, no device. Almost everything worth testing lives in
+    // `:domain` and is tested there; the one test class here covers the Firestore
+    // field names, which are a security contract `:domain` deliberately cannot
+    // see. JUnit 4, unlike `:domain`'s JUnit 5 — it is Android's default and needs
+    // no engine wiring for a single test class.
+    testImplementation(libs.kotlin.test.junit)
 }
 
 /**
