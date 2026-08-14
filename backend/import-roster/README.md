@@ -60,8 +60,9 @@ Nothing is ever written without `--apply`.
 ## The other commands
 
 ```bash
-npm run seed-drinks -- --apply              # write the drinks menu
+npm run seed-drinks -- --apply              # the menu's first three, on a fresh project
 npm run set-role -- bar@swingbuzz.fest bar --apply
+npm run set-role -- you@swingbuzz.fest admin --apply
 npm test                                    # unit-tests the diff logic, no credentials needed
 ```
 
@@ -69,6 +70,15 @@ npm test                                    # unit-tests the diff logic, no cred
 cannot be set from the Firebase console — only through the Admin SDK — which is
 precisely why they are trustworthy: no client can grant itself a role. The staff
 member must sign out and back in before a new claim takes effect.
+
+Three roles: `reception` and `bar` are the terminals, `admin` is the web panel in
+`web-admin/`. An `admin` can block bracelets and edit the menu and deliberately
+cannot move money; it also cannot sign into the terminal apps, which refuse any
+account that is not reception or bar.
+
+`seed-drinks` is a **bootstrap**, not the way prices get set — the admin panel
+owns the menu. Re-running it against a live festival would overwrite whatever an
+organiser has done there, including reactivating a drink they took off tonight.
 
 ## Who gets imported
 

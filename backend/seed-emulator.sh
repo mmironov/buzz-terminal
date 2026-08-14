@@ -54,7 +54,11 @@ drink() {  # id, name, cents, order
     \"sortOrder\":{\"integerValue\":\"$4\"},\"isActive\":{\"booleanValue\":true}}}" >/dev/null
 }
 
+# admin@example.test is the web-admin panel's account. It has no terminal flow —
+# `admin` is not a staff role — and signing into the iOS or Android app with it is
+# correctly refused.
 echo "staff:";        staff reception@example.test reception; staff bar@example.test bar
+                      staff admin@example.test admin
 echo "participants:"; person 1041 "Amélie Roux" "Full Pass" France
                       person 1042 "Tomás Herrera" "Party Pass" Spain
                       person 1043 "Nina Kowalski" "Full Pass Gold" Poland

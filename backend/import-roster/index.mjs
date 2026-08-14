@@ -277,7 +277,7 @@ async function cmdImport() {
 async function cmdSetRole() {
   requireProject();
   const [email, role] = positional;
-  if (!email || !role) fail('Usage: npm run set-role -- <email> <reception|bar> --apply');
+  if (!email || !role) fail('Usage: npm run set-role -- <email> <reception|bar|admin> --apply');
 
   requireKeyFile();
   const { initAdmin, setRole, describeUser } = await cloud();
@@ -425,9 +425,9 @@ Swing Buzz roster importer
   npm run headers                                 print the Sheet's header row
   npm run import                                  dry run: show the diff
   npm run import -- --apply                       commit it
-  npm run set-role -- <email> <reception|bar>      dry run
+  npm run set-role -- <email> <reception|bar|admin>   dry run
   npm run set-role -- <email> <role> --apply      commit it
-  npm run seed-drinks -- --apply                  write the drinks menu
+  npm run seed-drinks -- --apply                  write the menu's first three
   npm run reset                                   dry run: what a wipe would remove
   npm run reset -- --apply --confirm=<project>    WIPE the operational data
   npm test                                        unit-test the diff logic

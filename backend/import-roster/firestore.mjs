@@ -52,6 +52,9 @@ export async function applyPlan(db, plan, { batchSize = 400 } = {}) {
   return written;
 }
 
+/** The three roles `firestore.rules` knows about. Nothing else is a role. */
+export const ROLES = ['reception', 'bar', 'admin'];
+
 /**
  * Set a staff member's role as a custom claim.
  *
@@ -59,12 +62,17 @@ export async function applyPlan(db, plan, { batchSize = 400 } = {}) {
  * SDK — which is exactly why they are trustworthy: no client can grant itself a
  * role. The security rules read `request.auth.token.role`.
  *
+ * `admin` is the web panel in `web-admin/`: it can block bracelets and edit the
+ * menu, and it deliberately cannot move money. Grant it to organisers, not to
+ * whoever is standing behind the bar — an admin token in a terminal's hands is
+ * a menu nobody meant to change.
+ *
  * The user must sign out and back in (or have their token refreshed) before a new
  * claim takes effect.
  */
 export async function setRole(email, role) {
-  if (!['reception', 'bar'].includes(role)) {
-    throw new Error(`Role must be "reception" or "bar", got "${role}".`);
+  if (!ROLES.includes(role)) {
+    throw new Error(`Role must be one of ${ROLES.join(', ')} — got "${role}".`);
   }
   const user = await admin.auth().getUserByEmail(email);
   await admin.auth().setCustomUserClaims(user.uid, { role });
@@ -86,9 +94,15 @@ export async function describeUser(email) {
  * it off the menu immediately, and a deleted drink would orphan the ledger entries
  * that refer to it. A drink that stopped being sold still happened.
  *
- * Written by the Admin SDK because `firestore.rules` says `allow write: if false`
- * for this collection — prices are an organiser decision, and no terminal, however
- * compromised, can set its own.
+ * The menu now belongs to the web admin panel, so this is a bootstrap rather than
+ * the way prices get set: it puts something on the bar's screen on a fresh
+ * project, before anyone has signed into `web-admin/`. Editing it afterwards from
+ * here would silently overwrite whatever an organiser has since done — including
+ * reactivating a drink they took off the menu tonight.
+ *
+ * Still the Admin SDK rather than a client, because `firestore.rules` grants
+ * `drinks` writes to the `admin` claim alone, and no terminal, however
+ * compromised, can set its own prices.
  */
 export async function seedDrinks(db, drinks) {
   const wanted = new Set(drinks.map((drink) => drink.id));
@@ -115,7 +129,7 @@ export async function seedDrinks(db, drinks) {
 }
 
 /**
- * The menu, until the web admin panel owns it.
+ * The menu a fresh project starts with. The admin panel takes it from here.
  *
  * Deliberately the real thing rather than the design prototype's ten invented
  * drinks — this collection is what a bartender charges people from, so a plausible
