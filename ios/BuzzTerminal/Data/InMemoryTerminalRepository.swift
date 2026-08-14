@@ -74,6 +74,27 @@ actor InMemoryTerminalRepository: TerminalRepository {
         return participant(pairedTo: bracelet)
     }
 
+    func createEveningTicket(evening: Evening, bracelet: BraceletID) async throws -> Participant {
+        await simulateNetwork()
+        guard participant(pairedTo: bracelet) == nil else { throw TerminalError.braceletAlreadyPaired }
+
+        // Firestore would collide on `create` and retry; here the dictionary is
+        // the whole world, so the next free number is simply the highest plus one.
+        let highest = roster.values
+            .filter { $0.evening == evening }
+            .compactMap(\.eveningNumber)
+            .max() ?? 0
+
+        let ticket = Participant.eveningTicket(
+            evening: evening,
+            number: highest + 1,
+            bracelet: bracelet
+        )
+        guard roster[ticket.id] == nil else { throw TerminalError.eveningSequenceExhausted }
+        roster[ticket.id] = ticket
+        return ticket
+    }
+
     func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant {
         await simulateNetwork()
         guard var updated = roster[participant.id] else { throw TerminalError.unknownAccount }

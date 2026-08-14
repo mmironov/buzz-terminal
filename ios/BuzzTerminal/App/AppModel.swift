@@ -93,6 +93,10 @@ final class AppModel {
 
     var topUp = TopUpEntry()
 
+    /// Which evening a door sale is for. Preselected to tonight when tonight is
+    /// one of the three — a convenience, never a validation.
+    var eveningSelection: Evening = Evening.today ?? .friday
+
     // MARK: Bar
 
     var menu: [Drink] = []
@@ -247,6 +251,45 @@ final class AppModel {
                     .init(key: "Bracelet", value: bracelet.rawValue),
                 ],
                 balance: paired.balance
+            )
+            screen = .receipt
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Reception: door sales
+
+    func goToAssignEvening() {
+        eveningSelection = Evening.today ?? .friday
+        screen = .assignEvening
+    }
+
+    /// Sell an evening ticket on the bracelet that was just scanned.
+    ///
+    /// Anonymous: nothing is asked of the guest and nothing is stored about them.
+    /// The receipt shows the generated label so reception has something to say and
+    /// something to reconcile a cash count against.
+    func assignEveningTicket() async {
+        guard let bracelet else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let ticket = try await repository.createEveningTicket(
+                evening: eveningSelection,
+                bracelet: bracelet
+            )
+            participant = ticket
+            receipt = Receipt(
+                kind: .checkIn,
+                title: "Evening ticket assigned",
+                note: "\(ticket.name) is paired to this bracelet. Valid for \(eveningSelection.label) — an organiser freezes it afterwards from the admin panel.",
+                rows: [
+                    .init(key: "Ticket", value: ticket.ticketDescription),
+                    .init(key: "Label", value: ticket.name),
+                    .init(key: "Bracelet", value: bracelet.rawValue),
+                ],
+                balance: ticket.balance
             )
             screen = .receipt
         } catch {

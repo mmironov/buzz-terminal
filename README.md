@@ -47,6 +47,7 @@ There is no NFC hardware on the Simulator, so the scan sheet offers a
 | `04:B4:2F:11` | Marta, 23.50 € → top-up and successful payment |
 | `04:C8:5D:03` | Jonas, 2.00 € → declined payment (insufficient funds) |
 | `04:D2:0B:6A` | Elena, blocked → blocked screens |
+| `04:E7:3A:2C` | Evening #14 (Friday) → an anonymous door sale |
 
 ### Jumping straight to a screen
 
@@ -58,9 +59,9 @@ There is no NFC hardware on the Simulator, so the scan sheet offers a
 ./ios/scripts/run.sh -sbScreen payreview-blocked
 ```
 
-Screens: `reception`, `bar`, `assign`, `participant`, `blocked`, `topup`,
-`receipt`, `cart`, `payreview`, `payreview-short`, `payreview-blocked`,
-`payreview-unassigned`. Flags: `-sbOffline`,
+Screens: `reception`, `bar`, `assign`, `assign-evening`, `participant`,
+`evening-participant`, `blocked`, `topup`, `receipt`, `cart`, `payreview`,
+`payreview-short`, `payreview-blocked`, `payreview-unassigned`. Flags: `-sbOffline`,
 `-sbScanning`. In Xcode the same arguments go in Scheme ▸ Run ▸ Arguments.
 
 ```bash

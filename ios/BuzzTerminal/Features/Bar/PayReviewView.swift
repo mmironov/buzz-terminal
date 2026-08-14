@@ -47,7 +47,7 @@ struct PayReviewView: View {
                     .tracking(-0.02 * 30)
                     .sbLineHeight(1.05, size: 30)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(model.participant?.ticketType ?? "—") · Bracelet \(model.braceletLabel)")
+                Text("\(model.participant?.ticketDescription ?? "—") · Bracelet \(model.braceletLabel)")
                     .font(.sbBody(12))
                     .foregroundStyle(.sbInk(0.6))
             }

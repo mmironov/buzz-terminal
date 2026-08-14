@@ -11,7 +11,8 @@ import Foundation
 ///
 /// Available screens: `reception`, `bar`, `assign`, `participant`, `blocked`,
 /// `topup`, `receipt`, `cart`, `payreview`, `payreview-short`,
-/// `payreview-blocked`, `payreview-unassigned`.
+/// `payreview-blocked`, `payreview-unassigned`, `assign-evening`,
+/// `evening-participant`.
 /// Add `-sbOffline` for the offline banner, `-sbScanning` for the scan sheet.
 ///
 /// Wrapped in `#if DEBUG` so none of it exists in a release build. Useful beyond
@@ -68,6 +69,17 @@ extension AppModel {
             role = .reception
             bracelet = SampleData.braceletA
             screen = .assign
+
+        case "assign-evening":
+            role = .reception
+            bracelet = SampleData.braceletA
+            screen = .assignEvening
+
+        case "evening-participant":
+            role = .reception
+            bracelet = SampleData.braceletE
+            participant = SampleData.participant(withBracelet: SampleData.braceletE)
+            screen = .participant
 
         case "participant":
             role = .reception

@@ -30,15 +30,17 @@ shoot 01-signin
 shoot 02-reception-home  -sbScreen reception
 shoot 03-scan            -sbScreen reception -sbScanning
 shoot 04-assign          -sbScreen assign
-shoot 05-participant     -sbScreen participant
-shoot 06-topup           -sbScreen topup
-shoot 07-receipt         -sbScreen receipt
-shoot 08-blocked         -sbScreen blocked
-shoot 09-bar-menu        -sbScreen bar
-shoot 10-cart            -sbScreen cart
-shoot 11-payreview       -sbScreen payreview
-shoot 12-payreview-short -sbScreen payreview-short
-shoot 13-payreview-blocked -sbScreen payreview-blocked
-shoot 14-payreview-unassigned -sbScreen payreview-unassigned
-shoot 15-offline         -sbScreen reception -sbOffline
+shoot 05-assign-evening  -sbScreen assign-evening
+shoot 05b-evening-participant -sbScreen evening-participant
+shoot 06-participant     -sbScreen participant
+shoot 07-topup           -sbScreen topup
+shoot 08-receipt         -sbScreen receipt
+shoot 09-blocked         -sbScreen blocked
+shoot 10-bar-menu        -sbScreen bar
+shoot 11-cart            -sbScreen cart
+shoot 12-payreview       -sbScreen payreview
+shoot 13-payreview-short -sbScreen payreview-short
+shoot 14-payreview-blocked -sbScreen payreview-blocked
+shoot 15-payreview-unassigned -sbScreen payreview-unassigned
+shoot 16-offline         -sbScreen reception -sbOffline
 echo "→ ios/screenshots/"

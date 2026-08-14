@@ -39,6 +39,8 @@ enum Screen: Hashable, Sendable {
     // Reception
     case receptionHome
     case assign
+    /// Selling a door ticket, reached from the check-in screen.
+    case assignEvening
     case participant
     case blocked
     case topUp

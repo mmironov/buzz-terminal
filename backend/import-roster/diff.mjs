@@ -239,12 +239,18 @@ function describeChanges(current, roster) {
  *
  * Reported, never deleted. A refund or a cancelled ticket is an organiser
  * decision, and somebody may already be checked in with money on their bracelet.
+ *
+ * Door-sold evening tickets are skipped entirely. They were never in the Sheet
+ * and never will be, so reporting them here would mean every import run listing
+ * every door sale of the festival so far — noise that would quickly train
+ * everybody to ignore this section, which is the opposite of what it is for.
  */
 export function findOrphans(rows, existing) {
   const inSheet = new Set(rows.map((r) => r.__id));
   const orphans = [];
   for (const [id, doc] of existing) {
     if (inSheet.has(id)) continue;
+    if (doc.source === 'evening') continue;
     orphans.push({
       id,
       name: doc.name ?? '(unnamed)',

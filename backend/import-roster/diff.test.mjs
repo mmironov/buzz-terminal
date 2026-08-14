@@ -265,3 +265,37 @@ test('Paid is the only importable status', () => {
   // checked in, not a refactor.
   assert.deepEqual(IMPORTABLE_STATUSES, ['paid']);
 });
+
+// ── Door-sold evening tickets ──────────────────────────────────────────────
+
+test('a new import marks people as coming from the Sheet', () => {
+  const { creates } = buildPlan(rowsFrom(SHEET), new Map());
+  assert.equal(creates[0].data.source, 'sheet');
+});
+
+test('door sales are not reported as orphans', () => {
+  // They were never in the Sheet and never will be. Listing them would mean
+  // every run printing every door sale of the festival so far, which trains
+  // everybody to skip the section that actually matters.
+  const existing = new Map([
+    ['1041', { name: 'Amélie Roux', source: 'sheet', balance: 0, braceletId: null }],
+    ['ev-friday-14', { name: 'Evening #14', source: 'evening', balance: 1250, braceletId: '04:E7:3A:2C' }],
+    ['ev-saturday-3', { name: 'Evening #3', source: 'evening', balance: 0, braceletId: '04:AA:BB:CC' }],
+    ['9998', { name: 'Genuinely Removed', source: 'sheet', balance: 0, braceletId: null }],
+  ]);
+  const orphans = findOrphans(rowsFrom(SHEET), existing);
+  assert.deepEqual(orphans.map((o) => o.id), ['9998']);
+});
+
+test('an evening ticket is never updated by the importer', () => {
+  // Its id could not collide with a Sheet id anyway — Sheet ids are numeric and
+  // evening ids are prefixed — but assert it, because the consequence of being
+  // wrong is overwriting a checked-in guest's balance.
+  const existing = new Map([
+    ['ev-friday-14', { name: 'Evening #14', source: 'evening', balance: 1250, braceletId: '04:E7:3A:2C' }],
+  ]);
+  const { creates, updates, unchanged } = buildPlan(rowsFrom(SHEET), existing);
+  assert.equal(updates.length, 0);
+  assert.equal(unchanged.length, 0);
+  assert.deepEqual(creates.map((c) => c.id), ['1041', '1042']);
+});

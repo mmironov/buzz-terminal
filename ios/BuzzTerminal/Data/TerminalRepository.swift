@@ -34,6 +34,14 @@ protocol TerminalRepository: Sendable {
     /// The account paired to this chip, or `nil` if the chip is unassigned.
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant?
 
+    /// Mint a door-sold evening ticket and pair it to a bracelet, in one write.
+    ///
+    /// The implementation owns the sequence number, because it also owns the
+    /// retry: the participant id encodes the number (`ev-friday-14`), so two
+    /// reception desks selling simultaneously collide and the loser must try the
+    /// next one. That belongs here rather than in a view.
+    func createEveningTicket(evening: Evening, bracelet: BraceletID) async throws -> Participant
+
     /// Pair a fresh bracelet to somebody already on the roster. Returns the
     /// updated participant.
     ///
@@ -56,6 +64,7 @@ enum TerminalError: Error, Equatable, LocalizedError {
     case unknownAccount
     case braceletNotAssigned
     case braceletAlreadyPaired
+    case eveningSequenceExhausted
     case braceletBlocked
     case insufficientFunds(balance: Money, required: Money)
     case offline
@@ -68,6 +77,8 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "This bracelet is not paired to anybody yet."
         case .braceletAlreadyPaired:
             "This bracelet is already paired to somebody. Use a fresh one."
+        case .eveningSequenceExhausted:
+            "Could not allocate an evening ticket number. Try again."
         case .braceletBlocked:
             "This bracelet is blocked. An organiser must lift the block."
         case .insufficientFunds(let balance, let required):

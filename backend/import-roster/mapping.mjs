@@ -161,6 +161,10 @@ export function toRosterFields(row) {
 /** Festival state given to a person the first time they are imported. */
 export function initialFestivalState() {
   return {
+    /// Distinguishes an imported registration from a door-sold evening ticket.
+    /// Written once, on create; the security rules forbid a terminal from
+    /// changing it, and `findOrphans` uses it to leave door sales alone.
+    source: 'sheet',
     braceletId: null,
     checkedInAt: null,
     balance: 0,

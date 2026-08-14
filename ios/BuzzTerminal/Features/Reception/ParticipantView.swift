@@ -64,7 +64,7 @@ struct ParticipantView: View {
                     .tracking(-0.02 * 32)
                     .sbLineHeight(1.05, size: 32)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(model.participant?.ticketType ?? "—") · Bracelet \(model.braceletLabel)")
+                Text("\(model.participant?.ticketDescription ?? "—") · Bracelet \(model.braceletLabel)")
                     .font(.sbBody(12))
                     .foregroundStyle(.sbInk(0.6))
             }

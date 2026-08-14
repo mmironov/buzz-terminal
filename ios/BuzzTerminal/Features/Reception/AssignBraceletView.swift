@@ -28,6 +28,20 @@ struct AssignBraceletView: View {
 
             candidateList
                 .padding(.top, 6)
+
+            // Door sales. Below the list rather than above it, because scanning a
+            // fresh chip usually means somebody from the roster — the door ticket
+            // is the less common case and should not be the first thing thumbed.
+            VStack(alignment: .leading, spacing: 0) {
+                SBDivider(weight: SBRule.hairline)
+                Button("Assign evening ticket") { model.goToAssignEvening() }
+                    .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 14))
+                    .padding(.top, 10)
+                Text("Sold at the door · no name needed")
+                    .font(.sbBody(11))
+                    .foregroundStyle(.sbInk(0.5))
+                    .padding(.top, 6)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.top, SBSpace.x4)

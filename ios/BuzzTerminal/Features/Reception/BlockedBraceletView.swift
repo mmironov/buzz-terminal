@@ -17,7 +17,7 @@ struct BlockedBraceletView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 4)
 
-                Text("\(model.participant?.ticketType ?? "—") · Bracelet \(model.braceletLabel)")
+                Text("\(model.participant?.ticketDescription ?? "—") · Bracelet \(model.braceletLabel)")
                     .font(.sbBody(12))
                     .foregroundStyle(.sbInk(0.6))
 
