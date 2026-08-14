@@ -1,10 +1,7 @@
 package fest.swingbuzz.terminal.feature.reception
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fest.swingbuzz.terminal.app.AppModel
 import fest.swingbuzz.terminal.designsystem.SB
-import fest.swingbuzz.terminal.designsystem.SBBand
 import fest.swingbuzz.terminal.designsystem.SBBlockButton
 import fest.swingbuzz.terminal.designsystem.SBButton
 import fest.swingbuzz.terminal.designsystem.SBButtonKind
@@ -32,6 +28,7 @@ import fest.swingbuzz.terminal.designsystem.SBTag
 import fest.swingbuzz.terminal.designsystem.sbBody
 import fest.swingbuzz.terminal.designsystem.sbDisplay
 import fest.swingbuzz.terminal.domain.Money
+import fest.swingbuzz.terminal.feature.shared.CheckedInIdentityCard
 
 /** A known bracelet was read: show who it is, what they have, and offer a top-up. */
 @Composable
@@ -53,7 +50,7 @@ fun ParticipantScreen(model: AppModel, modifier: Modifier = Modifier) {
             SBButton("Done", model::goHome, kind = SBButtonKind.GHOST, fontSize = 12.sp)
         }
 
-        IdentityCard(
+        CheckedInIdentityCard(
             name = participant?.name ?: "—",
             subtitle = "${participant?.ticketDescription ?: "—"} · Bracelet ${model.braceletLabel}",
             modifier = Modifier.padding(top = SBSpace.x4),
@@ -87,38 +84,6 @@ fun ParticipantScreen(model: AppModel, modifier: Modifier = Modifier) {
             modifier = Modifier.padding(top = 20.dp),
             minHeight = 48.dp,
         )
-    }
-}
-
-/**
- * The green-bordered identity block. The heavy 3dp border plus the filled band
- * is the design's "this person is cleared" signal, readable from arm's length in
- * a dark venue.
- */
-@Composable
-private fun IdentityCard(name: String, subtitle: String, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().border(3.dp, SB.ok)) {
-        SBBand(
-            text = "Checked-In",
-            glyphSize = 18.dp,
-            fontSize = 12.5.sp,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .padding(top = 12.dp, bottom = 13.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Text(
-                text = name,
-                style = sbDisplay(32.sp, trackingEm = -0.02f, lineHeightMultiple = 1.05f),
-                color = SB.ink,
-            )
-            Text(subtitle, style = sbBody(12.sp), color = SB.ink(0.6f))
-        }
     }
 }
 

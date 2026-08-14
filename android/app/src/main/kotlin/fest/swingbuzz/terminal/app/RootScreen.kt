@@ -32,6 +32,9 @@ import fest.swingbuzz.terminal.designsystem.SBSpace
 import fest.swingbuzz.terminal.designsystem.sbBody
 import fest.swingbuzz.terminal.designsystem.sbHeading
 import fest.swingbuzz.terminal.domain.Screen
+import fest.swingbuzz.terminal.feature.bar.BarMenuScreen
+import fest.swingbuzz.terminal.feature.bar.CartScreen
+import fest.swingbuzz.terminal.feature.bar.PayReviewScreen
 import fest.swingbuzz.terminal.feature.reception.AssignBraceletScreen
 import fest.swingbuzz.terminal.feature.reception.AssignEveningTicketScreen
 import fest.swingbuzz.terminal.feature.reception.BlockedBraceletScreen
@@ -77,11 +80,13 @@ fun RootScreen(model: AppModel, modifier: Modifier = Modifier) {
                     Screen.Blocked -> BlockedBraceletScreen(model)
                     Screen.TopUp -> TopUpScreen(model)
 
+                    // Bar
+                    Screen.BarMenu -> BarMenuScreen(model)
+                    Screen.Cart -> CartScreen(model)
+                    Screen.PayReview -> PayReviewScreen(model)
+
                     // Shared
                     Screen.Receipt -> ReceiptScreen(model)
-
-                    // Bar — not ported yet
-                    else -> NotBuiltYet(model)
                 }
             }
         }
@@ -130,35 +135,6 @@ private fun LightStatusBarIcons(enabled: Boolean) {
             isAppearanceLightStatusBars = enabled
             isAppearanceLightNavigationBars = enabled
         }
-    }
-}
-
-/**
- * The placeholder every not-yet-ported screen lands on. It names the screen and
- * offers the way out, which is more use during the port than a blank surface —
- * and it makes an accidental transition into an unbuilt screen obvious rather
- * than silent.
- */
-@Composable
-private fun NotBuiltYet(model: AppModel) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(SBSpace.x6),
-        verticalArrangement = Arrangement.spacedBy(SBSpace.x3),
-    ) {
-        SBKicker(model.role?.label ?: "Signed in", color = SB.accent, size = 10.sp)
-        Text(
-            text = model.screen::class.simpleName ?: "Screen",
-            style = sbHeading(32.sp, trackingEm = -0.02f),
-            color = SB.ink,
-        )
-        SBDivider()
-        Text(
-            text = "This screen is not ported yet. The catalogue behind it is loaded: " +
-                "${model.menu.size} drinks, ${model.awaitingCheckIn.size} awaiting check-in.",
-            style = sbBody(13.sp, lineHeightMultiple = 1.6f),
-            color = SB.ink(0.6f),
-        )
-        SBBlockButton("Sign out", model::signOut, kind = SBButtonKind.SECONDARY)
     }
 }
 
