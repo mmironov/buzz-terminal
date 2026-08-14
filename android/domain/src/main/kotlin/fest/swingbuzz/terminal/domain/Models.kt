@@ -74,6 +74,21 @@ sealed interface Screen {
 @JvmInline
 value class BraceletID(val rawValue: String) {
     override fun toString() = rawValue
+
+    companion object {
+        /**
+         * A chip id in the same four-byte shape a real NFC UID has, random enough
+         * that the backend has certainly never seen it.
+         *
+         * Exists so "scan a new bracelet" stays rehearsable against a live
+         * database. The fixture chips are a fixed list, and pairing is permanent
+         * by design, so checking one in retires it for good.
+         */
+        fun fresh(random: kotlin.random.Random = kotlin.random.Random): BraceletID =
+            BraceletID(
+                (1..4).joinToString(":") { "%02X".format(random.nextInt(256)) }
+            )
+    }
 }
 
 /**

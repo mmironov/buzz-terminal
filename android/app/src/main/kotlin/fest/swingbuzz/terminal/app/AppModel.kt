@@ -265,6 +265,54 @@ class AppModel(
 
     fun beginScan(purpose: ScanState.Purpose) {
         scan = ScanState(purpose)
+        freshChip = BraceletID.fresh()
+        // Cleared, not left standing: a chip checked in a moment ago would
+        // otherwise still read "Not assigned" until the fresh reads land.
+        simulatedChipStatus = emptyMap()
+        if (!runsOnFixtures) viewModelScope.launch { loadSimulatedChipStatuses() }
+    }
+
+    /**
+     * What the backend says about each simulated chip, keyed by chip id.
+     *
+     * Empty on the fixtures, where `SampleData`'s own hints are the truth and
+     * need no lookup.
+     */
+    var simulatedChipStatus by mutableStateOf<Map<BraceletID, String>>(emptyMap())
+        private set
+
+    /**
+     * A chip id nothing has ever seen, regenerated every time the overlay opens.
+     *
+     * The five fixture chips are a fixed list, so against a real backend the
+     * first check-in consumes one permanently — after which "scan a new
+     * bracelet" cannot be rehearsed again without resetting the database. This
+     * row is the way back: a fresh id every time, guaranteed unassigned.
+     */
+    var freshChip by mutableStateOf(BraceletID.fresh())
+        private set
+
+    /**
+     * One point read per simulated chip, so the panel can say what is actually
+     * true rather than what `SampleData` wishes were true.
+     */
+    private suspend fun loadSimulatedChipStatuses() {
+        val statuses = mutableMapOf<BraceletID, String>()
+        for (chip in simulatedBracelets.map { it.id }) {
+            try {
+                val found = repository.participantWithBracelet(chip)
+                statuses[chip] = when {
+                    found == null -> "Not assigned"
+                    found.isBlocked -> "${found.name} · blocked"
+                    else -> "${found.name} · ${found.balance}"
+                }
+            } catch (_: Exception) {
+                // A chip whose status could not be read is left unlabelled rather
+                // than guessed at — the whole point of this panel is that it stops
+                // claiming things it does not know.
+            }
+        }
+        simulatedChipStatus = statuses
     }
 
     fun cancelScan() {

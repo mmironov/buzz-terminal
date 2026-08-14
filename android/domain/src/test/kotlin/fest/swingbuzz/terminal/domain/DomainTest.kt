@@ -340,4 +340,38 @@ class DomainTest {
             assertTrue(TicketType.all.contains(TicketType.EVENING_TICKET))
         }
     }
+
+    /**
+     * The generator behind the simulator panel's "new chip" row. Its entire job
+     * is to produce something the backend has never seen, so both properties
+     * below are the feature rather than incidental detail.
+     */
+    @Nested
+    inner class FreshChipIds {
+
+        @Test
+        fun `looks like a four-byte NFC uid`() {
+            repeat(50) {
+                assertTrue(
+                    BraceletID.fresh().rawValue.matches(Regex("([0-9A-F]{2}:){3}[0-9A-F]{2}")),
+                    "unexpected shape: ${BraceletID.fresh()}",
+                )
+            }
+        }
+
+        @Test
+        fun `does not collide with the fixture chips`() {
+            val fixtures = SampleData.simulatedBracelets.map { it.id }.toSet()
+            val generated = List(500) { BraceletID.fresh() }
+            assertTrue(generated.none { it in fixtures })
+        }
+
+        @Test
+        fun `is different every time`() {
+            // 500 draws from 2^32; a duplicate is possible but a *run* of them is
+            // not, so this pins randomness without being flaky about it.
+            val generated = List(500) { BraceletID.fresh() }
+            assertTrue(generated.toSet().size > 490)
+        }
+    }
 }

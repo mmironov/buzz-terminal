@@ -229,14 +229,31 @@ private fun SimulatorPanel(model: AppModel) {
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            // Only off the fixtures, where the five fixed chips can be used up:
+            // pairing is permanent, so the first check-in retires one for good
+            // and there would otherwise be no way to rehearse check-in again
+            // without resetting the database.
+            if (!model.runsOnFixtures) {
+                SimulatorRow(
+                    hint = "New chip, never seen",
+                    id = model.freshChip.rawValue,
+                    onClick = { model.selectSimulatedBracelet(model.freshChip) },
+                    emphasised = true,
+                )
+            }
+
             model.simulatedBracelets.forEach { bracelet ->
                 SimulatorRow(
-                    // The hints describe `SampleData`, so on any other backend
-                    // they are false — and confidently so, which is worse than
-                    // silence. The chip this one calls "fresh, not yet assigned"
-                    // is a checked-in guest on Firestore, and the participant
-                    // screen that correctly appears then looks like a bug.
-                    hint = bracelet.hint.takeIf { model.runsOnFixtures },
+                    // The hints describe `SampleData`, so on a real backend they
+                    // are false — and confidently so, which is worse than
+                    // silence. What replaces them is not silence but the truth:
+                    // one point read per chip, so the row says what the database
+                    // says.
+                    hint = if (model.runsOnFixtures) {
+                        bracelet.hint
+                    } else {
+                        model.simulatedChipStatus[bracelet.id]
+                    },
                     id = bracelet.id.rawValue,
                     onClick = { model.selectSimulatedBracelet(bracelet.id) },
                 )
@@ -246,7 +263,12 @@ private fun SimulatorPanel(model: AppModel) {
 }
 
 @Composable
-private fun SimulatorRow(hint: String?, id: String, onClick: () -> Unit) {
+private fun SimulatorRow(
+    hint: String?,
+    id: String,
+    onClick: () -> Unit,
+    emphasised: Boolean = false,
+) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
 
@@ -263,11 +285,17 @@ private fun SimulatorRow(hint: String?, id: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (hint != null) {
-            Text(hint, style = sbBody(12.5.sp), color = SB.neutral100, modifier = Modifier.weight(1f))
+            Text(
+                text = hint,
+                style = sbBody(12.5.sp),
+                color = if (emphasised) SB.accent300 else SB.neutral100,
+                modifier = Modifier.weight(1f),
+            )
             Text(id, style = sbBody(11.sp), color = SB.neutral100.copy(alpha = 0.55f))
         } else {
-            // With nothing truthful to say about the chip, the id carries the row
-            // on its own rather than being demoted to a trailing detail.
+            // A live status that has not arrived yet: the id carries the row on
+            // its own rather than showing a placeholder that would be mistaken
+            // for a status.
             Text(id, style = sbBody(12.5.sp), color = SB.neutral100, modifier = Modifier.weight(1f))
         }
     }
