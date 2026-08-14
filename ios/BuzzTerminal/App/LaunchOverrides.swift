@@ -13,7 +13,9 @@ import Foundation
 /// `topup`, `receipt`, `cart`, `payreview`, `payreview-short`,
 /// `payreview-blocked`, `payreview-unassigned`, `assign-evening`,
 /// `evening-participant`.
-/// Add `-sbOffline` for the offline banner, `-sbScanning` for the scan sheet.
+/// Add `-sbOffline` for the offline banner, `-sbScanning` for the scan sheet,
+/// `-sbBackend firebase` to use Firestore rather than the fixtures, and
+/// `-sbEmulator` to point Firebase at the local emulators.
 ///
 /// Wrapped in `#if DEBUG` so none of it exists in a release build. Useful beyond
 /// screenshots: it is how you get to a deep screen without walking the flow every
@@ -22,6 +24,16 @@ struct LaunchOverrides {
     var screen: String?
     var offline = false
     var scanning = false
+    /// `-sbBackend firebase` to talk to Firestore; anything else keeps the
+    /// in-memory fixtures. Defaults to fixtures so the screenshot pass and the
+    /// prototype flows keep working with no network at all.
+    var backend = "memory"
+    /// `-sbEmulator` sends Firebase at localhost instead of the real project.
+    var useEmulators = false
+    /// `-sbSignIn <email> <password>` signs in on launch. For driving an emulator
+    /// run without a human at the keyboard; DEBUG only, like everything here.
+    var signInEmail: String?
+    var signInPassword: String?
 
     static var fromProcess: LaunchOverrides {
         let arguments = ProcessInfo.processInfo.arguments
@@ -30,12 +42,21 @@ struct LaunchOverrides {
         if let index = arguments.firstIndex(of: "-sbScreen"), index + 1 < arguments.count {
             overrides.screen = arguments[index + 1].lowercased()
         }
+        if let index = arguments.firstIndex(of: "-sbBackend"), index + 1 < arguments.count {
+            overrides.backend = arguments[index + 1].lowercased()
+        }
         overrides.offline = arguments.contains("-sbOffline")
         overrides.scanning = arguments.contains("-sbScanning")
+        overrides.useEmulators = arguments.contains("-sbEmulator")
+        if let index = arguments.firstIndex(of: "-sbSignIn"), index + 2 < arguments.count {
+            overrides.signInEmail = arguments[index + 1]
+            overrides.signInPassword = arguments[index + 2]
+        }
         return overrides
     }
 
-    var isActive: Bool { screen != nil || offline || scanning }
+    var isActive: Bool { screen != nil || offline || scanning || signInEmail != nil }
+    var wantsFirebase: Bool { backend == "firebase" }
 }
 
 extension AppModel {
@@ -46,6 +67,16 @@ extension AppModel {
         if overrides.offline {
             isOffline = true
             queuedTransactions = 3
+        }
+
+        if let email = overrides.signInEmail, let password = overrides.signInPassword {
+            self.email = email
+            self.password = password
+            autoSignInRequested = true
+            // Any -sbScreen is applied AFTER signing in, so the screen shows data
+            // that came from the repository rather than from these fixtures.
+            screenAfterSignIn = overrides.screen
+            return
         }
 
         menu = SampleData.drinks

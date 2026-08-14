@@ -1,4 +1,6 @@
+import FirebaseAuth
 import FirebaseCore
+import FirebaseFirestore
 import Foundation
 import OSLog
 
@@ -39,4 +41,25 @@ enum FirebaseBootstrap {
         log.info("Firebase configured for project \(FirebaseApp.app()?.options.projectID ?? "?", privacy: .public)")
         return true
     }
+
+    #if DEBUG
+    /// Point the SDK at the local emulators instead of the real project.
+    ///
+    /// Must run before anything touches Firestore, hence immediately after
+    /// `configure()`. This is how the app is exercised against the actual security
+    /// rules — the same `backend/firestore.rules` the emulator loads for
+    /// `backend/rules-tests` — without writing to a live festival database.
+    static func useEmulators() {
+        let settings = Firestore.firestore().settings
+        settings.host = "127.0.0.1:8080"
+        settings.isSSLEnabled = false
+        // No disk cache: an emulator run should start from nothing, not from
+        // whatever a previous run left behind.
+        settings.cacheSettings = MemoryCacheSettings()
+        Firestore.firestore().settings = settings
+
+        Auth.auth().useEmulator(withHost: "127.0.0.1", port: 9099)
+        log.notice("Using local emulators: Firestore :8080, Auth :9099")
+    }
+    #endif
 }

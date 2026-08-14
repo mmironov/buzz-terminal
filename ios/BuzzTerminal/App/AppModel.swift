@@ -1,4 +1,5 @@
 import Observation
+import OSLog
 import SwiftUI
 
 /// The whole terminal's state and every transition between screens.
@@ -45,6 +46,13 @@ final class AppModel {
     /// Surfaced as an alert. Distinct from `loginFailed`, which the design draws
     /// inline under the password field.
     var errorMessage: String?
+
+    #if DEBUG
+    /// Set by `-sbSignIn`; performed by `RootView` once it appears.
+    var autoSignInRequested = false
+    /// Applied after that sign-in, so the screen shows repository data.
+    var screenAfterSignIn: String?
+    #endif
 
     // MARK: Connectivity (prototype affordance — see `toggleOffline`)
 
@@ -116,12 +124,19 @@ final class AppModel {
 
     // MARK: - Lifecycle
 
+    private static let log = Logger(subsystem: "fest.swingbuzz.BuzzTerminal", category: "model")
+
     /// Load the catalogue once a role is known.
     func loadCatalogue() async {
         do {
             menu = try await repository.drinks()
             awaitingCheckIn = try await repository.awaitingCheckIn()
+            // Logged because "the list is empty" has two very different causes —
+            // an empty roster, or a read the rules refused — and they look
+            // identical on screen.
+            Self.log.info("loaded \(self.menu.count) drinks, \(self.awaitingCheckIn.count) awaiting check-in")
         } catch {
+            Self.log.error("catalogue load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }

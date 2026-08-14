@@ -25,6 +25,18 @@ struct RootView: View {
         }
         // Modernist is a light system. See the note in `Tokens.swift`.
         .preferredColorScheme(.light)
+        #if DEBUG
+        .task {
+            guard model.autoSignInRequested else { return }
+            model.autoSignInRequested = false
+            await model.signIn()
+            switch model.screenAfterSignIn {
+            case "assign": model.bracelet = SampleData.braceletA; model.screen = .assign
+            case "bar": model.screen = .barMenu
+            default: break
+            }
+        }
+        #endif
         .animation(.easeOut(duration: 0.25), value: model.screen)
         .animation(.easeOut(duration: 0.25), value: model.isScanning)
         .alert(

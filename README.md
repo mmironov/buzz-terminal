@@ -68,6 +68,31 @@ Screens: `reception`, `bar`, `assign`, `assign-evening`, `participant`,
 ./ios/scripts/screenshots.sh   # every screen to ios/screenshots/
 ```
 
+### Running against Firestore
+
+The app uses the in-memory fixtures by default. `-sbBackend firebase` switches it
+to `FirebaseTerminalRepository`, and `-sbEmulator` points that at local emulators
+rather than the live festival database:
+
+```bash
+cd backend && firebase emulators:start --only firestore,auth --project swing-buzz
+```
+
+```bash
+cd backend && ./seed-emulator.sh    # staff accounts with role claims, a few participants, drinks
+```
+
+```bash
+./ios/scripts/run.sh -sbBackend firebase -sbEmulator -sbSignIn reception@example.test festival26 -sbScreen assign
+```
+
+`-sbSignIn` signs in on launch so an emulator run needs nobody at the keyboard;
+`-sbScreen` is then applied *after* sign-in, so what you see came from the
+repository rather than from fixtures. All DEBUG-only.
+
+Drop `-sbEmulator` to talk to the real `swing-buzz` project. Do that deliberately:
+those writes are real, and the ledger is append-only by design.
+
 ## Tests
 
 ```bash
@@ -134,9 +159,9 @@ Honest list of what is faked in iteration 1, and when it stops being faked.
 
 | Area | Current state | Fixed in |
 | --- | --- | --- |
-| Auth | any `reception*` / `bar*` address; password ignored | 2 — Firebase Auth |
-| Data | in-memory fixtures, lost on relaunch | 2 — Firestore |
-| Balances | client-side arithmetic | 2 — Firestore transactions |
+| Auth | real Firebase Auth exists behind `-sbBackend firebase`; the fixture path still accepts any `reception*` / `bar*` address | 2 — flip the default |
+| Data | fixtures by default; Firestore behind a flag | 2 — flip the default |
+| Balances | ledger + rules-enforced balance in Firestore; the fixture path is client-side arithmetic | 2 — flip the default |
 | Offline | banner and queue count are cosmetic; no reachability, no queue | 3 — write-behind queue |
 | NFC | simulated chip picker | 3 — Core NFC (needs a device + entitlement) |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |

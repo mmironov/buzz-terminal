@@ -5,16 +5,27 @@ struct BuzzTerminalApp: App {
     /// One model for the whole app, created once and handed down through the
     /// environment. `@State` (not `@StateObject`) is correct here because
     /// `AppModel` is `@Observable`, not `ObservableObject`.
-    @State private var model = AppModel()
+    @State private var model: AppModel
 
     init() {
-        // Before the model does anything, so a Firebase-backed repository could
-        // be constructed here later. Currently a no-op beyond starting the SDK:
-        // the app is still wired to InMemoryTerminalRepository.
         FirebaseBootstrap.configureIfAvailable()
 
         #if DEBUG
-        model.apply(LaunchOverrides.fromProcess)
+        let overrides = LaunchOverrides.fromProcess
+        if overrides.useEmulators, FirebaseBootstrap.isConfigured {
+            FirebaseBootstrap.useEmulators()
+        }
+        // Fixtures by default. Firebase is opt-in until it has been exercised
+        // against the real rules — see docs/firebase-setup.md.
+        let repository: any TerminalRepository =
+            overrides.wantsFirebase && FirebaseBootstrap.isConfigured
+                ? FirebaseTerminalRepository()
+                : InMemoryTerminalRepository()
+        let model = AppModel(repository: repository)
+        model.apply(overrides)
+        _model = State(initialValue: model)
+        #else
+        _model = State(initialValue: AppModel(repository: InMemoryTerminalRepository()))
         #endif
     }
 
