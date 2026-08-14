@@ -165,7 +165,11 @@ charged", and it is now literally true rather than intended.
   the service-account key. `npm run headers` first — it prints the live header row
   and a per-status count, so the column spellings can be confirmed before anything
   is written.
-- **Firebase is opt-in.** `-sbBackend firebase`; fixtures remain the default so the
+- ~~**Firebase is opt-in.**~~ Reversed after iteration 2 closed: Firestore is the
+  default in debug and release, and a release build with no
+  `GoogleService-Info.plist` refuses to launch rather than falling back to a
+  convincing fake till. What follows was true at the time of writing:
+  `-sbBackend firebase`; fixtures remain the default so the
   screenshot pass and offline development keep working with no network. Flipping it
   is a one-line change when you want it.
 - **Offline is still cosmetic.** The banner and queue count are UI only. Iteration 3.

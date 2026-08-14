@@ -59,9 +59,12 @@ ExpirationDate:  Fri Aug 21 14:57:19 EET 2026
 When it expires the app stops launching on the phone. Rebuilding from Xcode issues
 a fresh one; a paid membership makes them last a year instead.
 
-Note that a plain ⌘R install runs the **in-memory fixtures**, so it exercises the
-design and not the backend. To point the phone at production, add
-`-sbBackend firebase` to the scheme's launch arguments — see the README.
+A plain ⌘R install now talks to **production**, since Firestore is the default
+backend. Add `-sbBackend memory` to the scheme's launch arguments for the offline
+fixture version instead.
+
+Note that the install you did on 2026-08-14 predates that change, so it ran the
+fixtures: it exercised the design on real hardware, not the backend.
 
 ## One-time setup
 

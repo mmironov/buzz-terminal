@@ -14,7 +14,7 @@ import Foundation
 /// `payreview-blocked`, `payreview-unassigned`, `assign-evening`,
 /// `evening-participant`.
 /// Add `-sbOffline` for the offline banner, `-sbScanning` for the scan sheet,
-/// `-sbBackend firebase` to use Firestore rather than the fixtures, and
+/// `-sbBackend memory` to use the in-memory fixtures rather than Firestore, and
 /// `-sbEmulator` to point Firebase at the local emulators.
 ///
 /// Wrapped in `#if DEBUG` so none of it exists in a release build. Useful beyond
@@ -24,10 +24,14 @@ struct LaunchOverrides {
     var screen: String?
     var offline = false
     var scanning = false
-    /// `-sbBackend firebase` to talk to Firestore; anything else keeps the
-    /// in-memory fixtures. Defaults to fixtures so the screenshot pass and the
-    /// prototype flows keep working with no network at all.
-    var backend = "memory"
+    /// `-sbBackend memory` for the in-memory fixtures; anything else, including
+    /// the default, talks to Firestore.
+    ///
+    /// It used to be the other way round. Firebase became the default once it was
+    /// the real backend, because a debug build that behaves differently from the
+    /// release build is a trap — you exercise the fixtures all week and ship
+    /// Firestore. The screenshot pass opts out explicitly.
+    var backend = "firebase"
     /// `-sbEmulator` sends Firebase at localhost instead of the real project.
     var useEmulators = false
     /// `-sbSignIn <email> <password>` signs in on launch. For driving an emulator
@@ -56,7 +60,7 @@ struct LaunchOverrides {
     }
 
     var isActive: Bool { screen != nil || offline || scanning || signInEmail != nil }
-    var wantsFirebase: Bool { backend == "firebase" }
+    var usesFixtures: Bool { backend == "memory" }
 }
 
 extension AppModel {

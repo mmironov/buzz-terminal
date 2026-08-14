@@ -34,12 +34,22 @@ open ios/BuzzTerminal.xcodeproj
 ./ios/scripts/run.sh
 ```
 
-Sign in with either demo account on the login screen — the buttons fill the
-fields for you. Any address starting `reception` or `bar` works and the password
-is ignored (see *Known simplifications*).
+That talks to the **real** `swing-buzz` project, so it wants a real staff account.
+For the self-contained fixture version — no network, no credentials, invented
+people:
+
+```bash
+./ios/scripts/run.sh -sbBackend memory
+```
+
+On that path the login screen offers two demo buttons that fill the fields for you,
+any address starting `reception` or `bar` works, and the password is ignored. Those
+buttons are hidden on the Firebase path, because there they cannot work.
 
 There is no NFC hardware on the Simulator, so the scan sheet offers a
-**"Prototype · simulate a bracelet"** panel with the five fixture chips:
+**"Prototype · simulate a bracelet"** panel with the five fixture chips. These
+exist on the `-sbBackend memory` path only — production has its own bracelets, or
+none yet:
 
 | Chip | What it exercises |
 | --- | --- |
@@ -68,11 +78,12 @@ Screens: `reception`, `bar`, `assign`, `assign-evening`, `participant`,
 ./ios/scripts/screenshots.sh   # every screen to ios/screenshots/
 ```
 
-### Running against Firestore
+### Running against the emulators
 
-The app uses the in-memory fixtures by default. `-sbBackend firebase` switches it
-to `FirebaseTerminalRepository`, and `-sbEmulator` points that at local emulators
-rather than the live festival database:
+**Firestore is the default backend**, in debug and release alike — deliberately the
+same, so what you develop against is what staff run. `-sbBackend memory` opts out
+to the fixtures; `-sbEmulator` keeps Firebase but points it at local emulators
+instead of the live festival database:
 
 ```bash
 cd backend && firebase emulators:start --only firestore,auth --project swing-buzz
@@ -83,15 +94,16 @@ cd backend && ./seed-emulator.sh    # staff accounts with role claims, a few par
 ```
 
 ```bash
-./ios/scripts/run.sh -sbBackend firebase -sbEmulator -sbSignIn reception@example.test festival26 -sbScreen assign
+./ios/scripts/run.sh -sbEmulator -sbSignIn reception@example.test festival26 -sbScreen assign
 ```
 
 `-sbSignIn` signs in on launch so an emulator run needs nobody at the keyboard;
 `-sbScreen` is then applied *after* sign-in, so what you see came from the
 repository rather than from fixtures. All DEBUG-only.
 
-Drop `-sbEmulator` to talk to the real `swing-buzz` project. Do that deliberately:
-those writes are real, and the ledger is append-only by design.
+Drop `-sbEmulator` and you are on the real `swing-buzz` project — which is the
+default, so it is what you get by typing nothing. Those writes are real and the
+ledger is append-only by design, so `npm run reset` is how you undo a test session.
 
 ### Onto staff phones
 
@@ -247,9 +259,9 @@ Honest list of what is still faked, and when it stops being faked.
 
 | Area | Current state | Fixed in |
 | --- | --- | --- |
-| Auth | real Firebase Auth exists behind `-sbBackend firebase`; the fixture path still accepts any `reception*` / `bar*` address | 2 — flip the default |
-| Data | fixtures by default; Firestore behind a flag | 2 — flip the default |
-| Balances | ledger + rules-enforced balance in Firestore; the fixture path is client-side arithmetic | 2 — flip the default |
+| Auth | ✅ real Firebase Auth, custom-claim roles. `-sbBackend memory` still accepts any `reception*` / `bar*` address, and that path only | — |
+| Data | ✅ Firestore by default, debug and release alike | — |
+| Balances | ✅ ledger + rules-enforced balance. The `-sbBackend memory` path is client-side arithmetic | — |
 | Offline | banner and queue count are cosmetic; no reachability, no queue | 3 — write-behind queue |
 | NFC | simulated chip picker | 3 — Core NFC (needs a device + entitlement) |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
@@ -298,8 +310,11 @@ The production menu is **Water 2 €, Beer 4 €, Gin & Tonic 6 €**, seeded by
 The ten drinks in `SampleData` are the design prototype's invention and stay on the
 fixture path only.
 
-One thing still stands between iteration 2 and a festival: Firebase is opt-in — see
-the table above.
+A release build talks to Firestore or refuses to launch. There is no fixture
+fallback outside DEBUG, on purpose: a till that convincingly pretends to work —
+accepting any `reception*` login, serving invented drinks, taking payments that go
+nowhere — is far worse in a bartender's hands than one that will not start. The
+reasoning is in `App/BuzzTerminalApp.swift`.
 
 ## Credits
 

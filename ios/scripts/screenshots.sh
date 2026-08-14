@@ -19,7 +19,10 @@ mkdir -p "$OUT"
 shoot() {
   local name=$1; shift
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
-  xcrun simctl launch "$UDID" "$BUNDLE_ID" ${1+"$@"} >/dev/null
+  # -sbBackend memory on every launch: the screenshot pass documents the design,
+  # so it must not depend on a network, and must never write to a real database.
+  # Firebase is the app's default since it became the real backend.
+  xcrun simctl launch "$UDID" "$BUNDLE_ID" -sbBackend memory ${1+"$@"} >/dev/null
   sleep 1.8
   # `simctl io screenshot` rejects relative paths, hence $OUT being absolute.
   xcrun simctl io "$UDID" screenshot --type=png "$OUT/$name.png" 2>/dev/null
