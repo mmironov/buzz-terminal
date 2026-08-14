@@ -1,15 +1,16 @@
-# Swing Buzz — Staff Terminal (iOS)
+# Swing Buzz — Staff Terminal
 
 Festival staff app for bracelet check-in, balance top-up and bar payments.
-Native SwiftUI, ported from the Claude Design prototype
-`Swing Buzz Staff App.dc.html` on the **Modernist** design system.
+Ported from the Claude Design prototype `Swing Buzz Staff App.dc.html` on the
+**Modernist** design system: SwiftUI in `ios/`, Jetpack Compose in `android/`,
+both against the same Firebase backend in `backend/`.
 
-An Android sibling in Jetpack Compose follows once the iOS app is settled; both
-will share a Firebase backend.
+iOS is the finished one and everything down to "The Android app" describes it.
+Android is in progress; that section says exactly how far.
 
 ---
 
-## One-time setup
+## iOS: one-time setup
 
 This Mac has Xcode installed but `xcode-select` pointing at the Command Line
 Tools, which stops `xcodebuild` from running. Fix it once:
@@ -22,7 +23,7 @@ The scripts in `ios/scripts/` set `DEVELOPER_DIR` themselves so they work either
 but Xcode's own simulator tooling and the live-preview integrations need the
 pointer to be correct.
 
-## Running it
+## Running the iOS app
 
 ```bash
 open ios/BuzzTerminal.xcodeproj
@@ -162,9 +163,84 @@ Restart the terminals afterwards: `FirebaseTerminalRepository` caches the next
 evening-ticket number for the life of the process, and a wipe puts that cache out
 of step with the database.
 
+## The Android app
+
+Jetpack Compose, the same Modernist design system, the same `swing-buzz` project.
+Two Gradle modules:
+
+```
+android/
+  domain/      the festival's rules — a plain Kotlin JVM module
+  app/         Compose UI, the state machine, everything Android-only
+  scripts/     build, test, run
+```
+
+`:domain` has no Android dependency at all, which is how the iOS rule that
+`Domain/` imports only Foundation is enforced on this side: you cannot reach for
+a Composable or a Context in it, because neither is on the compile classpath. It
+holds the models, the money arithmetic, the charge decision, the keypad, the
+repository seam and the fixture backend — so all of that tests in seconds with
+no emulator in sight.
+
+```bash
+cd android && ./scripts/run.sh
+```
+
+Builds, installs and launches. It boots the AVD named by `$AVD` (default
+`BuzzPhone`) only when nothing is attached already, so plugging in a real phone
+and running it uses the phone.
+
+```bash
+cd android && ./scripts/build.sh    # compile only, no device
+```
+
+`./scripts/test.sh` runs the domain suite; it is described under "Tests" below.
+
+There is no JDK on this Mac's `PATH`. `scripts/_env.sh` points `JAVA_HOME` at the
+one Android Studio ships — which is also the one Studio itself builds with, so
+the IDE and the command line agree. That is the same trick `ios/scripts/_env.sh`
+plays with `DEVELOPER_DIR`.
+
+### What works today
+
+Sign-in against the fixture backend, on the real design system: the demo
+accounts, the inline refusal with its leading accent rule, and a signed-in
+session that has loaded the catalogue. Every other screen lands on a placeholder
+that names itself, so a wrong transition is loud rather than blank.
+
+`TerminalRepository` and `AppModel` are complete ports, so what remains is
+screens rather than plumbing. The Firebase implementation is not written yet —
+Android currently runs on fixtures only, which is the one place it is behind iOS
+by design rather than by omission.
+
+Archivo comes across as the same variable `.ttf` the iOS app carries, asked for
+four weights through `FontVariation` rather than shipped as four static cuts.
+`designsystem/Gallery.kt` renders the whole system on one page — an Android
+Studio preview now that sign-in owns the launch screen — and carries a weight
+check, because the failure it guards against is invisible: Archivo's variable
+default is `wght` 600, so a family that loads but never applies its variation
+settings renders everything at semibold and reads as a design choice.
+
+### Toolchain, and why these versions
+
+| | |
+| --- | --- |
+| **AGP 9.2.1** | deliberately not the newest. Studio refuses to open a project whose AGP is ahead of it, and an IDE that cannot open the project is worse than being one release behind. Raise it when Studio is updated. |
+| **Gradle 9.5** | what AGP 9 requires. |
+| **no `kotlin-android` plugin** | from AGP 9 the Android plugin brings Kotlin itself and applying both is an error. `:domain` still applies `kotlin.jvm`, because it is not an Android module. |
+| **compileSdk 37** | not a preference: androidx 1.12 and core-ktx 1.19 refuse to be compiled against 36. |
+| **minSdk 26** | `java.time`, which the domain uses for check-in timestamps, and variable-font support, which Archivo needs. |
+
+Two AVD settings that `avdmanager` gets wrong by default, both of which look
+exactly like a hung emulator rather than a misconfiguration: `hw.gpu.enabled=no`
+renders a black screen forever on API 37, and `hw.keyboard=no` makes typing an
+address into the sign-in field impossible from the host keyboard.
+
+---
+
 ## Tests
 
-Three suites, three runners, **125 tests**, all green.
+Four suites, four runners, **182 tests**, all green.
 
 ```bash
 ./ios/scripts/test.sh
@@ -175,6 +251,25 @@ keypad, the check-in search, the charge decision, participant lifecycle, evening
 tickets, money arithmetic. `Domain/` imports `Foundation` only, so the whole run
 finishes in 0.02s once it has built. These are the parts most likely to be broken
 by a well-meaning change, so run them before you push.
+
+```bash
+cd android && ./scripts/test.sh
+```
+
+**57 Android tests in 13 suites**, plain JVM, no emulator. Thirty-six of them are
+the iOS suite case for case — same rules, same order — so a change to one side
+should show up as a change to both, and a divergence in the two apps' behaviour
+is a failing test rather than a discovery at the festival. The keypad's 999 €
+cap is covered here and not there; that rule was written on the iOS side and
+never asserted.
+
+The other 21 cover the fixture repository, which the iOS side does not test at
+all — it is exercised only by using the app. They are worth their file because
+the rules they assert are the rules `firestore.rules` enforces with real money
+behind them: a blocked bracelet buying nothing whatever its balance, a refused
+charge leaving the balance untouched, a second chip for the same guest refused
+rather than stranding the first one's, and twenty simultaneous top-ups all
+landing.
 
 ```bash
 cd backend/rules-tests && ./test.sh
@@ -208,7 +303,7 @@ wrong.
 
 ---
 
-## How it is put together
+## How the iOS app is put together
 
 ```
 ios/                       the SwiftUI app
@@ -228,7 +323,10 @@ backend/                   shared by every client
   firebase.json
   import-roster/           Google Sheet → Firestore
 docs/                      schema, setup, per-iteration walkthroughs
-android/                   iteration 4
+android/                   the Jetpack Compose app
+  domain/                  models, rules, the repository seam — no Android
+  app/                     Compose UI, AppModel, the Android-only bits
+  scripts/                 build, test, run
 ```
 
 Nothing under `backend/` is part of the Xcode project — the two synchronized
@@ -253,9 +351,10 @@ and no merge conflict.
 
 ---
 
-## Known simplifications
+## Known simplifications (iOS)
 
-Honest list of what is still faked, and when it stops being faked.
+Honest list of what is still faked, and when it stops being faked. Android's
+equivalent is "The Android app" above — it is behind on more than this.
 
 | Area | Current state | Fixed in |
 | --- | --- | --- |
@@ -303,7 +402,12 @@ Two intentional deviations from the prototype, both improvements:
 3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
    NFC needs a physical device and the entitlement, so it is the first thing here
    the Simulator cannot verify.
-4. **Iteration 4** — Android app in Jetpack Compose against the same backend.
+4. 🔄 **Iteration 4** — Android app in Jetpack Compose against the same backend.
+   In progress: Gradle project, the domain ported with its tests, Modernist in
+   Compose, the repository seam, the `AppModel` state machine, and sign-in
+   running on fixtures. Still to do: the reception and bar screens, then a
+   `FirebaseTerminalRepository` so it talks to `swing-buzz` rather than to
+   `SampleData`. Details in "The Android app" above.
 
 The production menu is **Water 2 €, Beer 4 €, Gin & Tonic 6 €**, seeded by
 `npm run seed-drinks -- --apply` and owned by the web admin panel once that exists.
@@ -318,5 +422,6 @@ reasoning is in `App/BuzzTerminalApp.swift`.
 
 ## Credits
 
-Archivo by Omnibus-Type, under the SIL Open Font License — see
-`ios/BuzzTerminal/Resources/Fonts/OFL.txt`.
+Archivo by Omnibus-Type, under the SIL Open Font License. Both apps ship the
+same variable `.ttf`; the licence travels with each copy —
+`ios/BuzzTerminal/Resources/Fonts/OFL.txt` and `android/app/licenses/OFL.txt`.
