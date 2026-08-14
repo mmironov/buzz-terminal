@@ -62,6 +62,7 @@ protocol TerminalRepository: Sendable {
 /// Failures the terminal knows how to talk about.
 enum TerminalError: Error, Equatable, LocalizedError {
     case unknownAccount
+    case noRoleAssigned
     case braceletNotAssigned
     case braceletAlreadyPaired
     case eveningSequenceExhausted
@@ -72,7 +73,9 @@ enum TerminalError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unknownAccount:
-            "Unknown account. Use one of the staff logins below."
+            "Unknown account or wrong password."
+        case .noRoleAssigned:
+            "This account has no role yet. An organiser must grant reception or bar access."
         case .braceletNotAssigned:
             "This bracelet is not paired to anybody yet."
         case .braceletAlreadyPaired:
