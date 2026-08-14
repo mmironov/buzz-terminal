@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The only two Modernist colours the *platform* needs to know about: the window
+  background it paints before Compose starts, and the system bars. Everything
+  else lives in designsystem/Tokens.kt, which is the single source of truth —
+  these two are duplicated here only because a theme attribute cannot read Kotlin.
+-->
+<resources>
+    <color name="sb_background">#FFF3F2F2</color>
+    <color name="sb_ink">#FF201E1D</color>
+</resources>

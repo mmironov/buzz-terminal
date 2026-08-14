@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Modernist is a single-look system. `forceDarkAllowed=false` is the Android
+      equivalent of the iOS app pinning itself to the light appearance in
+      RootView: without it, a phone in dark mode would have the platform invert
+      our fixed palette and produce a design nobody drew.
+    -->
+    <style name="Theme.BuzzTerminal" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/sb_background</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:statusBarColor">@color/sb_background</item>
+        <item name="android:navigationBarColor">@color/sb_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.BuzzTerminal">
+
+        <!--
+          Portrait only, like the iOS app: every screen in the design is a single
+          402-wide column, and a till that rotates while somebody is holding a
+          bracelet to it is a distraction, not a feature.
+
+          adjustResize so the keyboard pushes the sign-in form up rather than
+          covering the button underneath it.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

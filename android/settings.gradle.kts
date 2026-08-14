@@ -27,3 +27,4 @@ rootProject.name = "BuzzTerminal"
 // enforced here. You cannot accidentally reach for a Composable or a Context in
 // it, because neither is on the compile classpath.
 include(":domain")
+include(":app")
