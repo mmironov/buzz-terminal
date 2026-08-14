@@ -1,8 +1,15 @@
 # Getting the app onto staff phones
 
-No App Store listing. **TestFlight**, with an external group and a public link:
-staff tap a link, install TestFlight, and get the app — no UDIDs collected, no
-App Store Connect access handed out, and updates arrive over the air.
+Two platforms, two mechanisms, one idea: a link, no store listing, no device ids
+collected.
+
+**iOS — TestFlight**, external group, public link: staff tap a link, install
+TestFlight, and get the app. Needs the paid membership. Everything down to
+"The Android app" below is about this.
+
+**Android — Firebase App Distribution**, in the same `swing-buzz` project the app
+already authenticates against. Free, no Play account, no review. Testers get an
+email; the link installs the APK.
 
 ---
 
@@ -193,3 +200,134 @@ the other reason the membership unblocks the next iteration, not just this one.
 **iPad.** `TARGETED_DEVICE_FAMILY = 1`, iPhone only. If reception is going to run
 on an iPad, change it before the layouts are frozen — the design is portrait-only
 and 66pt display type, and an iPad would want a pass over both.
+
+---
+
+# The Android app
+
+**Firebase App Distribution.** Chosen over the alternatives because it needs no
+new account and no fee: the `swing-buzz` project already exists, the app already
+talks to it, and `firebase-tools` is already how the rules get deployed. Google
+Play's internal-testing track costs $25 once and adds an app record, a bundle, a
+data-safety declaration and a review step — worth it only if you want staff
+phones to auto-update through Play without anyone thinking about it. A plain
+signed APK works too and is a fine fallback, but it has no update path.
+
+No Gradle plugin for the upload: the Firebase CLI already has
+`appdistribution:distribute`, and it authenticates with the `firebase login` you
+already have. A plugin would have meant a service account and one more pinned
+version for no gain.
+
+## The one thing that will bite you
+
+**The keystore is not recoverable.** Android identifies an app by its signing
+key, so an update signed with a different key is refused — the only way out is
+uninstalling from every phone, which takes the app's local data with it. There is
+no Apple-style "revoke and reissue" here, and unlike Play App Signing there is no
+copy held by Google.
+
+So the `.jks` and its passwords need to live somewhere that is not one laptop.
+Treat losing them as equivalent to losing the app.
+
+The other trap is quieter: **`versionCode` must not go backwards.** A device
+refuses an APK numbered lower than the one installed, and the failure looks like
+"the install worked but nothing changed". It is derived from `git rev-list
+--count HEAD`, so it rises by itself and the same commit always yields the same
+number — as long as builds come from a checkout, not a zip.
+
+## One-time setup
+
+### 1. Create the signing key
+
+Once, and never again for the life of the app:
+
+```bash
+keytool -genkeypair -v \
+  -keystore android/swing-buzz-release.jks \
+  -alias swing-buzz -keyalg RSA -keysize 4096 -validity 10000
+```
+
+10000 days is ~27 years. A key that expires mid-festival cannot sign an update,
+and the number costs nothing, so make it absurd.
+
+### 2. Point the build at it
+
+`android/keystore.properties`, gitignored along with `*.jks`:
+
+```properties
+storeFile=swing-buzz-release.jks
+storePassword=…
+keyAlias=swing-buzz
+keyPassword=…
+```
+
+`storeFile` is relative to `android/`. Without this file the release variant
+still builds — it just comes out unsigned, which is what a fresh clone and CI
+want, and Android refuses to install it so it cannot be mistaken for a real one.
+
+### 3. Enable App Distribution
+
+console.firebase.google.com → the `swing-buzz` project → **Release & Monitor →
+App Distribution → Get started**. Then *Testers & Groups* → add a group. Name it
+`staff` if you want the commands below to work unchanged.
+
+Adding testers by email is enough; they do not need Google accounts tied to
+anything, and they never see the Firebase console.
+
+## Every build
+
+```bash
+./android/scripts/release.sh --distribute --group staff
+```
+
+Builds the signed APK, verifies it really is signed (`jarsigner -verify`, because
+a filename proves nothing and an unsigned APK fails on the device rather than in
+the script), and uploads it with the last commit subject as the release notes.
+
+Useful variants:
+
+```bash
+./android/scripts/release.sh                    # build only, then adb install -r
+./android/scripts/release.sh --unsigned         # compile check, no keystore needed
+./android/scripts/release.sh --distribute --testers someone@example.fest
+```
+
+Uploading with neither `--group` nor `--testers` is legal and does nothing
+visible — the build waits in the console for an audience. The script says so
+rather than printing a tick.
+
+### What to send staff
+
+The email from Firebase has the link. On first install a phone will ask to allow
+installs from whatever app opened it — that prompt is per-source and expected;
+Android has required it since 8.0. The App Tester app is optional: it is worth
+installing for people who will take several builds, because it notifies them,
+but a link and a browser is enough for one.
+
+## Where this currently stands
+
+Verified on 2026-08-14:
+
+| step | |
+| --- | --- |
+| Release variant compiles unsigned | ✅ `app-release-unsigned.apk` |
+| `versionCode` from the commit count | ✅ 44, matching `git rev-list --count HEAD` |
+| Signing config picks up `keystore.properties` | ✅ rehearsed with a throwaway key, since destroyed |
+| Signed APK installs on a device | ✅ Pixel 10 Pro emulator |
+| The installed release build reaches production | ✅ logs `Firebase configured for project swing-buzz`, no demo shortcuts offered |
+| Upload to App Distribution | ⬜ needs the console side of step 3 |
+
+The last row is the only one that needs you: everything up to it is proven, and
+the upload itself is one command once the group exists.
+
+## Later
+
+**Play internal testing** stays available if auto-updating becomes worth $25.
+Note that Play requires an app bundle rather than an APK, and that enrolling in
+Play App Signing changes who holds the key — which fixes the unrecoverable-key
+problem above, at the cost of Google holding it.
+
+**NFC** (iteration 3) needs no manifest work yet, but `android.permission.NFC`
+and a `<uses-feature>` will want deciding then: required, and the app will not
+install on a phone without NFC hardware; optional, and it must degrade to the
+simulator panel at runtime.

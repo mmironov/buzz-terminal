@@ -255,6 +255,25 @@ check, because the failure it guards against is invisible: Archivo's variable
 default is `wght` 600, so a family that loads but never applies its variation
 settings renders everything at semibold and reads as a design choice.
 
+### Onto staff phones
+
+**Firebase App Distribution**, in the same `swing-buzz` project — free, no Play
+account, no review. Full runbook in `docs/distribution.md`.
+
+```bash
+./android/scripts/release.sh --distribute --group staff
+```
+
+`versionCode` is `git rev-list --count HEAD`, the same trick the iOS build number
+uses: it always rises, and a device silently keeps the old build if it ever went
+backwards.
+
+Signing reads `android/keystore.properties`, which is gitignored along with
+`*.jks`. Without it the release variant still builds — unsigned, which no device
+will install, so it cannot pass for a real one. **The keystore is not
+recoverable**: Android refuses an update signed by a different key, and the only
+way out is uninstalling from every phone.
+
 ### Toolchain, and why these versions
 
 | | |
