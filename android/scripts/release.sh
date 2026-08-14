@@ -14,13 +14,17 @@ source "$(dirname "$0")/_env.sh"
 
 DISTRIBUTE=no
 UNSIGNED=no
-GROUPS=""
+# Not GROUPS: bash owns that name. It is a built-in array of the current user's
+# group ids, an assignment to it is silently ignored, and "$GROUPS" then expands
+# to the first gid — 20 on macOS, whose group is called, of all things, "staff".
+# So `--group staff` quietly became `--groups 20` and the API answered 404.
+GROUP_ALIASES=""
 TESTERS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --distribute) DISTRIBUTE=yes ;;
     --unsigned) UNSIGNED=yes ;;
-    --group) GROUPS="${2:?--group needs a name}"; shift ;;
+    --group) GROUP_ALIASES="${2:?--group needs a name}"; shift ;;
     --testers) TESTERS="${2:?--testers needs a comma-separated list}"; shift ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -129,13 +133,13 @@ for client in data['client']:
 ")
 [ -n "$APP_ID" ] || { echo "No app id for fest.swingbuzz.terminal in google-services.json" >&2; exit 1; }
 
-NOTES="$(git log -1 --pretty format:'%s')"$'\n\n'"$(git rev-parse --short HEAD) · version code $VERSION_CODE"
+NOTES="$(git log -1 --pretty=format:%s)"$'\n\n'"$(git rev-parse --short HEAD) · version code $VERSION_CODE"
 
 DISTRIBUTE_ARGS=(appdistribution:distribute "$APK" --app "$APP_ID" --release-notes "$NOTES")
-[ -n "$GROUPS" ] && DISTRIBUTE_ARGS+=(--groups "$GROUPS")
+[ -n "$GROUP_ALIASES" ] && DISTRIBUTE_ARGS+=(--groups "$GROUP_ALIASES")
 [ -n "$TESTERS" ] && DISTRIBUTE_ARGS+=(--testers "$TESTERS")
 
-if [ -z "$GROUPS" ] && [ -z "$TESTERS" ]; then
+if [ -z "$GROUP_ALIASES" ] && [ -z "$TESTERS" ]; then
   # Uploading with no audience is legal and does nothing visible — the build sits
   # in the console until somebody assigns it. Say so rather than printing a tick.
   echo "  No --group or --testers: uploading only. Assign it in the console afterwards."
