@@ -276,14 +276,31 @@ keyPassword=…
 still builds — it just comes out unsigned, which is what a fresh clone and CI
 want, and Android refuses to install it so it cannot be mistaken for a real one.
 
-### 3. Enable App Distribution
+### 3. Create the tester group
 
-console.firebase.google.com → the `swing-buzz` project → **Release & Monitor →
-App Distribution → Get started**. Then *Testers & Groups* → add a group. Name it
-`staff` if you want the commands below to work unchanged.
+From the CLI, which is less trouble than finding the page — the console has moved
+App Distribution between **Release & Monitor**, **Run** and elsewhere depending on
+the layout you get, and the direct URL is
+`console.firebase.google.com/project/swing-buzz/appdistribution`:
 
-Adding testers by email is enough; they do not need Google accounts tied to
-anything, and they never see the Firebase console.
+```bash
+firebase appdistribution:groups:create "Staff" staff --project swing-buzz
+firebase appdistribution:testers:add you@example.fest --group-alias staff --project swing-buzz
+```
+
+The alias `staff` is what `release.sh --group staff` looks for.
+
+**Do not add testers without `--group-alias`.** It registers them on the project
+and in no group, so a build distributed to `staff` never reaches them, and
+nothing reports a problem — `appdistribution:testers:list` simply shows an empty
+Groups column. There is no separate `groups:add-testers` command; this flag is
+the only way in.
+
+Testers sign in with a **Google account** for the address they were invited at,
+so an address that is not a Google account may not get through the tester portal.
+Confirm that with one person before collecting addresses from the whole team — if
+it is a problem, that is the argument for Play internal testing, where installs
+come through the Play Store instead.
 
 ## Every build
 
@@ -337,10 +354,27 @@ Verified on 2026-08-14:
 | The signature check catches an unsigned APK | ✅ `apksigner` 0/1; `jarsigner` was 0/0 and has been replaced |
 | Signed APK installs on a device | ✅ Pixel 10 Pro emulator |
 | The installed release build reaches production | ✅ logs `Firebase configured for project swing-buzz`, no demo shortcuts offered |
-| Upload to App Distribution | ⬜ needs the console side of step 3 |
+| Upload to App Distribution | ✅ **1.0 (47)**, signed `2ccb40f6…`, distributed to `staff` |
+| Install from the tester link on a real phone | ⬜ yours to confirm |
 
-The last row is the only one that needs you: everything up to it is proven, and
-the upload itself is one command once the group exists.
+App Distribution needed no console visit in the end — the group was created from
+the CLI, which also turned out to be how the service gets initialised:
+
+```bash
+firebase appdistribution:groups:create "Staff" staff --project swing-buzz
+firebase appdistribution:testers:add you@example.fest --group-alias staff --project swing-buzz
+```
+
+**`--group-alias` on `testers:add` is the part worth remembering.** Adding
+somebody as a tester puts them on the *project*, not in a group, and a build
+distributed to `staff` never reaches them — the Groups column in
+`appdistribution:testers:list` stays empty and nothing else complains. There is
+no `groups:add-testers` command; the flag on `testers:add` is the whole
+mechanism.
+
+Adding a tester after a release was distributed does not notify them about it.
+Re-run `release.sh --distribute --group staff`; it costs one upload and the
+service recognises the identical binary rather than duplicating it.
 
 ## Later
 
