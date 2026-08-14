@@ -296,11 +296,21 @@ nothing reports a problem — `appdistribution:testers:list` simply shows an emp
 Groups column. There is no separate `groups:add-testers` command; this flag is
 the only way in.
 
-Testers sign in with a **Google account** for the address they were invited at,
-so an address that is not a Google account may not get through the tester portal.
-Confirm that with one person before collecting addresses from the whole team — if
-it is a problem, that is the argument for Play internal testing, where installs
-come through the Play Store instead.
+Testers sign in with a **Google account** — but that is a smaller constraint than
+it sounds, and worth getting right before anyone starts collecting addresses. A
+Google account can be attached to *any* email address, not only Gmail or
+Workspace ones, so somebody whose festival address is elsewhere links it and
+signs in with it. Nobody has to move to Gmail. The cost is one sign-in, once:
+after accepting, a tester installs every later build without signing in again.
+
+**Invitations expire after 30 days and can be accepted only once.** Invite people
+in the week before the festival, not when you first think of it — an invitation
+sent in June is dead by August, and the failure arrives as a staff member with a
+dead link on the Friday.
+
+A tester can accept an invitation with *any* Google account, not only the one it
+was sent to. Harmless, but it means a forwarded invitation works, and the tester
+list will then show an address you never invited.
 
 ## Every build
 
@@ -336,11 +346,19 @@ rather than printing a tick.
 
 ### What to send staff
 
-The email from Firebase has the link. On first install a phone will ask to allow
-installs from whatever app opened it — that prompt is per-source and expected;
-Android has required it since 8.0. The App Tester app is optional: it is worth
-installing for people who will take several builds, because it notifies them,
-but a link and a browser is enough for one.
+> You will get an email from Firebase. Open it **on the phone**, tap the link,
+> and sign in with a Google account — it can be your existing email address
+> linked to Google, it does not have to be a Gmail one. Tap Download, then allow
+> the install when Android asks. Sign in to the app with the account and password
+> the organisers gave you.
+
+The "allow installs from this source" prompt is per-source and expected; Android
+has required it since 8.0. The App Tester app is optional — worth it for anyone
+who will take several builds, since it notifies them and skips the email round
+trip, but a link and a browser is enough for one.
+
+Verified end to end on 2026-08-14: invitation, Google sign-in, download, install,
+launch against production.
 
 ## Where this currently stands
 
@@ -355,7 +373,7 @@ Verified on 2026-08-14:
 | Signed APK installs on a device | ✅ Pixel 10 Pro emulator |
 | The installed release build reaches production | ✅ logs `Firebase configured for project swing-buzz`, no demo shortcuts offered |
 | Upload to App Distribution | ✅ **1.0 (47)**, signed `2ccb40f6…`, distributed to `staff` |
-| Install from the tester link on a real phone | ⬜ yours to confirm |
+| Install from the tester link on a real phone | ✅ confirmed on 2026-08-14 |
 
 App Distribution needed no console visit in the end — the group was created from
 the CLI, which also turned out to be how the service gets initialised:
