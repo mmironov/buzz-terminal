@@ -65,6 +65,40 @@ struct ScanOverlayView: View {
         .frame(width: 180, height: 180)
     }
 
+    /// One tappable chip. `label` is nil while a live status is still loading,
+    /// which leaves the id carrying the row rather than showing a placeholder
+    /// that would be mistaken for a status.
+    private func simulatorRow(
+        label: String?,
+        id: BraceletID,
+        emphasised: Bool = false
+    ) -> some View {
+        Button {
+            Task { await model.selectSimulatedBracelet(id) }
+        } label: {
+            HStack(spacing: 10) {
+                if let label {
+                    Text(label)
+                        .font(.sbBody(12.5))
+                        .foregroundStyle(emphasised ? Color.sbAccent300 : Color.sbNeutral100)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(id.rawValue)
+                        .font(.sbBody(11))
+                        .foregroundStyle(Color.sbNeutral100.opacity(0.55))
+                } else {
+                    Text(id.rawValue)
+                        .font(.sbBody(12.5))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SimulatorRowStyle())
+    }
+
     private var simulatorPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             SBKicker(
@@ -78,35 +112,29 @@ struct ScanOverlayView: View {
             .padding(.bottom, 9)
 
             VStack(spacing: 7) {
+                // Only off the fixtures, where the five fixed chips can be used
+                // up: pairing is permanent, so the first check-in retires one for
+                // good and there would otherwise be no way to rehearse check-in
+                // again without resetting the database.
+                if !model.runsOnFixtures {
+                    simulatorRow(
+                        label: "New chip, never seen",
+                        id: model.freshChip,
+                        emphasised: true
+                    )
+                }
+
                 ForEach(model.simulatedBracelets) { bracelet in
-                    Button {
-                        Task { await model.selectSimulatedBracelet(bracelet.id) }
-                    } label: {
-                        HStack(spacing: 10) {
-                            // The hints describe `SampleData`, so on any other
-                            // backend they are false — and confidently so, which
-                            // is worse than silence. With nothing truthful to say
-                            // about a chip until it is read, the id carries the
-                            // row on its own rather than trailing behind a lie.
-                            if model.runsOnFixtures {
-                                Text(bracelet.hint)
-                                    .font(.sbBody(12.5))
-                                    .multilineTextAlignment(.leading)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text(bracelet.id.rawValue)
-                                    .font(.sbBody(11))
-                                    .foregroundStyle(Color.sbNeutral100.opacity(0.55))
-                            } else {
-                                Text(bracelet.id.rawValue)
-                                    .font(.sbBody(12.5))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 9)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(SimulatorRowStyle())
+                    // The hints describe `SampleData`, so on a real backend they
+                    // are false — and confidently so, which is worse than silence.
+                    // What replaces them is not silence but the truth: one point
+                    // read per chip, so the row says what the database says.
+                    simulatorRow(
+                        label: model.runsOnFixtures
+                            ? bracelet.hint
+                            : model.simulatedChipStatus[bracelet.id],
+                        id: bracelet.id
+                    )
                 }
             }
         }

@@ -59,6 +59,17 @@ struct BraceletID: Hashable, Sendable, CustomStringConvertible {
     let rawValue: String
     init(_ rawValue: String) { self.rawValue = rawValue }
     var description: String { rawValue }
+
+    /// A chip id in the same four-byte shape a real NFC UID has, random enough
+    /// that the backend has certainly never seen it.
+    ///
+    /// Exists so "scan a new bracelet" stays rehearsable against a live database.
+    /// The fixture chips are a fixed list, and pairing is permanent by design, so
+    /// checking one in retires it for good.
+    static func fresh() -> BraceletID {
+        let bytes = (0..<4).map { _ in String(format: "%02X", Int.random(in: 0...255)) }
+        return BraceletID(bytes.joined(separator: ":"))
+    }
 }
 
 /// Identity of a person on the roster — the Firestore document id, derived from

@@ -214,6 +214,49 @@ final class AppModel {
 
     func beginScan(for purpose: ScanState.Purpose) {
         scan = ScanState(purpose: purpose)
+        freshChip = .fresh()
+        // Cleared, not left standing: a chip checked in a moment ago would
+        // otherwise still read "Not assigned" until the fresh reads land.
+        simulatedChipStatus = [:]
+        guard !runsOnFixtures else { return }
+        Task { await loadSimulatedChipStatuses() }
+    }
+
+    /// What the backend says about each simulated chip, keyed by chip id.
+    ///
+    /// Empty on the fixtures, where `SampleData`'s own hints are the truth and
+    /// need no lookup.
+    private(set) var simulatedChipStatus: [BraceletID: String] = [:]
+
+    /// A chip id nothing has ever seen, regenerated every time the overlay opens.
+    ///
+    /// The five fixture chips are a fixed list, so against a real backend the
+    /// first check-in consumes one permanently — after which "scan a new
+    /// bracelet" cannot be rehearsed again without resetting the database. This
+    /// row is the way back: a fresh id every time, guaranteed unassigned.
+    private(set) var freshChip: BraceletID = .fresh()
+
+    /// One point read per simulated chip, so the panel can say what is actually
+    /// true rather than what `SampleData` wishes were true.
+    private func loadSimulatedChipStatuses() async {
+        var statuses: [BraceletID: String] = [:]
+        for chip in simulatedBracelets.map(\.id) {
+            do {
+                guard let found = try await repository.participant(withBracelet: chip) else {
+                    statuses[chip] = "Not assigned"
+                    continue
+                }
+                statuses[chip] = found.isBlocked
+                    ? "\(found.name) · blocked"
+                    : "\(found.name) · \(found.balance)"
+            } catch {
+                // A chip whose status could not be read is left unlabelled rather
+                // than guessed at — the whole point of this panel is that it stops
+                // claiming things it does not know.
+                continue
+            }
+        }
+        simulatedChipStatus = statuses
     }
 
     func cancelScan() {
