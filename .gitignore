@@ -41,6 +41,14 @@ local.properties
 # real build input.
 .idea/
 
+# Android release signing. The keystore is the strongest credential in the
+# project: whoever holds it can publish an update that every staff phone will
+# install over the real app, and it can never be rotated for an app that is
+# already out there. keystore.properties carries its passwords in plain text.
+*.jks
+*.keystore
+keystore.properties
+
 # Firebase. Never commit these: the plist and the json identify the project, and
 # a service-account key is full admin access to it.
 GoogleService-Info.plist
