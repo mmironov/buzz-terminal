@@ -3,6 +3,23 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "//": "The web admin panel. `public` is relative to this file, so the panel's build output is reached by going up one level — moving either directory means editing the other. Vite emits hashed asset filenames, hence the long cache on everything except index.html, which must always be revalidated or a deploy would not reach a browser that already has it.",
+  "hosting": {
+    "public": "../web-admin/dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "//": "A single-page app: every path has to serve index.html, because the panel routes in the browser and Hosting would otherwise 404 on a reload.",
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      {
+        "source": "/assets/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  },
   "emulators": {
     "firestore": {
       "port": 8080

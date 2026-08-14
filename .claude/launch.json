@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "//": "The web admin panel. Needs the Firestore and Auth emulators already running from backend/ — see web-admin/README.md.",
+  "configurations": [
+    {
+      "name": "web-admin-emulator",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:emulator"],
+      "cwd": "web-admin",
+      "port": 5173
+    }
+  ]
+}

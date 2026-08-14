@@ -1,0 +1,645 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Modernist, for a desktop screen.
+
+   The same palette and the same rules as the terminals — the tokens below are
+   the ones transcribed into `ios/…/DesignSystem/Tokens.swift`, back in the
+   direction they came from. Three things carry the look, and all three are
+   deliberate rather than decorative:
+
+     · One typeface. Archivo, self-hosted from the very file the two apps bundle,
+       with tabular figures on everywhere so a column of balances lines up.
+     · No rounded corners, anywhere. `--radius-md: 0` is the design system's
+       own instruction, not an oversight.
+     · Structure by rule, not by whitespace. Hairlines inside a list, 2px
+       between sections.
+
+   Single-look on purpose: no dark variant. Modernist is "a near-mono red on
+   white", and inverting it would not be the same design — if a dark panel is
+   ever wanted it needs designing, not deriving. Same call the app made.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'Archivo';
+  /* The variable font, so one file covers 400 through 800. */
+  src: url('/Archivo.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --color-background: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201e1d;
+  --color-accent: #ec3013;
+  --color-divider: rgba(32, 30, 29, 0.4);
+
+  --ink-70: rgba(32, 30, 29, 0.7);
+  --ink-55: rgba(32, 30, 29, 0.55);
+  --ink-40: rgba(32, 30, 29, 0.4);
+
+  --sb-ok: #0d7a3a;
+  --sb-ok-tint: #e4f3e9;
+
+  --neutral-100: #f8f4f4;
+  --neutral-200: #eae7e7;
+  --neutral-300: #d7d3d3;
+  --neutral-500: #9b9797;
+  --accent-100: #fff2ef;
+  --accent-200: #ffe0d9;
+  --accent-700: #ae1800;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-md: 0;
+  --rule-hairline: 1px;
+  --rule-strong: 2px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: 'Archivo', system-ui, sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  border-radius: var(--radius-md);
+}
+
+/* ── The kicker ────────────────────────────────────────────────────────────
+   The small uppercase label above almost every block in the design. */
+
+.kicker {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+
+.kicker--accent {
+  color: var(--color-accent);
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────────── */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.masthead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-8) var(--space-4);
+  border-bottom: var(--rule-strong) solid var(--color-text);
+}
+
+.masthead h1 {
+  margin: var(--space-1) 0 0;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.masthead__who {
+  text-align: right;
+  color: var(--ink-55);
+  font-size: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--space-8);
+  border-bottom: var(--rule-hairline) solid var(--color-divider);
+  background: var(--color-background);
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: -1px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+.page {
+  flex: 1;
+  padding: var(--space-6) var(--space-8) var(--space-8);
+}
+
+/* ── Banners ───────────────────────────────────────────────────────────────── */
+
+.banner {
+  padding: var(--space-2) var(--space-8);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.banner--emulator {
+  background: var(--color-text);
+  color: var(--color-background);
+}
+
+.banner--error {
+  background: var(--accent-100);
+  color: var(--accent-700);
+  border-bottom: var(--rule-hairline) solid var(--color-accent);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.search {
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+  padding: var(--space-3);
+  background: #fff;
+  border: var(--rule-hairline) solid var(--color-divider);
+  color: var(--color-text);
+}
+
+.search:focus-visible,
+.field input:focus-visible,
+.field textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.count {
+  color: var(--ink-55);
+  font-size: 12px;
+}
+
+.filters {
+  display: flex;
+  gap: 0;
+  border: var(--rule-hairline) solid var(--color-divider);
+}
+
+.filters button {
+  appearance: none;
+  background: #fff;
+  border: none;
+  border-right: var(--rule-hairline) solid var(--color-divider);
+  padding: var(--space-2) var(--space-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+  cursor: pointer;
+}
+
+.filters button:last-child {
+  border-right: none;
+}
+
+.filters button[aria-pressed='true'] {
+  background: var(--color-text);
+  color: var(--color-background);
+}
+
+/* ── Table ─────────────────────────────────────────────────────────────────── */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-top: var(--rule-strong) solid var(--color-text);
+}
+
+.table th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+  border-bottom: var(--rule-hairline) solid var(--color-divider);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-3);
+  border-bottom: var(--rule-hairline) solid var(--neutral-200);
+  vertical-align: top;
+}
+
+.table tbody tr:hover td {
+  background: var(--neutral-100);
+}
+
+.table tbody tr.is-open td {
+  background: var(--neutral-100);
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mono {
+  font-feature-settings: 'tnum';
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.name {
+  font-weight: 700;
+}
+
+.sub {
+  color: var(--ink-55);
+  font-size: 12px;
+}
+
+.row-button {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  color: var(--color-text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--ink-40);
+  text-underline-offset: 3px;
+}
+
+.row-button:hover {
+  text-decoration-color: var(--color-accent);
+}
+
+/* ── Tags ──────────────────────────────────────────────────────────────────── */
+
+.tag {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: var(--rule-hairline) solid currentColor;
+  white-space: nowrap;
+}
+
+.tag--blocked {
+  color: var(--accent-700);
+  background: var(--accent-100);
+}
+
+.tag--ok {
+  color: var(--sb-ok);
+  background: var(--sb-ok-tint);
+}
+
+.tag--quiet {
+  color: var(--ink-55);
+  background: var(--neutral-100);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+
+.btn {
+  appearance: none;
+  border: var(--rule-hairline) solid var(--color-text);
+  background: #fff;
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--neutral-200);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--color-text);
+  color: var(--color-background);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #000;
+}
+
+.btn--danger {
+  border-color: var(--color-accent);
+  color: var(--accent-700);
+  background: var(--accent-100);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--accent-200);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Detail panel ──────────────────────────────────────────────────────────── */
+
+.detail td {
+  background: var(--color-surface) !important;
+  padding: var(--space-6);
+  border-bottom: var(--rule-strong) solid var(--color-text);
+}
+
+.detail__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.stack > * + * {
+  margin-top: var(--space-3);
+}
+
+.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.ledger th,
+.ledger td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--rule-hairline) solid var(--neutral-200);
+  text-align: left;
+}
+
+.ledger th {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+  border-bottom: var(--rule-hairline) solid var(--color-divider);
+}
+
+.ledger .lines {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-70);
+  font-size: 12px;
+}
+
+.signed--in {
+  color: var(--sb-ok);
+  font-weight: 700;
+}
+
+.signed--out {
+  color: var(--accent-700);
+  font-weight: 700;
+}
+
+.reconcile {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  background: #fff;
+  border-top: var(--rule-strong) solid var(--color-text);
+  font-weight: 700;
+}
+
+.reconcile--off {
+  color: var(--accent-700);
+  background: var(--accent-100);
+}
+
+/* ── Forms ─────────────────────────────────────────────────────────────────── */
+
+.field {
+  display: block;
+}
+
+.field > .kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: #fff;
+  border: var(--rule-hairline) solid var(--color-divider);
+  color: var(--color-text);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.field__hint {
+  margin-top: var(--space-1);
+  font-size: 11px;
+  color: var(--ink-55);
+}
+
+.field__hint--bad {
+  color: var(--accent-700);
+}
+
+.card {
+  background: #fff;
+  border-top: var(--rule-strong) solid var(--color-text);
+  padding: var(--space-4);
+}
+
+.card__title {
+  margin: 0 0 var(--space-3);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.table--drinks {
+  table-layout: fixed;
+}
+
+/* The delete confirmation shares this cell with the buttons, so it needs to wrap
+   rather than widen. */
+.table--drinks td:last-child .field__hint {
+  flex: 1 1 100%;
+  margin: 0 0 var(--space-1);
+}
+
+/* A drink that is off the menu still shows, greyed: it is coming back when the
+   next keg does, and hiding it would make "where did the cider go" a mystery. */
+.table tbody tr.is-off td {
+  color: var(--ink-55);
+  background: var(--neutral-100);
+}
+
+.table td input {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: #fff;
+  border: var(--rule-hairline) solid var(--color-divider);
+  color: inherit;
+}
+
+.table td input.price {
+  width: 84px;
+  text-align: right;
+}
+
+.table td input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.drink-form {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 110px auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+@media (max-width: 700px) {
+  .drink-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--ink-55);
+  background: #fff;
+  border-top: var(--rule-strong) solid var(--color-text);
+}
+
+.note {
+  color: var(--ink-55);
+  font-size: 12px;
+  max-width: 62ch;
+}
+
+/* ── Sign-in ───────────────────────────────────────────────────────────────── */
+
+.signin {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--space-8);
+}
+
+.signin__panel {
+  width: 100%;
+  max-width: 360px;
+}
+
+.signin h1 {
+  margin: var(--space-2) 0 var(--space-2);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.signin__blurb {
+  margin: 0 0 var(--space-6);
+  color: var(--ink-70);
+  font-size: 13px;
+}
+
+.signin form > * + * {
+  margin-top: var(--space-3);
+}
+
+.signin__error {
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent-100);
+  border-left: 3px solid var(--color-accent);
+  color: var(--accent-700);
+  font-size: 13px;
+}

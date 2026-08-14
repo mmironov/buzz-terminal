@@ -21,9 +21,19 @@ xcuserdata/
 # whose consumers resolve their own versions. This is an application: pinning the
 # exact Firebase graph means a fresh clone, and a future CI, build the same bytes.
 
-# Node (the roster importer)
+# Node (the roster importer, the rules tests, the web admin panel)
 node_modules/
 npm-debug.log*
+dist/
+
+# The web panel's Firebase config. Not a credential in the way a service-account
+# key is — a web config is shipped inside every web app that talks to the project,
+# and what protects the roster is firestore.rules plus the admin custom claim, not
+# the obscurity of an API key. Ignored anyway, so that "project configuration
+# stays out of git" is one rule rather than three. .env.example and .env.emulator
+# ARE committed; they contain nothing real.
+.env.local
+.env.*.local
 
 # Android / Gradle. The wrapper (gradlew, gradle/wrapper/) IS committed — same
 # reasoning as Package.resolved above: a fresh clone must build the same bytes
@@ -68,6 +78,11 @@ AuthKey_*.p8
 *.mobileprovision
 *.certSigningRequest
 ExportOptions.plist
+
+# Claude Code's per-user state. `.claude/launch.json` IS committed — it names how
+# to start the web panel, which is a real project fact — but the permission
+# allowlist is one person's answers on one machine.
+.claude/settings.local.json
 
 # macOS
 .DS_Store
