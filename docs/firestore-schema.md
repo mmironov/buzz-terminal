@@ -172,13 +172,25 @@ their balance; the design's answer is a fresh bracelet, and the rules enforce it
 
 ```
 drinks/beer
-  name:      "Draught beer"
+  name:      "Beer"
   price:     400          // cents
-  sortOrder: 0
+  sortOrder: 1
   isActive:  true
 ```
 
-Read-only to every terminal. Prices are an organiser decision, not a bar one.
+Read-only to every terminal — `allow write: if false`. Prices are an organiser
+decision, not a bar one, so the menu is written by the Admin SDK
+(`npm run seed-drinks`) until the web admin panel takes it over.
+
+A withdrawn drink is set `isActive: false`, never deleted. The bar queries on
+`isActive`, so deactivating removes it from the menu at once, while deleting would
+orphan the ledger lines that name it — a drink that stopped being sold still
+happened.
+
+That query — `isActive == true` ordered by `sortOrder` — is composite, so it needs
+an index. Nothing local catches a missing one: **the emulator does not enforce
+indexes**, and production answers with `FAILED_PRECONDITION` and no rows rather than
+a slow result. It is in `firestore.indexes.json`; keep it there.
 
 ---
 

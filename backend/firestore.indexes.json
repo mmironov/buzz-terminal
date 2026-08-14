@@ -20,6 +20,15 @@
       ]
     },
     {
+      "//": "The bar menu: active drinks in menu order. This is FirebaseTerminalRepository.drinks(), the first query the bar screen runs. Missing it does not degrade the screen, it fails it — Firestore answers an unindexed composite query with FAILED_PRECONDITION and no results at all. The emulator does not enforce indexes, so nothing local catches this; it was found by reading the collection back from production.",
+      "collectionGroup": "drinks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "sortOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
       "//": "Per-terminal cash-up: what did this device take tonight. Composite, so it belongs here rather than in fieldOverrides.",
       "collectionGroup": "transactions",
       "queryScope": "COLLECTION_GROUP",

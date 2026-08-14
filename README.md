@@ -95,7 +95,7 @@ those writes are real, and the ledger is append-only by design.
 
 ## Tests
 
-Three suites, three runners, **108 tests**, all green.
+Three suites, three runners, **114 tests**, all green.
 
 ```bash
 ./ios/scripts/test.sh
@@ -126,10 +126,12 @@ passing tests.
 cd backend/import-roster && npm test
 ```
 
-**24 importer tests**, pure functions over the Sheet mapping, no network and no
-emulator. Two earn their keep on their own: the one that stops `Full Pass Gold`
-being filed as plain `Full Pass`, and the one asserting no personal data can
-reach Firestore.
+**30 importer tests** over the Sheet mapping and the drinks menu, against pure
+functions and a fake Firestore — no network, no emulator. Three earn their keep on
+their own: the one that stops `Full Pass Gold` being filed as plain `Full Pass`, the
+one asserting no personal data can reach Firestore, and the one pinning a withdrawn
+drink to `isActive: false` rather than deleted, so the ledger lines that name it
+still resolve.
 
 Reasoning about security rules is not testing them — `docs/iteration-02.md` has
 the case where my rules were right and my confident assertion about them was
@@ -226,10 +228,13 @@ Two intentional deviations from the prototype, both improvements:
    the Simulator cannot verify.
 4. **Iteration 4** — Android app in Jetpack Compose against the same backend.
 
-Two things stand between iteration 2 and a festival: the production `drinks`
-collection is **empty** (the fixture prices are invented, and inventing prices for
-a live till is worse than an empty menu), and Firebase is still opt-in — see the
-table above.
+The production menu is **Water 2 €, Beer 4 €, Gin & Tonic 6 €**, seeded by
+`npm run seed-drinks -- --apply` and owned by the web admin panel once that exists.
+The ten drinks in `SampleData` are the design prototype's invention and stay on the
+fixture path only.
+
+One thing still stands between iteration 2 and a festival: Firebase is opt-in — see
+the table above.
 
 ## Credits
 

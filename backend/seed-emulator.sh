@@ -58,6 +58,10 @@ echo "staff:";        staff reception@example.test reception; staff bar@example.
 echo "participants:"; person 1041 "Amélie Roux" "Full Pass" France
                       person 1042 "Tomás Herrera" "Party Pass" Spain
                       person 1043 "Nina Kowalski" "Full Pass Gold" Poland
-echo "drinks:";       drink beer "Draught beer" 400 0; drink gt "Gin & tonic" 800 1
-                      echo "  2 drinks"
+# The real menu, matching DEFAULT_DRINKS in import-roster/firestore.mjs. An
+# emulator that sells different drinks at different prices than production is a
+# rehearsal for the wrong show.
+echo "drinks:";       drink water "Water" 200 0; drink beer "Beer" 400 1
+                      drink gt "Gin & Tonic" 600 2
+                      echo "  3 drinks"
 echo "done."

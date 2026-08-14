@@ -77,9 +77,24 @@ export async function describeUser(email) {
   return { uid: user.uid, email: user.email, claims: user.customClaims ?? {} };
 }
 
-/** Seed or update the drinks menu. Prices in cents, matching `Domain/Money.swift`. */
+/**
+ * Make the `drinks` collection match `drinks` exactly. Prices in cents, matching
+ * `Domain/Money.swift`.
+ *
+ * Anything already in Firestore and *not* in the list is deactivated rather than
+ * deleted. Two reasons: the bar queries `isActive == true`, so deactivating takes
+ * it off the menu immediately, and a deleted drink would orphan the ledger entries
+ * that refer to it. A drink that stopped being sold still happened.
+ *
+ * Written by the Admin SDK because `firestore.rules` says `allow write: if false`
+ * for this collection — prices are an organiser decision, and no terminal, however
+ * compromised, can set its own.
+ */
 export async function seedDrinks(db, drinks) {
+  const wanted = new Set(drinks.map((drink) => drink.id));
+  const existing = await db.collection('drinks').get();
   const batch = db.batch();
+
   drinks.forEach((drink, index) => {
     batch.set(
       db.collection('drinks').doc(drink.id),
@@ -87,20 +102,27 @@ export async function seedDrinks(db, drinks) {
       { merge: true }
     );
   });
+
+  let retired = 0;
+  existing.docs.forEach((doc) => {
+    if (wanted.has(doc.id) || doc.data().isActive === false) return;
+    batch.update(doc.ref, { isActive: false });
+    retired += 1;
+  });
+
   await batch.commit();
-  return drinks.length;
+  return { written: drinks.length, retired };
 }
 
-/** The menu from the design prototype, as a starting point. */
+/**
+ * The menu, until the web admin panel owns it.
+ *
+ * Deliberately the real thing rather than the design prototype's ten invented
+ * drinks — this collection is what a bartender charges people from, so a plausible
+ * placeholder is worse here than an empty menu.
+ */
 export const DEFAULT_DRINKS = [
-  { id: 'beer', name: 'Draught beer', price: 400 },
-  { id: 'radler', name: 'Radler', price: 400 },
-  { id: 'white', name: 'White wine', price: 500 },
-  { id: 'red', name: 'Red wine', price: 500 },
-  { id: 'prosecco', name: 'Prosecco', price: 600 },
-  { id: 'gt', name: 'Gin & tonic', price: 800 },
-  { id: 'sour', name: 'Whisky sour', price: 900 },
-  { id: 'lemonade', name: 'Lemonade', price: 300 },
-  { id: 'espresso', name: 'Espresso', price: 250 },
-  { id: 'water', name: 'Still water', price: 150 },
+  { id: 'water', name: 'Water', price: 200 },
+  { id: 'beer', name: 'Beer', price: 400 },
+  { id: 'gt', name: 'Gin & Tonic', price: 600 },
 ];

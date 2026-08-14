@@ -301,16 +301,41 @@ async function cmdSeedDrinks() {
   requireKeyFile();
   const { initAdmin, seedDrinks, DEFAULT_DRINKS } = await cloud();
   const app = initAdmin(config);
+  const db = app.firestore();
+
   if (!config.apply) {
+    // Read the live collection even on a dry run: what this replaces matters more
+    // than what it writes, and the bar sells from whatever is left active.
+    const existing = await db.collection('drinks').get();
+    const wanted = new Set(DEFAULT_DRINKS.map((d) => d.id));
+
     console.log(`\nWould write ${DEFAULT_DRINKS.length} drinks:\n`);
-    DEFAULT_DRINKS.forEach((d) =>
-      console.log(`  ${d.id.padEnd(10)} ${d.name.padEnd(16)} ${(d.price / 100).toFixed(2)} €`)
+    DEFAULT_DRINKS.forEach((d) => {
+      const was = existing.docs.find((doc) => doc.id === d.id)?.data();
+      const note = was
+        ? was.price === d.price && was.name === d.name
+          ? '(unchanged)'
+          : `(was ${was.name} ${(was.price / 100).toFixed(2)} €)`
+        : '(new)';
+      console.log(
+        `  ${d.id.padEnd(10)} ${d.name.padEnd(16)} ${(d.price / 100).toFixed(2).padStart(6)} €  ${note}`
+      );
+    });
+
+    const retiring = existing.docs.filter(
+      (doc) => !wanted.has(doc.id) && doc.data().isActive !== false
     );
+    if (retiring.length) {
+      console.log(`\nWould take ${retiring.length} off the menu (isActive: false, not deleted):\n`);
+      retiring.forEach((doc) => console.log(`  ${doc.id.padEnd(10)} ${doc.data().name}`));
+    }
+
     console.log(`\nDry run. Re-run with --apply to commit.\n`);
     return;
   }
-  const count = await seedDrinks(app.firestore(), DEFAULT_DRINKS);
-  console.log(`\n✔ ${count} drinks written.\n`);
+
+  const { written, retired } = await seedDrinks(db, DEFAULT_DRINKS);
+  console.log(`\n✔ ${written} drinks written, ${retired} taken off the menu.\n`);
 }
 
 function usage() {
