@@ -268,11 +268,14 @@ account, no review. Full runbook in `docs/distribution.md`.
 uses: it always rises, and a device silently keeps the old build if it ever went
 backwards.
 
-Signing reads `android/keystore.properties`, which is gitignored along with
-`*.jks`. Without it the release variant still builds — unsigned, which no device
-will install, so it cannot pass for a real one. **The keystore is not
-recoverable**: Android refuses an update signed by a different key, and the only
-way out is uninstalling from every phone.
+The signing key is created once, by `./android/scripts/keystore.sh` — not by
+calling `keytool` yourself, which fails with "Unable to locate a Java Runtime"
+because this Mac has no JDK on `PATH`. It writes `android/keystore.properties`
+and the `.jks`, both gitignored. Without them the release variant still builds,
+unsigned, which no device will install — so it cannot pass for a real one.
+
+**The keystore is not recoverable**: Android refuses an update signed by a
+different key, and the only way out is uninstalling from every phone.
 
 ### Toolchain, and why these versions
 

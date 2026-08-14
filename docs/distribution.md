@@ -242,17 +242,26 @@ number — as long as builds come from a checkout, not a zip.
 Once, and never again for the life of the app:
 
 ```bash
-keytool -genkeypair -v \
-  -keystore android/swing-buzz-release.jks \
-  -alias swing-buzz -keyalg RSA -keysize 4096 -validity 10000
+./android/scripts/keystore.sh
 ```
 
-10000 days is ~27 years. A key that expires mid-festival cannot sign an update,
-and the number costs nothing, so make it absurd.
+It asks for a password twice, writes `android/swing-buzz-release.jks` and
+`android/keystore.properties` (both gitignored, the properties file `chmod 600`),
+and refuses to run if either already exists.
+
+Do not call `keytool` directly: **there is no JDK on this Mac's `PATH`**, so it
+answers "Unable to locate a Java Runtime" — a PATH problem wearing the costume of
+a missing install. The script uses the JDK Android Studio ships, the same one
+`_env.sh` points Gradle at. It also passes the password via `-storepass:env`
+rather than an argument, so it never appears in `ps` output.
+
+The key is RSA 4096, valid 10000 days (~27 years). A key that expires mid-festival
+cannot sign an update, and the number costs nothing.
 
 ### 2. Point the build at it
 
-`android/keystore.properties`, gitignored along with `*.jks`:
+Step 1 already wrote `android/keystore.properties`. For reference, or to
+reconstruct it from a backed-up keystore:
 
 ```properties
 storeFile=swing-buzz-release.jks
@@ -260,6 +269,8 @@ storePassword=…
 keyAlias=swing-buzz
 keyPassword=…
 ```
+
+`storeFile` is relative to `android/`.
 
 `storeFile` is relative to `android/`. Without this file the release variant
 still builds — it just comes out unsigned, which is what a fresh clone and CI
@@ -280,9 +291,19 @@ anything, and they never see the Firebase console.
 ./android/scripts/release.sh --distribute --group staff
 ```
 
-Builds the signed APK, verifies it really is signed (`jarsigner -verify`, because
-a filename proves nothing and an unsigned APK fails on the device rather than in
-the script), and uploads it with the last commit subject as the release notes.
+Builds the signed APK, verifies it really is signed, prints the signing
+certificate's SHA-256, and uploads it with the last commit subject as the release
+notes.
+
+The verification uses **`apksigner`, not `jarsigner`** — and the difference is not
+pedantry. `jarsigner` only understands the v1 JAR signature, which AGP does not
+write at minSdk 26; it signs v2/v3 instead. Measured here: `jarsigner -verify`
+exits 0 on a signed *and* an unsigned APK, so it is not a check at all, merely
+something that resembles one. `apksigner verify` exits 0 and 1 respectively.
+
+The printed fingerprint is there because "is it signed" is the easy question. The
+one that matters is "signed with the same key as last time" — a different one
+means no phone will accept the update.
 
 Useful variants:
 
@@ -312,7 +333,8 @@ Verified on 2026-08-14:
 | --- | --- |
 | Release variant compiles unsigned | ✅ `app-release-unsigned.apk` |
 | `versionCode` from the commit count | ✅ 44, matching `git rev-list --count HEAD` |
-| Signing config picks up `keystore.properties` | ✅ rehearsed with a throwaway key, since destroyed |
+| `keystore.sh` creates a key and wires the build | ✅ rehearsed end to end with a throwaway key, since destroyed; refuses to overwrite |
+| The signature check catches an unsigned APK | ✅ `apksigner` 0/1; `jarsigner` was 0/0 and has been replaced |
 | Signed APK installs on a device | ✅ Pixel 10 Pro emulator |
 | The installed release build reaches production | ✅ logs `Firebase configured for project swing-buzz`, no demo shortcuts offered |
 | Upload to App Distribution | ⬜ needs the console side of step 3 |

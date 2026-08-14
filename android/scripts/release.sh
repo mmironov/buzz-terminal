@@ -88,13 +88,26 @@ fi
 # Trust nothing about the filename: an APK called app-release.apk is not
 # necessarily signed, and an unsigned one fails on the device rather than here,
 # by which point it is somebody else's afternoon.
-if ! "$JAVA_HOME/bin/jarsigner" -verify "$APK" >/dev/null 2>&1; then
+#
+# `apksigner`, not `jarsigner`. jarsigner only understands the v1 JAR signature,
+# which AGP does not write at minSdk 26 — it signs with v2/v3 instead. Measured:
+# jarsigner exits 0 on both a signed and an unsigned APK here, so it is not a
+# check at all, it just looks like one. apksigner exits 0 and 1 respectively.
+APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+if [ -z "$APKSIGNER" ]; then
+  echo "No apksigner under $ANDROID_HOME/build-tools — cannot verify the signature." >&2
+  exit 1
+fi
+if ! "$APKSIGNER" verify "$APK"; then
   echo "✗ $APK is not signed. Check android/keystore.properties." >&2
   exit 1
 fi
 
 echo
 echo "✔ Signed APK at $APK"
+# The fingerprint, because "signed" is not the question — "signed with the same
+# key as last time" is. A different one here means no phone will take the update.
+"$APKSIGNER" verify --print-certs "$APK" | grep "SHA-256 digest" | head -1
 
 if [ "$DISTRIBUTE" != yes ]; then
   echo "  Re-run with --distribute to send it, or install it directly:"
