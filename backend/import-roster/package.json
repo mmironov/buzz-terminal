@@ -9,6 +9,7 @@
     "import": "node index.mjs import",
     "set-role": "node index.mjs set-role",
     "seed-drinks": "node index.mjs seed-drinks",
+    "reset": "node index.mjs reset",
     "test": "node --test"
   },
   "dependencies": {

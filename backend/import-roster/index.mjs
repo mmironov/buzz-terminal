@@ -338,6 +338,86 @@ async function cmdSeedDrinks() {
   console.log(`\n✔ ${written} drinks written, ${retired} taken off the menu.\n`);
 }
 
+async function cmdReset() {
+  requireProject();
+  requireKeyFile();
+
+  const { initAdmin } = await cloud();
+  const { planReset, isNoOp, checkConfirmation, summariseLedger, executeReset } = await import('./reset.mjs');
+
+  const scope = option('scope', 'test-data');
+  const deleteDrinks = flag('drinks');
+  const app = initAdmin(config);
+  const db = app.firestore();
+
+  const [participantSnap, braceletSnap, ledgerSnap] = await Promise.all([
+    db.collection('participants').get(),
+    db.collection('bracelets').get(),
+    db.collectionGroup('transactions').get(),
+  ]);
+
+  let plan;
+  try {
+    plan = planReset({
+      participants: participantSnap.docs.map((d) => ({ id: d.id, data: d.data() })),
+      braceletIds: braceletSnap.docs.map((d) => d.id),
+      ledgerCount: ledgerSnap.size,
+      scope,
+    });
+  } catch (error) {
+    fail(error.message);
+  }
+
+  const money = summariseLedger(ledgerSnap.docs.map((d) => d.data()));
+  const euro = (cents) => (cents / 100).toFixed(2) + ' €';
+
+  console.log(`\nProject: ${config.projectId}    scope: ${plan.scope}`);
+  console.log(`\nCurrently in the database:`);
+  console.log(`  participants        ${participantSnap.size}`);
+  console.log(`  paired bracelets    ${braceletSnap.size}`);
+  console.log(`  ledger entries      ${money.count}`);
+  if (money.count) {
+    console.log(`    topped up         ${euro(money.topUps)}`);
+    console.log(`    charged           ${euro(money.charges)}`);
+    console.log(`    net on bracelets  ${euro(money.net)}`);
+  }
+
+  if (isNoOp(plan) && !deleteDrinks) {
+    console.log(`\n✔ Already clean. Nothing to reset.\n`);
+    return;
+  }
+
+  console.log(`\nWould:`);
+  if (plan.deleteParticipants.length) {
+    const what = plan.scope === 'all' ? 'participants (every one — re-import afterwards)' : 'door-sold evening tickets';
+    console.log(`  delete ${plan.deleteParticipants.length} ${what}`);
+  }
+  if (plan.resetParticipants.length) {
+    console.log(`  reset  ${plan.resetParticipants.length} imported participants to bracelet-less, 0 € balance`);
+  }
+  if (plan.braceletIds.length) console.log(`  delete ${plan.braceletIds.length} bracelet pairings`);
+  if (money.count) console.log(`  delete ${money.count} ledger entries — permanently, append-only does not apply to the Admin SDK`);
+  console.log(`  ${deleteDrinks ? 'delete the drinks menu too (--drinks)' : 'keep the drinks menu'}`);
+  console.log(`  keep every staff account and role claim`);
+
+  const refusal = checkConfirmation({ apply: config.apply, confirm: option('confirm'), projectId: config.projectId });
+  if (refusal) fail(refusal);
+
+  if (!config.apply) {
+    console.log(`\nDry run. Nothing was deleted.\n`);
+    console.log(`To go ahead:  npm run reset -- --apply --confirm=${config.projectId}\n`);
+    return;
+  }
+
+  console.log(`\nDeleting…`);
+  const counts = await executeReset(db, plan, { deleteDrinks });
+  console.log(`\n✔ ${counts.participantsDeleted} participants deleted, ${counts.participantsReset} reset,`);
+  console.log(`  ${counts.braceletsDeleted} bracelets deleted, ${counts.drinksDeleted} drinks deleted.`);
+  console.log(`\n  Restart the terminals. FirebaseTerminalRepository caches the next`);
+  console.log(`  evening-ticket number per run, and that cache now disagrees with the`);
+  console.log(`  database.\n`);
+}
+
 function usage() {
   console.log(`
 Swing Buzz roster importer
@@ -348,7 +428,15 @@ Swing Buzz roster importer
   npm run set-role -- <email> <reception|bar>      dry run
   npm run set-role -- <email> <role> --apply      commit it
   npm run seed-drinks -- --apply                  write the drinks menu
+  npm run reset                                   dry run: what a wipe would remove
+  npm run reset -- --apply --confirm=<project>    WIPE the operational data
   npm test                                        unit-test the diff logic
+
+Reset scopes (--scope=, default test-data):
+  test-data   bracelets, ledger, balances, check-ins, door-sold evening tickets.
+              The imported roster stays, so no re-import is needed.
+  all         the above plus every participant document. Re-import afterwards.
+  Add --drinks to wipe the menu too. Staff accounts are never touched.
 
 Configuration, as flags or environment variables:
   --sheet=<id>       SHEET_ID                     from the Sheet URL
@@ -365,6 +453,7 @@ const commands = {
   import: cmdImport,
   'set-role': cmdSetRole,
   'seed-drinks': cmdSeedDrinks,
+  reset: cmdReset,
 };
 
 const run = commands[command];

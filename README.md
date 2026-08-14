@@ -93,9 +93,44 @@ repository rather than from fixtures. All DEBUG-only.
 Drop `-sbEmulator` to talk to the real `swing-buzz` project. Do that deliberately:
 those writes are real, and the ledger is append-only by design.
 
+### Testing on the live project, then starting clean
+
+Testing against production is the only way to prove the real thing works, and it
+leaves real rows behind — the ledger is append-only, so the app itself cannot undo
+them. `npm run reset` can, because the Admin SDK bypasses the rules.
+
+```bash
+cd backend/import-roster && npm run reset
+```
+
+That is a **dry run**: it prints what is in the database, how much money the ledger
+records, and exactly what would go. Nothing is deleted without `--apply`, and
+`--apply` alone is refused — you must also name the project:
+
+```bash
+cd backend/import-roster && npm run reset -- --apply --confirm=swing-buzz
+```
+
+Two flags rather than one because there are two different mistakes: running it at
+all, and running it against the wrong project. A confirmation that names a
+different project is refused, and that refusal is a test.
+
+| scope | |
+| --- | --- |
+| `test-data` (default) | bracelets, ledger, balances, check-ins, door-sold evening tickets. **The imported roster stays**, so no re-import and no dependency on the Sheet being reachable. |
+| `--scope=all` | the above plus every participant document. Re-run the import afterwards. |
+
+Add `--drinks` to wipe the menu too. **Staff accounts and their role claims are
+never touched**, in any scope — a reset should not lock your staff out an hour
+before doors.
+
+Restart the terminals afterwards: `FirebaseTerminalRepository` caches the next
+evening-ticket number for the life of the process, and a wipe puts that cache out
+of step with the database.
+
 ## Tests
 
-Three suites, three runners, **114 tests**, all green.
+Three suites, three runners, **125 tests**, all green.
 
 ```bash
 ./ios/scripts/test.sh
@@ -126,12 +161,12 @@ passing tests.
 cd backend/import-roster && npm test
 ```
 
-**30 importer tests** over the Sheet mapping and the drinks menu, against pure
-functions and a fake Firestore — no network, no emulator. Three earn their keep on
-their own: the one that stops `Full Pass Gold` being filed as plain `Full Pass`, the
-one asserting no personal data can reach Firestore, and the one pinning a withdrawn
-drink to `isActive: false` rather than deleted, so the ledger lines that name it
-still resolve.
+**41 importer tests** over the Sheet mapping, the drinks menu and the reset, against
+pure functions and a fake Firestore — no network, no emulator. Four earn their keep
+on their own: the one that stops `Full Pass Gold` being filed as plain `Full Pass`,
+the one asserting no personal data can reach Firestore, the one pinning a withdrawn
+drink to `isActive: false` rather than deleted so the ledger lines that name it still
+resolve, and the one refusing a reset whose `--confirm` names a different project.
 
 Reasoning about security rules is not testing them — `docs/iteration-02.md` has
 the case where my rules were right and my confident assertion about them was
