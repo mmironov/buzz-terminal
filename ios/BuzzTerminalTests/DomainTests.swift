@@ -94,11 +94,11 @@ struct ParticipantSearchTests {
 
     private let amelie = Participant(
         id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432",
-        name: "Amélie Roux", ticketType: "Full pass", city: "Lyon"
+        name: "Amélie Roux", ticketType: "Full pass", country: "France"
     )
     private let nina = Participant(
         id: ParticipantID("tkt-10434"), ticketRef: "TKT-10434",
-        name: "Nina Kowalski", ticketType: "Party pass", city: "Kraków"
+        name: "Nina Kowalski", ticketType: "Party pass", country: "Poland"
     )
 
     @Test("An empty or blank query matches everybody")
@@ -154,7 +154,7 @@ struct PaymentDecisionTests {
             ticketRef: "TKT-10001",
             name: "Marta Lindqvist",
             ticketType: "Full pass",
-            city: "Stockholm",
+            country: "Sweden",
             braceletId: SampleData.braceletB,
             checkedInAt: .now,
             balance: balance,
@@ -218,7 +218,7 @@ struct ParticipantLifecycleTests {
     private func roux(bracelet: BraceletID? = nil, checkedInAt: Date? = nil) -> Participant {
         Participant(
             id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432",
-            name: "Amélie Roux", ticketType: "Full pass", city: "Lyon",
+            name: "Amélie Roux", ticketType: "Full pass", country: "France",
             braceletId: bracelet, checkedInAt: checkedInAt
         )
     }
@@ -249,13 +249,90 @@ struct ParticipantLifecycleTests {
         #expect(earlier.checkedInLabel != "Checked in just now")
     }
 
-    @Test("The sample roster splits into checked-in and awaiting, with no overlap")
+    @Test("The sample roster is imported plus door sales, with no overlap")
     func rosterSplit() {
         let awaiting = SampleData.roster.filter(\.isAwaitingCheckIn)
         #expect(awaiting.count == SampleData.awaitingCheckIn.count)
-        #expect(SampleData.roster.count == SampleData.checkedIn.count + awaiting.count)
+        #expect(
+            SampleData.roster.count
+                == SampleData.checkedIn.count + awaiting.count + SampleData.eveningTickets.count
+        )
         // Participant ids are unique — a duplicate would mean two people sharing
         // a balance, which is the importer's whole reason for refusing to guess.
         #expect(Set(SampleData.roster.map(\.id)).count == SampleData.roster.count)
+    }
+}
+
+// MARK: - Evening tickets
+
+/// Door-sold tickets. Anonymous by design: no name, no country, and organisers
+/// freeze them by hand after their evening rather than the app expiring them.
+@Suite("Evening tickets")
+struct EveningTicketTests {
+
+    @Test("The id encodes the sequence, which is what makes it collision-proof")
+    func identity() {
+        let ticket = Participant.eveningTicket(
+            evening: .friday, number: 14, bracelet: SampleData.braceletE
+        )
+        // Two reception desks selling at once both try `ev-friday-14`; Firestore's
+        // `create` lets exactly one win, and the loser retries with 15. No counter
+        // document and no coordination.
+        #expect(ticket.id == ParticipantID("ev-friday-14"))
+        #expect(ticket.ticketRef == "EV-FRIDAY-14")
+    }
+
+    @Test("It carries no personal data")
+    func anonymous() {
+        let ticket = Participant.eveningTicket(
+            evening: .saturday, number: 3, bracelet: SampleData.braceletE
+        )
+        #expect(ticket.name == "Evening #3")   // a label, not a person
+        #expect(ticket.country.isEmpty)
+        #expect(ticket.source == .evening)
+        #expect(ticket.isEveningTicket)
+    }
+
+    @Test("It is created already paired and with nothing on it")
+    func pairedAndEmpty() {
+        let ticket = Participant.eveningTicket(
+            evening: .sunday, number: 1, bracelet: SampleData.braceletE
+        )
+        // The ticket price is cash to the festival, not credit on the bracelet.
+        #expect(ticket.balance == .zero)
+        #expect(ticket.isAwaitingCheckIn == false)
+        #expect(ticket.braceletId == SampleData.braceletE)
+        #expect(ticket.isBlocked == false)
+    }
+
+    @Test("The screen says which evening it was sold for")
+    func description() {
+        let evening = Participant.eveningTicket(
+            evening: .friday, number: 14, bracelet: SampleData.braceletE
+        )
+        #expect(evening.ticketDescription == "Evening ticket · Friday")
+        #expect(evening.ticketType == TicketType.eveningTicket)
+
+        let imported = SampleData.awaitingCheckIn[0]
+        #expect(imported.ticketDescription == imported.ticketType)
+        #expect(imported.isEveningTicket == false)
+    }
+
+    @Test("Search finds an evening ticket by number or by evening")
+    func searchable() {
+        let ticket = Participant.eveningTicket(
+            evening: .friday, number: 14, bracelet: SampleData.braceletE
+        )
+        #expect(ticket.matches(query: "evening"))
+        #expect(ticket.matches(query: "#14"))
+        #expect(ticket.matches(query: "Evening Ticket"))
+        #expect(ticket.matches(query: "Marta") == false)
+    }
+
+    @Test("All six pass types are distinct and evening is one of them")
+    func passTypes() {
+        #expect(TicketType.all.count == 6)
+        #expect(Set(TicketType.all).count == 6)
+        #expect(TicketType.all.contains(TicketType.eveningTicket))
     }
 }

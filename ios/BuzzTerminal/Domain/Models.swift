@@ -80,6 +80,59 @@ struct SimulatedBracelet: Identifiable, Hashable, Sendable {
     let hint: String
 }
 
+// MARK: - Tickets
+
+/// The six pass types the festival sells.
+///
+/// Kept as strings rather than an enum because `ticketType` on an imported
+/// participant is whatever the registrations Sheet says, and an unrecognised
+/// value must still display rather than crash. These constants are the canonical
+/// spellings — used to mint evening tickets and to check what the Sheet contains.
+enum TicketType {
+    static let partyPass = "Party Pass"
+    static let partyPassPlus = "Party Pass Plus"
+    static let fullPass = "Full Pass"
+    static let fullPassGold = "Full Pass Gold"
+    static let jazzPerformanceTrack = "Jazz Performance Track"
+    /// Sold at the door, not present in the Sheet. See `Evening`.
+    static let eveningTicket = "Evening Ticket"
+
+    static let all = [
+        partyPass, partyPassPlus, fullPass, fullPassGold,
+        jazzPerformanceTrack, eveningTicket,
+    ]
+}
+
+/// Which evening a door-sold ticket was bought for.
+///
+/// Recorded for reporting and for what reception sees on screen. Deliberately
+/// **not** enforced anywhere: organisers freeze an expired ticket by hand from the
+/// admin panel, using the same `isBlocked` mechanism as any other bracelet. That
+/// keeps the app free of date arithmetic and the rules free of a fifth refusal
+/// case.
+enum Evening: String, CaseIterable, Hashable, Sendable {
+    case friday, saturday, sunday
+
+    var label: String {
+        switch self {
+        case .friday: "Friday"
+        case .saturday: "Saturday"
+        case .sunday: "Sunday"
+        }
+    }
+
+    /// Today's evening, when today is one of the three. Used only to preselect
+    /// the right button, never to validate anything.
+    static var today: Evening? {
+        switch Calendar.current.component(.weekday, from: .now) {
+        case 6: .friday
+        case 7: .saturday
+        case 1: .sunday
+        default: nil
+        }
+    }
+}
+
 // MARK: - People
 
 /// Somebody who bought a ticket.
@@ -91,14 +144,30 @@ struct SimulatedBracelet: Identifiable, Hashable, Sendable {
 /// exactly, so the mapping layer has nothing to reconcile.
 struct Participant: Identifiable, Hashable, Sendable {
 
-    // ── Roster: owned by the Google Sheet import, never written by the app ──
+    /// Where this participant came from. Decides who owns their roster fields.
+    enum Source: String, Hashable, Sendable {
+        /// Imported from the registrations Sheet. Roster fields are import-only.
+        case sheet
+        /// Sold at the door by reception. Anonymous; there is no Sheet row.
+        case evening
+    }
+
+    // ── Roster ──
     var id: ParticipantID
-    /// As printed on their ticket. The Sheet's stable unique key.
+    /// As printed on their ticket, or `EV-FRIDAY-14` for a door sale.
     var ticketRef: String
+    /// For an evening ticket this is the generated label, e.g. "Evening #14" —
+    /// not a person's name. Evening tickets are anonymous by design.
     var name: String
-    /// "Full pass", "Party pass", "Weekend pass". `ticketType` in Firestore.
+    /// One of `TicketType.all`, or whatever the Sheet said.
     var ticketType: String
-    var city: String
+    var country: String
+
+    var source: Source = .sheet
+    /// Set only on door-sold tickets.
+    var evening: Evening?
+    /// The nth evening ticket sold that evening. Drives `name`.
+    var eveningNumber: Int?
 
     // ── Festival state: owned by the terminals ──
     /// `nil` until reception pairs a chip. Permanent once set.
@@ -113,6 +182,14 @@ struct Participant: Identifiable, Hashable, Sendable {
 
     /// The check-in list is everybody this is true for.
     var isAwaitingCheckIn: Bool { braceletId == nil }
+
+    var isEveningTicket: Bool { source == .evening }
+
+    /// `"Evening ticket · Friday"` for a door sale, otherwise the pass type.
+    var ticketDescription: String {
+        guard let evening else { return ticketType }
+        return "Evening ticket · \(evening.label)"
+    }
 
     /// `"Checked in Fri 17:12"`, or `"Checked in just now"` immediately after
     /// pairing — the design distinguishes the two.
@@ -134,6 +211,33 @@ struct Participant: Identifiable, Hashable, Sendable {
 }
 
 extension Participant {
+    /// Mint a door-sold evening ticket, already paired to a bracelet.
+    ///
+    /// The id encodes the sequence, so Firestore enforces uniqueness on `create`:
+    /// two reception desks selling at the same moment collide on `ev-friday-14`
+    /// and the loser retries with 15. No counter document, no coordination.
+    static func eveningTicket(
+        evening: Evening,
+        number: Int,
+        bracelet: BraceletID,
+        checkedInAt: Date = .now
+    ) -> Participant {
+        let label = "Evening #\(number)"
+        return Participant(
+            id: ParticipantID("ev-\(evening.rawValue)-\(number)"),
+            ticketRef: "EV-\(evening.rawValue.uppercased())-\(number)",
+            name: label,
+            ticketType: TicketType.eveningTicket,
+            country: "",
+            source: .evening,
+            evening: evening,
+            eveningNumber: number,
+            braceletId: bracelet,
+            checkedInAt: checkedInAt,
+            balance: .zero
+        )
+    }
+
     /// Case- and diacritic-insensitive substring match against the guest's name
     /// or their ticket type. Deliberately *not* the city: the row displays it,
     /// but the field's placeholder only promises "participant or ticket".

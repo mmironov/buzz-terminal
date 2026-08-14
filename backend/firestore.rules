@@ -65,9 +65,62 @@ service cloud.firestore {
 
       allow read: if isStaff();
 
-      // The roster is import-only. Nobody checks a person in who did not buy a
-      // ticket, and nobody deletes a person mid-festival.
-      allow create, delete: if false;
+      // Nobody deletes a person mid-festival.
+      allow delete: if false;
+
+      // The one hole in "the roster belongs to the Sheet". Passes are also sold at
+      // the door each evening, and those buyers have no Sheet row — so reception
+      // has to be able to create a participant.
+      //
+      // Deliberately the narrowest hole that does the job: reception can mint an
+      // ANONYMOUS EVENING TICKET and nothing else. It cannot invent a Full Pass
+      // Gold for a friend, cannot start one with a balance on it, cannot attach a
+      // name or a country, and cannot overwrite an existing ticket. Every field is
+      // pinned, and the document id has to agree with the fields inside it.
+      allow create: if isReception() && isWellFormedEveningTicket(participantId);
+
+      function isWellFormedEveningTicket(pid) {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+                 'source', 'ticketType', 'evening', 'eveningNumber', 'ticketRef',
+                 'name', 'nameLower', 'searchTokens', 'country',
+                 'braceletId', 'checkedInAt', 'balance', 'lastTxId',
+                 'isBlocked', 'blockReason', 'createdBy'
+               ])
+          && d.keys().hasAll([
+               'source', 'ticketType', 'evening', 'eveningNumber', 'ticketRef',
+               'name', 'country', 'braceletId', 'checkedInAt', 'balance',
+               'isBlocked', 'createdBy'
+             ])
+          // It is an evening ticket, and it says so in every field that matters.
+          && d.source == 'evening'
+          && d.ticketType == 'Evening Ticket'
+          && d.evening in ['friday', 'saturday', 'sunday']
+          && d.eveningNumber is int
+          && d.eveningNumber > 0
+          // The id IS the sequence number, so Firestore's create-fails-if-exists
+          // does the deduplication: two desks selling at the same moment collide
+          // on ev-friday-14 and the loser retries with 15. These three checks are
+          // what stop the id and the contents drifting apart.
+          && pid == 'ev-' + d.evening + '-' + string(d.eveningNumber)
+          && d.ticketRef == 'EV-' + d.evening.upper() + '-' + string(d.eveningNumber)
+          && d.name == 'Evening #' + string(d.eveningNumber)
+          // Anonymous. The name above is a label; there is nowhere to put a
+          // person's details even if a terminal wanted to send them.
+          && d.country == ''
+          // The ticket price is cash to the festival, not credit on the bracelet.
+          && d.balance == 0
+          && d.get('lastTxId', null) == null
+          // Blocking is an organiser action, including for these: an expired
+          // evening ticket is frozen by hand from the admin panel.
+          && d.isBlocked == false
+          && d.get('blockReason', null) == null
+          && d.createdBy == request.auth.uid
+          && d.checkedInAt == request.time
+          // Paired in the same batch, and the reverse lookup must agree.
+          && d.braceletId is string
+          && getAfter(braceletRef(d.braceletId)).data.participantId == pid;
+      }
 
       allow update: if isStaff()
         && touchesOnlyTerminalFields()

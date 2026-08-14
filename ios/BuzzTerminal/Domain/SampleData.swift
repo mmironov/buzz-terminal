@@ -29,12 +29,14 @@ enum SampleData {
     static let braceletB = BraceletID("04:B4:2F:11")
     static let braceletC = BraceletID("04:C8:5D:03")
     static let braceletD = BraceletID("04:D2:0B:6A")
+    static let braceletE = BraceletID("04:E7:3A:2C")
 
     static let simulatedBracelets: [SimulatedBracelet] = [
         SimulatedBracelet(id: braceletA, hint: "Fresh bracelet, not yet assigned"),
         SimulatedBracelet(id: braceletB, hint: "Marta Lindqvist — 23.50 € on account"),
         SimulatedBracelet(id: braceletC, hint: "Jonas Bergström — 2.00 € on account"),
         SimulatedBracelet(id: braceletD, hint: "Elena Novak — blocked in admin panel"),
+        SimulatedBracelet(id: braceletE, hint: "Evening #14 (Friday) — door sale, anonymous"),
     ]
 
     // MARK: Roster
@@ -51,8 +53,8 @@ enum SampleData {
             id: ParticipantID("tkt-10001"),
             ticketRef: "TKT-10001",
             name: "Marta Lindqvist",
-            ticketType: "Full pass",
-            city: "Stockholm",
+            ticketType: TicketType.fullPass,
+            country: "Sweden",
             braceletId: braceletB,
             checkedInAt: earlier(6),
             balance: Money(euros: 23, cents: 50)
@@ -61,8 +63,8 @@ enum SampleData {
             id: ParticipantID("tkt-10002"),
             ticketRef: "TKT-10002",
             name: "Jonas Bergström",
-            ticketType: "Party pass",
-            city: "Göteborg",
+            ticketType: TicketType.partyPass,
+            country: "Sweden",
             braceletId: braceletC,
             checkedInAt: earlier(5),
             balance: Money(euros: 2)
@@ -71,8 +73,8 @@ enum SampleData {
             id: ParticipantID("tkt-10003"),
             ticketRef: "TKT-10003",
             name: "Elena Novak",
-            ticketType: "Full pass",
-            city: "Ljubljana",
+            ticketType: TicketType.fullPass,
+            country: "Slovenia",
             braceletId: braceletD,
             checkedInAt: earlier(7),
             balance: Money(euros: 14),
@@ -83,19 +85,27 @@ enum SampleData {
 
     /// Arrived, no bracelet yet. These are what the check-in list shows.
     static let awaitingCheckIn: [Participant] = [
-        Participant(id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432", name: "Amélie Roux", ticketType: "Full pass", city: "Lyon"),
-        Participant(id: ParticipantID("tkt-10433"), ticketRef: "TKT-10433", name: "Tomás Herrera", ticketType: "Full pass", city: "Madrid"),
-        Participant(id: ParticipantID("tkt-10434"), ticketRef: "TKT-10434", name: "Nina Kowalski", ticketType: "Party pass", city: "Kraków"),
-        Participant(id: ParticipantID("tkt-10435"), ticketRef: "TKT-10435", name: "Sofia Ferreira", ticketType: "Full pass", city: "Porto"),
-        Participant(id: ParticipantID("tkt-10436"), ticketRef: "TKT-10436", name: "Dmitri Alvarez", ticketType: "Weekend pass", city: "Berlin"),
-        Participant(id: ParticipantID("tkt-10437"), ticketRef: "TKT-10437", name: "Hannah Vos", ticketType: "Party pass", city: "Utrecht"),
+        Participant(id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432", name: "Amélie Roux", ticketType: TicketType.fullPass, country: "France"),
+        Participant(id: ParticipantID("tkt-10433"), ticketRef: "TKT-10433", name: "Tomás Herrera", ticketType: TicketType.fullPass, country: "Spain"),
+        Participant(id: ParticipantID("tkt-10434"), ticketRef: "TKT-10434", name: "Nina Kowalski", ticketType: TicketType.partyPass, country: "Poland"),
+        Participant(id: ParticipantID("tkt-10435"), ticketRef: "TKT-10435", name: "Sofia Ferreira", ticketType: TicketType.fullPass, country: "Portugal"),
+        Participant(id: ParticipantID("tkt-10436"), ticketRef: "TKT-10436", name: "Dmitri Alvarez", ticketType: TicketType.partyPassPlus, country: "Germany"),
+        Participant(id: ParticipantID("tkt-10437"), ticketRef: "TKT-10437", name: "Hannah Vos", ticketType: TicketType.partyPass, country: "Netherlands"),
     ]
 
-    /// The whole roster, as the Sheet import would have left it.
-    static var roster: [Participant] { checkedIn + awaitingCheckIn }
+    /// Door-sold evening tickets. Anonymous, minted at reception, never in the
+    /// Sheet — so `source` is `.evening` and the importer leaves them alone.
+    static let eveningTickets: [Participant] = [
+        Participant.eveningTicket(
+            evening: .friday, number: 14, bracelet: braceletE, checkedInAt: earlier(2)
+        )
+    ]
+
+    /// Everything in Firestore: the imported roster plus door sales.
+    static var roster: [Participant] { checkedIn + awaitingCheckIn + eveningTickets }
 
     /// Convenience for previews and launch overrides.
     static func participant(withBracelet bracelet: BraceletID) -> Participant? {
-        checkedIn.first { $0.braceletId == bracelet }
+        roster.first { $0.braceletId == bracelet }
     }
 }

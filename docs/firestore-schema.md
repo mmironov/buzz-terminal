@@ -19,6 +19,17 @@ and the app never writes a name.
 
 ---
 
+## Pass types
+
+Six, and the spelling is canonical — `ios/BuzzTerminal/Domain/Models.swift`
+`TicketType` holds them:
+
+`Party Pass` · `Party Pass Plus` · `Full Pass` · `Full Pass Gold` ·
+`Jazz Performance Track` · `Evening Ticket`
+
+The first five come from the Sheet. **`Evening Ticket` never does** — those are
+sold at the door each evening and minted by reception. See *Evening tickets*.
+
 ## `participants/{participantId}`
 
 One document per person who bought a ticket. Exists before the festival starts,
@@ -90,6 +101,57 @@ Double-charging is prevented structurally, not by a check that could be forgotte
 
 `createdAt` must equal `request.time`, so it is the server's clock. An offline
 terminal with a wrong date cannot backdate a charge.
+
+## Evening tickets
+
+Passes are also sold on the door on Friday, Saturday and Sunday. Those buyers have
+no Sheet row, so reception creates the participant — the **only** case where a
+client may create one.
+
+```
+participants/ev-friday-14
+  source:        "evening"          // vs "sheet"
+  ticketType:    "Evening Ticket"
+  evening:       "friday"
+  eveningNumber: 14
+  ticketRef:     "EV-FRIDAY-14"
+  name:          "Evening #14"      // a label, not a person
+  country:       ""
+  braceletId:    "04:E7:3A:2C"      // paired at the moment of sale
+  checkedInAt:   <server timestamp>
+  balance:       0
+  createdBy:     "<uid of who sold it>"
+```
+
+Three things make this safe to allow:
+
+**The id is the sequence.** `ev-friday-14` — so Firestore's create-fails-if-exists
+does the deduplication. Two desks selling simultaneously collide on `#14` and the
+loser retries with `#15`. No counter document, no coordination, no lost numbers
+under contention.
+
+**Every field is pinned by the rules,** including that the id agrees with
+`evening` and `eveningNumber`, that `ticketType` is exactly `Evening Ticket`, that
+`balance` is zero, and that `country` is empty. Reception can mint an anonymous
+evening ticket and cannot mint anything else — not a Full Pass Gold, not one
+starting with 500 € on it, not one carrying a name.
+
+**Anonymous by construction.** There is nowhere to put personal data even if a
+terminal tried; `name` is the generated label.
+
+Validity is **not enforced anywhere.** A Friday ticket presented on Saturday still
+works, and organisers freeze it by hand from the admin panel using the same
+`isBlocked` flag as any other bracelet. That is a deliberate decision: it keeps
+date arithmetic out of the app and a fifth refusal case out of `PaymentDecision`.
+
+A guest returning on a second evening buys a **new ticket on a new bracelet**, so
+"a bracelet is permanently paired" stays true and the pairing rules are untouched.
+Any balance left on the first evening's bracelet stays there.
+
+> Not recorded: the cash taken for the ticket itself. `npm run headers`-style
+> reconciliation can count evening-ticket documents per evening, but the price is
+> nowhere in Firestore. Worth revisiting if end-of-night cash reconciliation needs
+> to include door sales.
 
 ## `bracelets/{chipUid}`
 

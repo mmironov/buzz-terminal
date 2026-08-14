@@ -65,7 +65,7 @@ struct AssignBraceletView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(guest.name)
                         .font(.sbHeading(16))
-                    Text("\(guest.ticketType) · \(guest.city)")
+                    Text("\(guest.ticketType) · \(guest.country)")
                         .font(.sbBody(11))
                         .foregroundStyle(.sbInk(0.55))
                 }

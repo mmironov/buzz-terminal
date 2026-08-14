@@ -462,3 +462,147 @@ describe('the ledger is append-only and replay-safe', () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Evening tickets — the one thing a terminal may create.
+//
+//  Passes are sold at the door each evening and those buyers have no Sheet row,
+//  so reception must be able to create a participant. Every test below exists to
+//  keep that hole the size of an anonymous evening ticket and no larger.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('selling an evening ticket at the door', () => {
+  const EV_CHIP = '04:E7:3A:2C';
+
+  /** The batch reception sends: the ticket and its reverse lookup, together. */
+  function sell(db, { evening = 'friday', number = 14, chip = EV_CHIP, uid = RECEPTION_UID, overrides = {} } = {}) {
+    const pid = `ev-${evening}-${number}`;
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'participants', pid), {
+      source: 'evening',
+      ticketType: 'Evening Ticket',
+      evening,
+      eveningNumber: number,
+      ticketRef: `EV-${evening.toUpperCase()}-${number}`,
+      name: `Evening #${number}`,
+      nameLower: `evening #${number}`,
+      searchTokens: ['evening', `#${number}`, evening],
+      country: '',
+      braceletId: chip,
+      checkedInAt: serverTimestamp(),
+      balance: 0,
+      lastTxId: null,
+      isBlocked: false,
+      blockReason: null,
+      createdBy: uid,
+      ...overrides,
+    });
+    batch.set(doc(db, 'bracelets', chip), {
+      participantId: pid,
+      staffUid: uid,
+      pairedAt: serverTimestamp(),
+    });
+    return batch.commit();
+  }
+
+  it('lets reception sell one', async () => {
+    await assertSucceeds(sell(reception()));
+  });
+
+  it('refuses to let the bar sell one', async () => {
+    await assertFails(sell(bar()));
+  });
+
+  it('THE ONE THAT MATTERS: refuses to mint any other pass type', async () => {
+    for (const ticketType of ['Full Pass Gold', 'Full Pass', 'Party Pass Plus', 'Jazz Performance Track']) {
+      await assertFails(sell(reception(), { overrides: { ticketType } }));
+    }
+  });
+
+  it('refuses a ticket that starts with money on it', async () => {
+    // The ticket price is cash to the festival. A terminal that could create a
+    // participant holding 500 € would be a mint.
+    await assertFails(sell(reception(), { overrides: { balance: 50000 } }));
+  });
+
+  it('refuses to attach personal data', async () => {
+    await assertFails(sell(reception(), { overrides: { country: 'Bulgaria' } }));
+    await assertFails(sell(reception(), { overrides: { name: 'Rossitsa Popova' } }));
+    await assertFails(sell(reception(), { overrides: { email: 'someone@example.com' } }));
+    await assertFails(sell(reception(), { overrides: { phone: '+359000000' } }));
+  });
+
+  it('refuses a document id that disagrees with its contents', async () => {
+    // Otherwise the id stops being a reliable sequence and two tickets could
+    // claim to be #14.
+    const db = reception();
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'participants', 'ev-friday-14'), {
+      source: 'evening', ticketType: 'Evening Ticket',
+      evening: 'saturday',              // ← disagrees with the id
+      eveningNumber: 14,
+      ticketRef: 'EV-SATURDAY-14', name: 'Evening #14', nameLower: 'evening #14',
+      searchTokens: [], country: '', braceletId: EV_CHIP,
+      checkedInAt: serverTimestamp(), balance: 0, lastTxId: null,
+      isBlocked: false, blockReason: null, createdBy: RECEPTION_UID,
+    });
+    batch.set(doc(db, 'bracelets', EV_CHIP), {
+      participantId: 'ev-friday-14', staffUid: RECEPTION_UID, pairedAt: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
+  });
+
+  it('refuses an invented evening', async () => {
+    await assertFails(sell(reception(), { evening: 'monday' }));
+  });
+
+  it('refuses a source of "sheet"', async () => {
+    // A door sale must never masquerade as an imported registration; the importer
+    // would then treat it as an orphan, or overwrite it.
+    await assertFails(sell(reception(), { overrides: { source: 'sheet' } }));
+  });
+
+  it('refuses one that is pre-blocked, or attributed to somebody else', async () => {
+    await assertFails(sell(reception(), { overrides: { isBlocked: true } }));
+    await assertFails(sell(reception(), { overrides: { createdBy: BAR_UID } }));
+  });
+
+  it('refuses one with no reverse-lookup document', async () => {
+    const db = reception();
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'participants', 'ev-friday-14'), {
+      source: 'evening', ticketType: 'Evening Ticket', evening: 'friday', eveningNumber: 14,
+      ticketRef: 'EV-FRIDAY-14', name: 'Evening #14', nameLower: 'evening #14',
+      searchTokens: [], country: '', braceletId: EV_CHIP,
+      checkedInAt: serverTimestamp(), balance: 0, lastTxId: null,
+      isBlocked: false, blockReason: null, createdBy: RECEPTION_UID,
+    });
+    await assertFails(batch.commit());
+  });
+
+  it('makes two desks selling at once collide instead of both claiming #14', async () => {
+    await assertSucceeds(sell(reception(), { number: 14 }));
+    // Same id, different chip: the second desk loses and must retry with 15.
+    await assertFails(sell(reception(), { number: 14, chip: '04:FF:FF:FF' }));
+    await assertSucceeds(sell(reception(), { number: 15, chip: '04:FF:FF:FF' }));
+  });
+
+  it('still refuses to delete one', async () => {
+    await assertSucceeds(sell(reception()));
+    await assertFails(deleteDoc(doc(reception(), 'participants', 'ev-friday-14')));
+  });
+
+  it('behaves like any other participant once sold', async () => {
+    await assertSucceeds(sell(reception()));
+    const pid = 'ev-friday-14';
+    const db = reception();
+    // A top-up works exactly as it does for an imported participant.
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'participants', pid, 'transactions', 'tx-ev-1'), {
+      clientTxId: 'tx-ev-1', type: 'topup', amount: 2000, signedAmount: 2000,
+      staffUid: RECEPTION_UID, terminalId: 'terminal-01', createdAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'participants', pid), { balance: 2000, lastTxId: 'tx-ev-1' });
+    await assertSucceeds(batch.commit());
+  });
+});
