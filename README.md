@@ -431,8 +431,11 @@ Two intentional deviations from the prototype, both improvements:
    | **Emulator**, same `firestore.rules` the deploy uses | both roles, pairing, top-up, charge, all three refusals, a reconciling ledger |
    | **Production** | sign-in, custom claim, the drinks query, the 83-person roster read — **read-only** |
 
-   No money has ever moved in production: zero bracelets, zero ledger entries. The
-   write path is proven against the rules, not yet against the live project.
+   No money has ever moved in production: **zero ledger entries, zero non-zero
+   balances**, across all 83 participants. One bracelet has been paired there —
+   `04:A1:9C:7E` to Lysandra Batail — by a check-in during testing on 14 Aug 2026.
+   `npm run reset` clears it. The money path is proven against the rules, not yet
+   against the live project.
 3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
    NFC needs a physical device and the entitlement, so it is the first thing here
    the Simulator cannot verify.

@@ -217,7 +217,11 @@ private fun SimulatorPanel(model: AppModel) {
             .padding(top = SBSpace.x3, bottom = 13.dp),
     ) {
         SBKicker(
-            text = "Prototype · simulate a bracelet",
+            text = if (model.runsOnFixtures) {
+                "Prototype · simulate a bracelet"
+            } else {
+                "Prototype · simulate a bracelet · live data"
+            },
             color = SB.accent300,
             size = 9.sp,
             trackingEm = 0.16f,
@@ -227,7 +231,12 @@ private fun SimulatorPanel(model: AppModel) {
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             model.simulatedBracelets.forEach { bracelet ->
                 SimulatorRow(
-                    hint = bracelet.hint,
+                    // The hints describe `SampleData`, so on any other backend
+                    // they are false — and confidently so, which is worse than
+                    // silence. The chip this one calls "fresh, not yet assigned"
+                    // is a checked-in guest on Firestore, and the participant
+                    // screen that correctly appears then looks like a bug.
+                    hint = bracelet.hint.takeIf { model.runsOnFixtures },
                     id = bracelet.id.rawValue,
                     onClick = { model.selectSimulatedBracelet(bracelet.id) },
                 )
@@ -237,7 +246,7 @@ private fun SimulatorPanel(model: AppModel) {
 }
 
 @Composable
-private fun SimulatorRow(hint: String, id: String, onClick: () -> Unit) {
+private fun SimulatorRow(hint: String?, id: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
 
@@ -253,8 +262,14 @@ private fun SimulatorRow(hint: String, id: String, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(hint, style = sbBody(12.5.sp), color = SB.neutral100, modifier = Modifier.weight(1f))
-        Text(id, style = sbBody(11.sp), color = SB.neutral100.copy(alpha = 0.55f))
+        if (hint != null) {
+            Text(hint, style = sbBody(12.5.sp), color = SB.neutral100, modifier = Modifier.weight(1f))
+            Text(id, style = sbBody(11.sp), color = SB.neutral100.copy(alpha = 0.55f))
+        } else {
+            // With nothing truthful to say about the chip, the id carries the row
+            // on its own rather than being demoted to a trailing detail.
+            Text(id, style = sbBody(12.5.sp), color = SB.neutral100, modifier = Modifier.weight(1f))
+        }
     }
 }
 

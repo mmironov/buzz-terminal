@@ -56,7 +56,18 @@ class AppModel(
      * — which is exactly what happened the first time the iOS app ran against
      * production.
      */
-    val offersDemoAccounts: Boolean = repository is InMemoryTerminalRepository
+    val offersDemoAccounts: Boolean get() = runsOnFixtures
+
+    /**
+     * Whether `SampleData` is what the app is actually talking to.
+     *
+     * Anything the fixtures *say* about the world — the demo credentials, the
+     * descriptions beside the simulated chips — is only true when this is true.
+     * Displaying it regardless is how a correct app comes to look broken: the
+     * chip labelled "fresh, not yet assigned" is a real, checked-in guest on
+     * Firestore, and the screen that says so reads as a bug.
+     */
+    val runsOnFixtures: Boolean = repository is InMemoryTerminalRepository
 
     // ── Session ──
 
