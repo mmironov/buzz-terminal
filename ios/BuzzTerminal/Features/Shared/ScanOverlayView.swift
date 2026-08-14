@@ -67,8 +67,15 @@ struct ScanOverlayView: View {
 
     private var simulatorPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SBKicker(text: "Prototype · simulate a bracelet", color: .sbAccent300, size: 9, tracking: 0.16)
-                .padding(.bottom, 9)
+            SBKicker(
+                text: model.runsOnFixtures
+                    ? "Prototype · simulate a bracelet"
+                    : "Prototype · simulate a bracelet · live data",
+                color: .sbAccent300,
+                size: 9,
+                tracking: 0.16
+            )
+            .padding(.bottom, 9)
 
             VStack(spacing: 7) {
                 ForEach(model.simulatedBracelets) { bracelet in
@@ -76,13 +83,24 @@ struct ScanOverlayView: View {
                         Task { await model.selectSimulatedBracelet(bracelet.id) }
                     } label: {
                         HStack(spacing: 10) {
-                            Text(bracelet.hint)
-                                .font(.sbBody(12.5))
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Text(bracelet.id.rawValue)
-                                .font(.sbBody(11))
-                                .foregroundStyle(Color.sbNeutral100.opacity(0.55))
+                            // The hints describe `SampleData`, so on any other
+                            // backend they are false — and confidently so, which
+                            // is worse than silence. With nothing truthful to say
+                            // about a chip until it is read, the id carries the
+                            // row on its own rather than trailing behind a lie.
+                            if model.runsOnFixtures {
+                                Text(bracelet.hint)
+                                    .font(.sbBody(12.5))
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(bracelet.id.rawValue)
+                                    .font(.sbBody(11))
+                                    .foregroundStyle(Color.sbNeutral100.opacity(0.55))
+                            } else {
+                                Text(bracelet.id.rawValue)
+                                    .font(.sbBody(12.5))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                         .padding(.horizontal, 11)
                         .padding(.vertical, 9)

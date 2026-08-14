@@ -24,13 +24,23 @@ final class AppModel {
     private let repository: TerminalRepository
     private let reader: BraceletReader
 
+    /// Whether `SampleData` is what the app is actually talking to.
+    ///
+    /// Anything the fixtures *say* about the world is only true when this is —
+    /// the demo credentials, and the descriptions beside the simulated chips.
+    /// Showing them regardless is how a correct app comes to look broken: the
+    /// chip labelled "fresh, not yet assigned" was a real checked-in guest on
+    /// production, and the participant screen that correctly appeared read as a
+    /// bug on both platforms before this was gated.
+    let runsOnFixtures: Bool
+
     /// Whether the demo-account shortcuts mean anything.
     ///
     /// They fill fixture credentials that only `InMemoryTerminalRepository`
     /// recognises. Against Firebase they cannot succeed, so offering them there is
     /// an invitation to misread a real authentication failure as a broken app —
     /// which is exactly what happened the first time this ran on production.
-    let offersDemoAccounts: Bool
+    var offersDemoAccounts: Bool { runsOnFixtures }
 
     init(
         repository: TerminalRepository = InMemoryTerminalRepository(),
@@ -38,7 +48,7 @@ final class AppModel {
     ) {
         self.repository = repository
         self.reader = reader
-        self.offersDemoAccounts = repository is InMemoryTerminalRepository
+        self.runsOnFixtures = repository is InMemoryTerminalRepository
     }
 
     // MARK: Session
