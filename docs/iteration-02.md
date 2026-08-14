@@ -131,8 +131,15 @@ contract. So the strings are spelled out in one place, and a mismatch fails loud
 
 ## 3. Verified how
 
-Not "it compiles". The full flow driven through the UI against the deployed rules,
-with the resulting documents inspected directly:
+Not "it compiles". The full flow driven through the UI, with the resulting
+documents inspected directly.
+
+**Against the emulator**, loading the same `firestore.rules` that gets deployed —
+not against the live project. Worth stating plainly, because the table below reads
+like production and is not: participant `1041` is `seed-emulator.sh`'s Amélie Roux,
+not anyone from the Sheet. What production has since verified is narrower and
+read-only — sign-in, the custom claim, the drinks query and the roster read. No
+money has ever moved there.
 
 | Step | Result |
 | --- | --- |

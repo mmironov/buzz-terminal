@@ -218,11 +218,19 @@ Two intentional deviations from the prototype, both improvements:
 1. ✅ **Iteration 1** — project, Modernist design system in SwiftUI, every screen
    on an in-memory repository. See `docs/iteration-01.md`.
 2. ✅ **Iteration 2** — Firebase. The terminal runs on Firestore against enforced
-   rules; the reception and bar flows and all three refusals verified by driving
-   the UI, not by reading code. **83 paid participants live**, imported from the
-   Google Sheet. Schema in `docs/firestore-schema.md`, invariants in
-   `backend/firestore.rules`, project setup in `docs/firebase-setup.md`, walkthrough
-   in `docs/iteration-02.md`.
+   rules. **83 paid participants live**, imported from the Google Sheet. Schema in
+   `docs/firestore-schema.md`, invariants in `backend/firestore.rules`, project
+   setup in `docs/firebase-setup.md`, walkthrough in `docs/iteration-02.md`.
+
+   Be precise about what is verified where, because the two are easy to conflate:
+
+   | | |
+   | --- | --- |
+   | **Emulator**, same `firestore.rules` the deploy uses | both roles, pairing, top-up, charge, all three refusals, a reconciling ledger |
+   | **Production** | sign-in, custom claim, the drinks query, the 83-person roster read — **read-only** |
+
+   No money has ever moved in production: zero bracelets, zero ledger entries. The
+   write path is proven against the rules, not yet against the live project.
 3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
    NFC needs a physical device and the entitlement, so it is the first thing here
    the Simulator cannot verify.
