@@ -1,11 +1,18 @@
 {
   "version": "0.0.1",
-  "//": "The web admin panel. Needs the Firestore and Auth emulators already running from backend/ — see web-admin/README.md.",
+  "//": "The web admin panel. `web-admin-emulator` needs the Firestore and Auth emulators already running from backend/; `web-admin-production` talks to the real swing-buzz project and needs web-admin/.env.local. See web-admin/README.md.",
   "configurations": [
     {
       "name": "web-admin-emulator",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:emulator"],
+      "cwd": "web-admin",
+      "port": 5173
+    },
+    {
+      "name": "web-admin-production",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "cwd": "web-admin",
       "port": 5173
     }
