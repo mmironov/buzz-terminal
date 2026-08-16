@@ -166,9 +166,10 @@ credential that bypasses them.
 - ~~**The panel has never run against production.**~~ Done on 16 Aug 2026:
   `swing-buzz-web` registered, rules deployed and verified byte-identical to the
   tested file, Miroslav's account switched from `bar` to `admin`, and the panel
-  live at <https://swing-buzz.web.app>. What has *not* happened there is a signed-in
-  session doing real work — no block has been applied and no price changed against
-  production data.
+  live at <https://swing-buzz.web.app>. Confirmed working in production the same
+  day: a fourth drink appeared in the live menu that neither `seed-drinks` nor the
+  reset creates, so it was added through the panel by the organiser account. No
+  block has been applied against production data yet.
 - **Staff phones need new app builds.** The deployed rules now require `items` on
   every charge, so a build older than `3ec9884` (iOS) or `9a4674f` (Android) will be
   refused at the bar. Top-ups and check-in are unaffected on any build.
