@@ -18,7 +18,7 @@ panel did was real.
 | `backend/rules-tests/` | **69 tests**, up from 49 |
 | `backend/import-roster/` | `set-role` accepts `admin`; `seed-drinks` demoted to a bootstrap |
 | `backend/seed-emulator.sh` | an admin account |
-| `backend/firebase.json` | hosting for the panel |
+| `web-admin/firebase.json` | hosting for the panel |
 | `ios/…/Data/` | `CartLine.ledgerItem`, itemised charges, a new refusal |
 | `android/…/data/` | the same, plus `:app`'s first unit tests |
 | `web-admin/` | the panel |
@@ -163,9 +163,15 @@ credential that bypasses them.
 
 ## 4. Still open
 
-- **The panel has never run against production.** It needs a web app registered in
-  the Firebase console and an `admin` claim granted to a real account. Everything
-  above is the emulator.
+- ~~**The panel has never run against production.**~~ Done on 16 Aug 2026:
+  `swing-buzz-web` registered, rules deployed and verified byte-identical to the
+  tested file, Miroslav's account switched from `bar` to `admin`, and the panel
+  live at <https://swing-buzz.web.app>. What has *not* happened there is a signed-in
+  session doing real work — no block has been applied and no price changed against
+  production data.
+- **Staff phones need new app builds.** The deployed rules now require `items` on
+  every charge, so a build older than `3ec9884` (iOS) or `9a4674f` (Android) will be
+  refused at the bar. Top-ups and check-in are unaffected on any build.
 - **No itemisation on the terminals' own receipt screens.** Both apps write the
   lines and neither shows them back from the ledger; the receipt is still built from
   the cart in memory. Harmless, but it means the panel is currently the only place

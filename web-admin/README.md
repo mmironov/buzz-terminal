@@ -136,11 +136,20 @@ Both are here because they are different things:
 npm run deploy
 ```
 
-`tsc --noEmit && vite build`, then `firebase deploy --only hosting` using
-`backend/firebase.json` — where `public` points back at `web-admin/dist`, so
-moving either directory means editing the other. Hosting serves `index.html` for
-every path (the panel routes in the browser) with long caches on the hashed assets
-and none on `index.html`.
+`tsc --noEmit && vite build`, then `firebase deploy --only hosting`. Live at
+**<https://swing-buzz.web.app>**.
+
+Hosting is configured by `web-admin/firebase.json`, *not* by `backend/firebase.json`
+— the CLI resolves `public` relative to its own config file and refuses a path
+outside that directory, so the backend config could not serve `web-admin/dist`.
+Each config now sits next to what it deploys: `backend/` owns rules, indexes and
+the emulators; this one owns hosting.
+
+Every path serves `index.html`, with a year's cache on the hashed assets and
+`no-cache` on the HTML. Note that Hosting matches header rules against the
+**request path**, not the file it ends up serving — a rule for `/index.html` alone
+does nothing for somebody visiting `/`, which is everybody. That was live for one
+deploy before a `curl -I` caught it.
 
 The bundle is about 760 kB, 230 kB gzipped, nearly all of it the Firebase SDK.
 Not code-split: it is a two-screen internal tool loaded on a laptop, and the

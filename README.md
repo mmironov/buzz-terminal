@@ -441,7 +441,7 @@ ios/                       the SwiftUI app
 backend/                   shared by every client
   firestore.rules          the money invariants
   firestore.indexes.json
-  firebase.json            rules, indexes, hosting for web-admin, emulators
+  firebase.json            rules, indexes, emulators
   import-roster/           Google Sheet → Firestore
   rules-tests/             the emulator harness
 docs/                      schema, setup, per-iteration walkthroughs
@@ -452,6 +452,7 @@ android/                   the Jetpack Compose app
 web-admin/                 the organiser panel (React, Vite)
   src/schema.ts            the field names, hand-written like both apps' mappings
   scripts/                 emulator fixtures, written through the rules
+  firebase.json            hosting — deliberately not in backend/, see its README
 ```
 
 Nothing under `backend/` is part of the Xcode project — the two synchronized

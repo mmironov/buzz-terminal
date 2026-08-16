@@ -1,0 +1,24 @@
+{
+  "//": "Hosting for the organiser panel. Separate from backend/firebase.json, which owns the Firestore rules, indexes and emulators: the CLI resolves `public` relative to the config file and refuses a path outside its directory, so a single config at backend/ could not serve web-admin/dist. Each config now sits next to what it deploys.",
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "//": "A single-page app: every path serves index.html, because Hosting would otherwise 404 on a reload. The panel keeps its state in React rather than the URL, so this is insurance rather than routing.",
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "//headers": "Vite emits hashed asset filenames, so assets can be cached forever; the HTML names them and must always be revalidated or a deploy would not reach a browser that already has it. Note the `/` rule: Hosting matches headers against the REQUEST path, not the file it ends up serving, so a rule for /index.html alone does nothing for somebody visiting the site normally — which is everybody. Found by curling the deployed site and seeing Firebase's default max-age=3600 on the HTML. The three patterns below are deliberately non-overlapping, so none of this depends on which rule wins a tie. A deep path like /foo still gets Firebase's default hour, because the rewrite serves index.html there without the request path matching either HTML rule — harmless while the panel keeps its state in React and has no URLs of its own, but the first thing to fix if it ever grows real routes. Catching it needs a `**` rule that overlaps /assets/**, and depending on tie-breaking to protect the immutable assets is a worse trade than this note.",
+    "headers": [
+      {
+        "source": "/assets/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "source": "/",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "**/*.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}
