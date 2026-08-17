@@ -62,11 +62,23 @@ function projectFromFirebaserc() {
   }
 }
 
+/// The roster always comes from the same Sheet, so it lives in sheet.json rather
+/// than in everyone's shell history. Same reasoning as reading the project id from
+/// ../.firebaserc: a re-import should be one command.
+function sheetConfig() {
+  try {
+    return JSON.parse(readFileSync(new URL('./sheet.json', import.meta.url), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+const sheet = sheetConfig();
+
 const config = {
   keyFile: option('key', process.env.GOOGLE_APPLICATION_CREDENTIALS ?? './serviceAccountKey.json'),
   projectId: option('project', process.env.FIREBASE_PROJECT_ID ?? projectFromFirebaserc()),
-  spreadsheetId: option('sheet', process.env.SHEET_ID),
-  range: option('range', process.env.SHEET_RANGE ?? 'A1:Z10000'),
+  spreadsheetId: option('sheet', process.env.SHEET_ID ?? sheet.sheetId),
+  range: option('range', process.env.SHEET_RANGE ?? sheet.range ?? 'A1:Z10000'),
   apply: flag('apply'),
 };
 
@@ -77,7 +89,12 @@ function fail(message) {
 
 function requireSheet() {
   if (!config.spreadsheetId) {
-    fail('No spreadsheet id. Pass --sheet=<id> or set SHEET_ID.\n  The id is the long string in the Sheet URL between /d/ and /edit.');
+    fail(
+      'No spreadsheet id.\n' +
+        '  Normally read from ./sheet.json — check that it exists and has "sheetId".\n' +
+        '  Otherwise pass --sheet=<id> or set SHEET_ID.\n' +
+        '  The id is the long string in the Sheet URL between /d/ and /edit.'
+    );
   }
 }
 
@@ -439,8 +456,8 @@ Reset scopes (--scope=, default test-data):
   Add --drinks to wipe the menu too. Staff accounts are never touched.
 
 Configuration, as flags or environment variables:
-  --sheet=<id>       SHEET_ID                     from the Sheet URL
-  --range=<a1>       SHEET_RANGE                  default A1:Z10000 (first tab)
+  --sheet=<id>       SHEET_ID                     defaults to ./sheet.json
+  --range=<a1>       SHEET_RANGE                  defaults to ./sheet.json
   --project=<id>     FIREBASE_PROJECT_ID             defaults to ../.firebaserc
   --key=<path>       GOOGLE_APPLICATION_CREDENTIALS   default ./serviceAccountKey.json
 

@@ -161,10 +161,11 @@ charged", and it is now literally true rather than intended.
 
 ## 4. Still open
 
-- **The importer has never run against the real Sheet.** It needs `SHEET_ID` and
-  the service-account key. `npm run headers` first — it prints the live header row
-  and a per-status count, so the column spellings can be confirmed before anything
-  is written.
+- ~~**The importer has never run against the real Sheet.**~~ Done, and repeatedly
+  since: the Sheet id now lives in `import-roster/sheet.json`, so `npm run import`
+  needs no arguments. Run `npm run headers` first out of habit — it prints the live
+  header row and per-status counts, which is what catches a renamed column or a
+  status spelled something other than `paid` before anything is written.
 - ~~**Firebase is opt-in.**~~ Reversed after iteration 2 closed: Firestore is the
   default in debug and release, and a release build with no
   `GoogleService-Info.plist` refuses to launch rather than falling back to a

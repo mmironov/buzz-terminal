@@ -30,14 +30,23 @@ copy the `client_email` value (it looks like
 `something@your-project.iam.gserviceaccount.com`), and share the Sheet with that
 address as **Viewer**. Viewer is enough — this tool only ever reads.
 
-**4. Point it at the Sheet:**
+**4. Point it at the Sheet.** Already done: the id is in `sheet.json`, so the
+commands below need no flags. It is committed on purpose — a Sheet id is not a
+secret, because access comes from step 3 sharing it with the service account, not
+from the id being unknown.
+
+To read a different Sheet, in order of precedence:
 
 ```bash
-export SHEET_ID=1AbC…            # the long string in the Sheet URL between /d/ and /edit
-export SHEET_RANGE='Registrations!A1:Z10000'   # optional; defaults to the first tab
+npm run import -- --sheet=1AbC…    # one run
+SHEET_ID=1AbC… npm run import      # one shell
 ```
 
-The Firebase project id is read from `../.firebaserc`, so it needs no flag.
+`SHEET_RANGE` / `--range=` override the range the same way. The default omits the
+tab name, which reads the first sheet; naming a tab that does not exist fails with
+an unhelpful error, which is how the default used to be wrong.
+
+The Firebase project id is read from `../.firebaserc`, so it needs no flag either.
 Override with `--project=<id>` if you ever point this at a staging project.
 
 ## Then

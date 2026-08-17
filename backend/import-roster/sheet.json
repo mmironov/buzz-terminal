@@ -1,0 +1,8 @@
+{
+  "//": "Which Google Sheet the roster comes from, so a re-import is one command and nobody has to find the id again. Committed deliberately: a Sheet id is not a secret, because access is granted by sharing the Sheet with the importer's service account, not by keeping the id quiet. Overridden by --sheet=<id> or SHEET_ID.",
+
+  "sheetId": "1BKl971cIsTM8E_S0mysrZQuGAW1NJ69HHqCacT9U9Fw",
+
+  "//range": "Omits the tab name on purpose, which reads the first sheet — the registrations tab. Naming a tab that does not exist fails with an unhelpful error, which is how the default used to be wrong.",
+  "range": "A1:Z10000"
+}

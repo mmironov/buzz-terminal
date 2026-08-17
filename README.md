@@ -129,6 +129,28 @@ the archive still builds before any of the Apple paperwork exists.
 ⚠️ **TestFlight builds expire after 90 days and an expired build refuses to
 launch.** Upload a fresh one the week of the festival.
 
+### Re-importing the roster
+
+People keep paying, so the roster keeps moving. The Sheet id is in
+`backend/import-roster/sheet.json`, so this needs no arguments:
+
+```bash
+cd backend/import-roster && npm run headers
+```
+
+```bash
+cd backend/import-roster && npm run import
+```
+
+`headers` prints the live header row and per-status counts — that is what catches a
+renamed column, or a status spelled something other than `paid`, before anything is
+written. `import` is a dry run showing exactly who would be created or changed; add
+`--apply` to commit it.
+
+Only `Status = paid` is imported, and only roster fields. Balances, bracelets and
+check-in state belong to the terminals and are never touched, so re-importing
+mid-festival cannot clobber somebody who has already checked in.
+
 ### Testing on the live project, then starting clean
 
 Testing against production is the only way to prove the real thing works, and it
