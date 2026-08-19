@@ -31,8 +31,23 @@ enum class StaffRole(val wire: String, val label: String) {
         }
 
     companion object {
-        /** The claim value as Firebase hands it back, or null if it is neither. */
-        fun fromWire(value: String?): StaffRole? = entries.firstOrNull { it.wire == value }
+        /**
+         * The role a `role` claim grants at a terminal, or null if the claim is not
+         * one this app understands — in which case sign-in is refused rather than
+         * defaulting to something, because guessing here means guessing at what
+         * somebody may do with money.
+         *
+         * `admin` maps to RECEPTION, matching `firestore.rules`: an organiser may
+         * pair, sell evening tickets and credit, but never charge. There is no
+         * ADMIN entry on purpose — this enum is what a terminal can *do*, and an
+         * organiser on the desk is doing reception's job. The panel's own powers
+         * live in the web app.
+         */
+        fun fromWire(value: String?): StaffRole? = when (value) {
+            "reception", "admin" -> RECEPTION
+            "bar" -> BAR
+            else -> null
+        }
     }
 }
 

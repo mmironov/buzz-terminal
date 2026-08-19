@@ -67,7 +67,7 @@ actor FirebaseTerminalRepository: TerminalRepository {
         // otherwise sit behind a cached token for up to an hour.
         let token = try await result.user.getIDTokenResult(forcingRefresh: true)
         guard let raw = token.claims["role"] as? String,
-              let role = StaffRole(rawValue: raw)
+              let role = StaffRole(claim: raw)
         else {
             try? auth.signOut()
             throw TerminalError.noRoleAssigned

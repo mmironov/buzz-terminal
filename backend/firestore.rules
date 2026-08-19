@@ -48,21 +48,37 @@ service cloud.firestore {
       return request.auth.token.get('role', '');
     }
     function isStaff() {
-      return request.auth != null && role() in ['reception', 'bar'];
-    }
-    function isReception() {
-      return isStaff() && role() == 'reception';
-    }
-    function isBar() {
-      return isStaff() && role() == 'bar';
+      return request.auth != null && role() in ['reception', 'bar', 'admin'];
     }
 
-    // The organiser at the web admin panel. Note that `admin` is NOT a member of
-    // isStaff(), which is what keeps it out of every money rule below by
-    // construction rather than by remembering to exclude it.
+    // `admin` counts as reception. An organiser is the person who ends up on the
+    // desk when it is busy, and having to hand them a second account to check
+    // somebody in was friction with no security benefit — they can already set
+    // prices and freeze bracelets.
+    //
+    // What this grants, deliberately: pairing bracelets, selling evening tickets,
+    // and crediting balances. Every one of those writes a ledger entry stamped
+    // with `staffUid`, so an organiser's top-up is as auditable as anyone else's.
+    function isReception() {
+      return request.auth != null && role() in ['reception', 'admin'];
+    }
+
+    // `admin` is NOT included here, and that is the line that still holds: an
+    // organiser cannot take money off a bracelet. Credit is reversible by
+    // crediting again; a charge is what a guest disputes at the bar. Keeping the
+    // debit side to one role means "who spent this?" always has one answer.
+    function isBar() {
+      return request.auth != null && role() == 'bar';
+    }
+
+    // The organiser at the web admin panel: the menu, and freezing a bracelet.
     function isAdmin() {
       return request.auth != null && role() == 'admin';
     }
+
+    // Reads are open to every signed-in role. `isAdmin()` is now redundant here
+    // because admin is in isStaff(), and is left in place so that narrowing
+    // isStaff() again cannot silently take the panel's reads away with it.
     function canRead() {
       return isStaff() || isAdmin();
     }

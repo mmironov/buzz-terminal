@@ -374,4 +374,34 @@ class DomainTest {
             assertTrue(generated.toSet().size > 490)
         }
     }
+
+    @Nested
+    inner class `Staff roles from claims` {
+
+        @Test
+        fun `reception and bar map to themselves`() {
+            assertEquals(StaffRole.RECEPTION, StaffRole.fromWire("reception"))
+            assertEquals(StaffRole.BAR, StaffRole.fromWire("bar"))
+        }
+
+        @Test
+        fun `an admin gets reception, because that is what the rules grant them`() {
+            // firestore.rules puts `admin` in isReception() but never in isBar():
+            // an organiser can pair, sell evening tickets and credit, and cannot
+            // charge. If this ever returned BAR, an organiser could take money off
+            // a bracelet.
+            assertEquals(StaffRole.RECEPTION, StaffRole.fromWire("admin"))
+            assertEquals(Screen.ReceptionHome, StaffRole.fromWire("admin")?.homeScreen)
+        }
+
+        @Test
+        fun `an unknown or absent claim is refused rather than defaulted`() {
+            // Sign-in fails on null. Defaulting to a role would be defaulting to a
+            // set of money permissions.
+            assertEquals(null, StaffRole.fromWire(null))
+            assertEquals(null, StaffRole.fromWire(""))
+            assertEquals(null, StaffRole.fromWire("Admin")) // claims are lower-case
+            assertEquals(null, StaffRole.fromWire("organiser"))
+        }
+    }
 }

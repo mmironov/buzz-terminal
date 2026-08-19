@@ -26,6 +26,25 @@ enum StaffRole: String, Hashable, Sendable {
         case .bar: .barMenu
         }
     }
+
+    /// The role a `role` claim grants at a terminal.
+    ///
+    /// `admin` maps to reception, because that is exactly what the rules grant an
+    /// organiser: pairing, evening tickets and credit, but never a charge. There is
+    /// no `.admin` case here on purpose — this enum is the set of things a terminal
+    /// can *do*, and an organiser at the desk is doing reception's job. The panel's
+    /// own powers (the menu, freezing a bracelet) live in the web app, not here.
+    ///
+    /// A claim this does not recognise returns nil, and sign-in is refused rather
+    /// than defaulting to something. Guessing here would mean guessing at what
+    /// somebody is allowed to do with money.
+    init?(claim: String) {
+        switch claim {
+        case "reception", "admin": self = .reception
+        case "bar": self = .bar
+        default: return nil
+        }
+    }
 }
 
 // MARK: - Screens

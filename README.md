@@ -332,8 +332,9 @@ a footer saying whether the entries add up to the balance on the bracelet.
 delete. Taking off the menu (`isActive: false`) is the reversible one for a keg that
 ran out; deleting is for something entered by mistake.
 
-Blocking a bracelet is the panel's only write to a person. It cannot adjust a
-balance, edit the roster, pair a chip or touch history — enforced by
+Blocking a bracelet is the panel's only write to a person. It cannot edit the roster
+or touch history, and it cannot adjust a balance silently — a balance moves only
+alongside a ledger entry in the same batch, for every role. Enforced by
 `firestore.rules`, not by the panel's own code, so removing a check there produces
 permission errors rather than extra authority. `docs/firestore-schema.md`, "Roles",
 has the table.
@@ -344,9 +345,12 @@ Getting in needs an account whose token carries `role: admin`:
 cd backend/import-roster && npm run set-role -- you@swingbuzz.fest admin --apply
 ```
 
-An `admin` cannot sign into the terminal apps, and reception and bar accounts
-cannot sign into the panel. Running it locally against the emulators needs no
-Firebase project at all:
+An `admin` **also counts as reception**: the same account signs into the terminal
+apps and gets the reception flow, so an organiser can check people in and top them
+up without a second login. It still cannot charge — debiting is the bar's alone.
+Reception and bar accounts cannot sign into the panel.
+
+Running it locally against the emulators needs no Firebase project at all:
 
 ```bash
 cd backend && firebase emulators:start --only firestore,auth --project swing-buzz
@@ -534,7 +538,7 @@ Two intentional deviations from the prototype, both improvements:
 1. ✅ **Iteration 1** — project, Modernist design system in SwiftUI, every screen
    on an in-memory repository. See `docs/iteration-01.md`.
 2. ✅ **Iteration 2** — Firebase. The terminal runs on Firestore against enforced
-   rules. **83 paid participants live**, imported from the Google Sheet. Schema in
+   rules. **85 paid participants live**, imported from the Google Sheet. Schema in
    `docs/firestore-schema.md`, invariants in `backend/firestore.rules`, project
    setup in `docs/firebase-setup.md`, walkthrough in `docs/iteration-02.md`.
 
@@ -543,13 +547,14 @@ Two intentional deviations from the prototype, both improvements:
    | | |
    | --- | --- |
    | **Emulator**, same `firestore.rules` the deploy uses | both roles, pairing, top-up, charge, all three refusals, a reconciling ledger |
-   | **Production** | sign-in, custom claim, the drinks query, the 83-person roster read — **read-only** |
+   | **Production** | sign-in, custom claim, the drinks query, the roster read, **and one real check-in and top-up** |
 
-   No money has ever moved in production: **zero ledger entries, zero non-zero
-   balances**, across all 83 participants. One bracelet has been paired there —
-   `04:A1:9C:7E` to Lysandra Batail — by a check-in during testing on 14 Aug 2026.
-   `npm run reset` clears it. The money path is proven against the rules, not yet
-   against the live project.
+   The money path now works on the live project, not only against the rules. On
+   19 Aug 2026 chip `99:C8:65:13` was paired to participant `159` and topped up
+   50 €, and the ledger reconciles: one `topup` entry of `5000`, balance `5000`,
+   stamped with the staff uid and terminal id. A **charge** has still only ever
+   run against the emulator. `npm run reset -- --apply --confirm=swing-buzz`
+   clears test traces before doors.
 3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
    NFC needs a physical device and the entitlement, so it is the first thing here
    the Simulator cannot verify.

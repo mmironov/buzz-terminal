@@ -336,3 +336,32 @@ struct EveningTicketTests {
         #expect(TicketType.all.contains(TicketType.eveningTicket))
     }
 }
+
+@Suite("Staff roles from claims")
+struct StaffRoleTests {
+
+    @Test("Reception and bar map to themselves")
+    func plainRoles() {
+        #expect(StaffRole(claim: "reception") == .reception)
+        #expect(StaffRole(claim: "bar") == .bar)
+    }
+
+    @Test("An admin gets reception, because that is what the rules grant them")
+    func adminIsReception() {
+        // firestore.rules puts `admin` in isReception() but never in isBar(): an
+        // organiser can pair, sell evening tickets and credit, and cannot charge.
+        // If this ever returns .bar, an organiser could take money off a bracelet.
+        #expect(StaffRole(claim: "admin") == .reception)
+        #expect(StaffRole(claim: "admin")?.homeScreen == .receptionHome)
+    }
+
+    @Test("An unknown or empty claim is refused rather than defaulted")
+    func unknownClaim() {
+        // Sign-in fails on nil. Defaulting to a role would be defaulting to a set
+        // of money permissions.
+        #expect(StaffRole(claim: "") == nil)
+        #expect(StaffRole(claim: "Admin") == nil)      // claims are lower-case
+        #expect(StaffRole(claim: "organiser") == nil)
+        #expect(StaffRole(claim: "superuser") == nil)
+    }
+}

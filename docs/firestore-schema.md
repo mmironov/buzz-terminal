@@ -294,20 +294,21 @@ npm run set-role -- you@swingbuzz.fest admin --apply
 This replaces the current prefix check in `InMemoryTerminalRepository.signIn`,
 where the client decides its own role from the email address.
 
-### The three are disjoint
+### admin includes reception; bar stands alone
 
 `reception` and `bar` are the terminals. `admin` is the web panel in `web-admin/`,
-and in the rules it is **not** a member of `isStaff()` — which is what keeps it out
-of every money rule by construction rather than by remembering to exclude it from
-each one.
+**and counts as reception** — in the rules, `isReception()` accepts both. An
+organiser is the person who ends up on the desk when it is busy, and making them
+carry a second account to check somebody in was friction with no security benefit,
+given they can already set prices and freeze bracelets.
 
 | | reception | bar | admin |
 | --- | --- | --- | --- |
 | Read everything | ✓ | ✓ | ✓ |
-| Credit a balance (top-up) | ✓ | | |
-| Debit a balance (charge) | | ✓ | |
-| Pair a bracelet | ✓ | | |
-| Sell an evening ticket | ✓ | | |
+| Credit a balance (top-up) | ✓ | | ✓ |
+| **Debit a balance (charge)** | | ✓ | |
+| Pair a bracelet | ✓ | | ✓ |
+| Sell an evening ticket | ✓ | | ✓ |
 | Block / unblock a bracelet | | | ✓ |
 | Write the drinks menu | | | ✓ |
 | Edit the roster, or history | | | |
@@ -315,15 +316,22 @@ each one.
 The last row is empty on purpose: roster fields belong to the Sheet import, and the
 ledger is append-only for everybody.
 
-**An admin deliberately cannot move money.** Not a balance write, not a ledger
-entry. Money that moved is accounted for by an entry that says who moved it and
-when; an adjustment leaving no trace is precisely what the ledger exists to
-prevent, and granting the panel a balance write would reopen that hole from the
-other side. A guest who is owed money gets a top-up from reception, and history
-records it.
+**The debit row is the one that stays narrow.** `isBar()` accepts `bar` and nothing
+else, so an organiser cannot take money off a bracelet. The asymmetry is deliberate:
+a credit is undone by another credit, while a charge is the thing a guest disputes
+at the bar, and keeping the debit side to one role means "who spent this?" has
+exactly one answer.
 
-An `admin` account also cannot sign into the terminal apps, which refuse any role
-that is not reception or bar.
+Two invariants survive the change, and both are tested:
+
+- A balance still moves **only** alongside a ledger entry written in the same batch,
+  whatever the role. An admin cannot make a silent adjustment; that is what the
+  ledger exists to prevent.
+- Roster fields and history are off limits to every role.
+
+An `admin` signing into a terminal app gets the **reception** flow. `StaffRole` has
+no admin case in either app — that enum is what a terminal can *do*, and an organiser
+at the desk is doing reception's job. The panel's own powers stay in the web app.
 
 ---
 

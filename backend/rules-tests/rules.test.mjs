@@ -279,6 +279,10 @@ describe('pairing a bracelet', () => {
     await assertFails(pair(bar()));
   });
 
+  it('lets an admin pair a chip, since admin counts as reception', async () => {
+    await assertSucceeds(pair(admin(), { uid: ADMIN_UID }));
+  });
+
   it('refuses a pairing with no matching reverse-lookup document', async () => {
     // Otherwise a scan could resolve to nobody, or to the wrong person.
     await assertFails(pair(reception(), { withLookup: false }));
@@ -684,21 +688,29 @@ describe('the admin panel', () => {
     );
   });
 
-  it('THE ONE THAT MATTERS: cannot move money', async () => {
-    await assertFails(
-      updateDoc(doc(admin(), 'participants', PARTICIPANT), { balance: 999999 })
-    );
-    // Not even with a ledger entry to justify it — `admin` is not staff, so the
-    // create is refused before the arithmetic is ever reached.
-    await assertFails(
+  it('THE ONE THAT MATTERS: can credit, and still cannot charge', async () => {
+    // An admin counts as reception, so a top-up with a matching ledger entry is
+    // allowed — and is stamped with their own uid like anyone else's.
+    await assertSucceeds(
       moneyBatch(admin(), {
         txId: 'tx-1', type: 'topup', amount: 2000, staffUid: ADMIN_UID, balanceAfter: 4350,
       })
     );
+    // Debiting is the bar's, and only the bar's. This is the assertion that keeps
+    // "who spent this?" answerable.
     await assertFails(
       moneyBatch(admin(), {
         txId: 'tx-2', type: 'charge', amount: 400, staffUid: ADMIN_UID, balanceAfter: 1950,
       })
+    );
+  });
+
+  it('cannot move a balance with no ledger entry to justify it', async () => {
+    // The invariant that does not care which role you are. Reception cannot do
+    // this either; an admin having reception's powers does not include an
+    // adjustment that leaves no trace.
+    await assertFails(
+      updateDoc(doc(admin(), 'participants', PARTICIPANT), { balance: 999999 })
     );
   });
 
@@ -718,8 +730,7 @@ describe('the admin panel', () => {
     );
   });
 
-  it('cannot sell an evening ticket', async () => {
-    // Minting participants is reception's hole, not the organiser's.
+  it('can sell an evening ticket, since it counts as reception', async () => {
     const db = admin();
     const batch = writeBatch(db);
     batch.set(doc(db, 'participants', 'ev-friday-14'), {
@@ -732,8 +743,9 @@ describe('the admin panel', () => {
     batch.set(doc(db, 'bracelets', '04:E7:3A:2C'), {
       participantId: 'ev-friday-14', staffUid: ADMIN_UID, pairedAt: serverTimestamp(),
     });
-    await assertFails(batch.commit());
+    await assertSucceeds(batch.commit());
   });
+
 });
 
 describe('the drinks menu belongs to the admin panel', () => {
