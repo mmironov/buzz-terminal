@@ -23,6 +23,42 @@ done
 ARCHIVE="$DERIVED/BuzzTerminal.xcarchive"
 EXPORT_DIR="$DERIVED/export"
 
+# Credentials are checked here, before anything is built. They used to be checked
+# just before the export, which meant a missing key was discovered after a
+# two-minute archive — the wrong end of the build for a typo in a path.
+#
+# An App Store Connect API key authenticates the upload without a password or an
+# app-specific password. The key id and issuer id are identifiers; the .p8 is the
+# credential, and belongs outside the repository.
+if [ "$UPLOAD" = yes ]; then
+  missing=()
+  [ -n "${ASC_KEY_ID:-}" ]    || missing+=("ASC_KEY_ID       the 10-character key id, also in the .p8 filename")
+  [ -n "${ASC_ISSUER_ID:-}" ] || missing+=("ASC_ISSUER_ID    the account-wide UUID above the key table")
+  [ -n "${ASC_KEY_PATH:-}" ]  || missing+=("ASC_KEY_PATH     path to the AuthKey_*.p8 file")
+  if [ ${#missing[@]} -gt 0 ]; then
+    {
+      echo
+      echo "Cannot upload — missing credentials:"
+      printf '    %s\n' "${missing[@]}"
+      echo
+      echo "App Store Connect → Users and Access → Integrations → App Store Connect API."
+      echo "All three on one line, so the credential path is not left in your environment:"
+      echo
+      echo "    ASC_KEY_ID=XXXXXXXXXX ASC_ISSUER_ID=uuid ASC_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8 ./ios/scripts/release.sh --upload"
+      echo
+      echo "Or drop --upload to just build the .ipa, and send it with Transporter."
+      echo "See docs/distribution.md."
+      echo
+    } >&2
+    exit 1
+  fi
+  if [ ! -f "$ASC_KEY_PATH" ]; then
+    echo "No API key file at: $ASC_KEY_PATH" >&2
+    echo "  Check the path — a leading ~ only expands if it is unquoted." >&2
+    exit 1
+  fi
+fi
+
 # The build number must increase with every upload or App Store Connect rejects
 # the build. Deriving it from the commit count makes that automatic and
 # reproducible: the same commit always produces the same number, and the next
@@ -77,7 +113,13 @@ MSG
   exit 1
 fi
 
-echo "Archiving for device, team $DEVELOPMENT_TEAM…"
+# Braces are load-bearing here, not style. An unbraced $VAR immediately followed by
+# a multibyte character — the ellipsis below — has those bytes swallowed into the
+# variable name in a UTF-8 locale, so `set -u` kills the script with
+# "DEVELOPMENT_TEAM…: unbound variable" even though the variable is set. It only
+# works in the C locale, which is why it passed every automated run and failed in a
+# normal Terminal. Brace any expansion followed by non-ASCII text.
+echo "Archiving for device, team ${DEVELOPMENT_TEAM}…"
 # -allowProvisioningUpdates lets Xcode create and download the provisioning
 # profile rather than requiring one to exist first. It needs to be signed in to
 # an account (Xcode → Settings → Accounts) or given an API key.
@@ -103,37 +145,51 @@ cat > "$OPTIONS" <<PLIST
 	<key>uploadSymbols</key>
 	<true/>
 	<key>destination</key>
-	<string>$([ "$UPLOAD" = yes ] && echo upload || echo export)</string>
+	<string>export</string>
 </dict>
 </plist>
 PLIST
 
-echo "Exporting (destination: $([ "$UPLOAD" = yes ] && echo upload || echo export))…"
-EXPORT_ARGS=(-exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist "$OPTIONS" -exportPath "$EXPORT_DIR" -allowProvisioningUpdates)
+# Two steps, two identities, on purpose.
+#
+# Signing happens first, authenticated by whoever is signed into Xcode. The API key
+# is deliberately NOT passed to exportArchive: doing so makes xcodebuild sign *as
+# the key*, and minting the "Apple Distribution" cloud certificate needs the key to
+# hold the Admin role. An App Manager key — the right role for shipping builds —
+# fails with "Cloud signing permission error / No signing certificate iOS
+# Distribution found", which reads like a signing setup problem and is really a
+# permissions one.
+#
+# So: export locally, then hand the finished .ipa to altool. Uploading is all the
+# key is asked to do, which App Manager can.
+echo "Exporting…"
+xcodebuild -exportArchive \
+  -archivePath "$ARCHIVE" \
+  -exportOptionsPlist "$OPTIONS" \
+  -exportPath "$EXPORT_DIR" \
+  -allowProvisioningUpdates
 
-if [ "$UPLOAD" = yes ]; then
-  # An App Store Connect API key authenticates the upload without a password or
-  # an app-specific password. The .p8 is a credential: keep it outside the repo,
-  # and note that the key id and issuer id are not secret but the file is.
-  : "${ASC_KEY_ID:?Set ASC_KEY_ID — see docs/distribution.md}"
-  : "${ASC_ISSUER_ID:?Set ASC_ISSUER_ID — see docs/distribution.md}"
-  : "${ASC_KEY_PATH:?Set ASC_KEY_PATH to the AuthKey_*.p8 file — see docs/distribution.md}"
-  [ -f "$ASC_KEY_PATH" ] || { echo "No API key at $ASC_KEY_PATH" >&2; exit 1; }
-  EXPORT_ARGS+=(
-    -authenticationKeyID "$ASC_KEY_ID"
-    -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-    -authenticationKeyPath "$ASC_KEY_PATH"
-  )
-fi
-
-xcodebuild "${EXPORT_ARGS[@]}"
+IPA="$EXPORT_DIR/BuzzTerminal.ipa"
+[ -f "$IPA" ] || { echo "Export produced no .ipa at $IPA" >&2; exit 1; }
 
 echo
-if [ "$UPLOAD" = yes ]; then
-  echo "✔ Uploaded version $VERSION build $BUILD_NUMBER."
-  echo "  It appears in App Store Connect → TestFlight after processing (minutes, not instant)."
-  echo "  An external group's first build of a version waits on Beta App Review."
-else
+if [ "$UPLOAD" != yes ]; then
   echo "✔ Exported to $EXPORT_DIR"
   echo "  Re-run with --upload to send it, or drag the .ipa into Transporter."
+  exit 0
 fi
+
+echo "Uploading build ${BUILD_NUMBER}…"
+# altool locates the key by id, searching a fixed set of directories rather than
+# taking a path — API_PRIVATE_KEYS_DIR is how a key kept elsewhere is found.
+API_PRIVATE_KEYS_DIR="$(cd "$(dirname "$ASC_KEY_PATH")" && pwd)" \
+  xcrun altool --upload-app \
+    --file "$IPA" \
+    --type ios \
+    --apiKey "$ASC_KEY_ID" \
+    --apiIssuer "$ASC_ISSUER_ID"
+
+echo
+echo "✔ Uploaded version $VERSION build ${BUILD_NUMBER}."
+echo "  It appears in App Store Connect → TestFlight after processing (minutes, not instant)."
+echo "  An external group's first build of a version waits on Beta App Review."

@@ -18,7 +18,10 @@ ACTIVITY="$APP_ID/.MainActivity"
 # Boot the emulator only if nothing is attached already — plugging in a real
 # phone and running this should use the phone.
 if [ -z "$("$ADB" devices | sed '1d' | grep -w device || true)" ]; then
-  echo "No device attached; booting $AVD…"
+  # Braced deliberately: an unbraced expansion followed by a multibyte character
+  # takes those bytes into the variable name in a UTF-8 locale, and `set -u` then
+  # fails on a variable that is set. See ios/scripts/release.sh.
+  echo "No device attached; booting ${AVD}…"
   "$EMULATOR" -avd "$AVD" -no-boot-anim > /dev/null 2>&1 &
 fi
 

@@ -30,27 +30,44 @@ its own upload.
 
 ## Where this currently stands
 
-Verified on 2026-08-14, before the membership was active:
+**Working end to end.** Version 0.1, build 61 uploaded on 2026-08-19 with
+`./ios/scripts/release.sh --upload`. Archive, export and upload all succeed.
 
-| step | |
-| --- | --- |
-| Archive for a real device, unsigned | ✅ `** ARCHIVE SUCCEEDED **`, arm64 |
-| Archive **signed**, team `8LAN4FPYMS` | ✅ `** ARCHIVE SUCCEEDED **` |
-| Export for App Store Connect | ❌ blocked on the membership |
-| Upload | not attempted |
+### Four failures on the way, all worth recognising
 
-The export fails like this, and the message is worth recognising rather than
-debugging:
+**1. Before enrolment: `Team … does not have permission to create "iOS App Store"
+provisioning profiles`.** A free Personal Team cannot create App Store profiles at
+all. Nothing to fix but the membership.
 
-```
-error: No signing certificate "iOS Distribution" found
-error: Team "Miroslav Mironov" does not have permission to
-       create "iOS App Store" provisioning profiles.
-```
+**2. `DEVELOPMENT_TEAM…: unbound variable`, on a line where the variable is plainly
+set.** The script had `"team $DEVELOPMENT_TEAM…"` — an unbraced expansion pressed
+against a multibyte ellipsis. In a UTF-8 locale bash takes those bytes *into the
+variable name*, so `set -u` fails; only the C locale parses it. It therefore passed
+every scripted run and failed in a normal Terminal, and the terminal rendered `…` as
+`?`, which made the error look like `${VAR?}` syntax that was never in the file.
+**Brace any expansion followed by non-ASCII text.**
 
-Nothing is misconfigured. A **free Personal Team cannot create App Store profiles**
-at all — only a paid membership issues the iOS Distribution certificate that export
-needs. The same command should work once enrolment completes.
+**3. `401 NOT_AUTHORIZED` from altool.** The key file was found and the token
+rejected. Check the Issuer ID first — re-copy it with the copy button, from the
+**Team Keys** section. Clock skew also invalidates these tokens, so it is worth
+ruling out; ours was 0 seconds.
+
+**4. `Cloud signing permission error / No signing certificate "iOS Distribution"
+found`, *with* a working key.** This one is a permissions error wearing a signing
+error's clothes. Passing `-authenticationKey*` to `exportArchive` makes xcodebuild
+sign **as the API key**, and minting the cloud distribution certificate requires the
+key to hold **Admin**. An App Manager key — the right role for shipping builds —
+cannot.
+
+The script now separates the two identities on purpose:
+
+| step | authenticates as | why |
+| --- | --- | --- |
+| `exportArchive` | whoever is signed into Xcode | can mint the distribution certificate |
+| `altool --upload-app` | the API key | uploading is all App Manager needs |
+
+That split is also why `API_PRIVATE_KEYS_DIR` appears in the script: altool finds a
+key by id across a fixed set of directories rather than taking a path.
 
 ### The Personal Team stage, and its 7-day fuse
 
@@ -142,8 +159,12 @@ app by hand. The key only automates that step.
 ## Every build
 
 ```bash
-DEVELOPMENT_TEAM=A1B2C3D4E5 ./ios/scripts/release.sh --upload
+ASC_KEY_ID=F85F3QH33R ASC_ISSUER_ID=<uuid> ASC_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_F85F3QH33R.p8 ./ios/scripts/release.sh --upload
 ```
+
+The team id comes from the project, so it needs no flag. Credentials are checked
+**before** anything builds — a wrong path fails in under a second rather than after
+a two-minute archive.
 
 That archives, exports and uploads. Version comes from `MARKETING_VERSION` in the
 project; the build number is **`git rev-list --count HEAD`**, so it rises by itself
