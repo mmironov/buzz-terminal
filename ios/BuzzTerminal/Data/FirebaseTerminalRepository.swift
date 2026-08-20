@@ -176,7 +176,24 @@ actor FirebaseTerminalRepository: TerminalRepository {
             Fire.Bracelet.pairedAt: FieldValue.serverTimestamp(),
         ], forDocument: braceletDocument(bracelet))
 
-        try await batch.commit()
+        do {
+            try await batch.commit()
+        } catch {
+            // The rules allow `create` on a bracelet and never `update`, so the
+            // common denial here is a chip that is already paired — which is
+            // precisely what a batch of wristbands with duplicated UIDs would
+            // produce, on the second guest rather than the first.
+            //
+            // Confirmed with a read rather than inferred from the error: a denial
+            // can also mean a bar account, or a token whose claim has gone stale.
+            // Telling somebody at the desk "use a fresh one" when the real problem
+            // is their role would send them looking in the wrong place.
+            if let existing = try? await braceletDocument(bracelet).getDocument(),
+               existing.exists {
+                throw TerminalError.braceletAlreadyPaired
+            }
+            throw error
+        }
         return try await reload(participant.id)
     }
 

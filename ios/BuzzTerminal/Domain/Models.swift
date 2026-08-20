@@ -89,6 +89,31 @@ struct BraceletID: Hashable, Sendable, CustomStringConvertible {
         let bytes = (0..<4).map { _ in String(format: "%02X", Int.random(in: 0...255)) }
         return BraceletID(bytes.joined(separator: ":"))
     }
+
+    /// Build an id from the raw UID bytes an NFC chip reports.
+    ///
+    ///     Data([0x04, 0xB4, 0x2F, 0x11])              → "04:B4:2F:11"
+    ///     Data([0x04, 0xA2, 0xB3, 0xC4, 0xD5, 0xE6])  → "04:A2:B3:C4:D5:E6"
+    ///
+    /// Nil for empty data: a tag reporting no UID is not a bracelet, and an empty
+    /// id would otherwise become a Firestore document id of `""` — a write that
+    /// fails deep in the repository instead of a scan that simply says no.
+    ///
+    /// Length is deliberately **not** validated. A 4-byte MIFARE UID and a 7-byte
+    /// NTAG21x UID are both real, and the festival's wristbands are whatever they
+    /// are; rejecting a length would invent a rule the hardware does not have.
+    /// Truncating to a fixed width would be worse still — every NXP chip starts
+    /// with the same `0x04` manufacturer byte, so two guests could collide.
+    ///
+    /// `Int($0)` rather than the byte directly: `%02X` takes a C int, and passing a
+    /// `UInt8` relies on promotion the compiler will not warn you about. The
+    /// failure mode is silent nonsense in a document id, so it is spelled out.
+    init?(nfcIdentifier: Data) {
+        guard !nfcIdentifier.isEmpty else { return nil }
+        self.rawValue = nfcIdentifier
+            .map { String(format: "%02X", Int($0)) }
+            .joined(separator: ":")
+    }
 }
 
 /// Identity of a person on the roster — the Firestore document id, derived from

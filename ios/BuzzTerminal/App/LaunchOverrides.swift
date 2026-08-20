@@ -34,6 +34,9 @@ struct LaunchOverrides {
     var backend = "firebase"
     /// `-sbEmulator` sends Firebase at localhost instead of the real project.
     var useEmulators = false
+    /// `-sbScanner simulated` forces the prototype chip panel on a device that
+    /// has working NFC — for rehearsing a flow with no bracelet to hand.
+    var scanner = "auto"
     /// `-sbSignIn <email> <password>` signs in on launch. For driving an emulator
     /// run without a human at the keyboard; DEBUG only, like everything here.
     var signInEmail: String?
@@ -49,6 +52,9 @@ struct LaunchOverrides {
         if let index = arguments.firstIndex(of: "-sbBackend"), index + 1 < arguments.count {
             overrides.backend = arguments[index + 1].lowercased()
         }
+        if let index = arguments.firstIndex(of: "-sbScanner"), index + 1 < arguments.count {
+            overrides.scanner = arguments[index + 1].lowercased()
+        }
         overrides.offline = arguments.contains("-sbOffline")
         overrides.scanning = arguments.contains("-sbScanning")
         overrides.useEmulators = arguments.contains("-sbEmulator")
@@ -61,6 +67,7 @@ struct LaunchOverrides {
 
     var isActive: Bool { screen != nil || offline || scanning || signInEmail != nil }
     var usesFixtures: Bool { backend == "memory" }
+    var forcesSimulatedScanner: Bool { scanner == "simulated" }
 }
 
 extension AppModel {

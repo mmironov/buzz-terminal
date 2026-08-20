@@ -29,5 +29,12 @@
 
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+
+	<!-- Shown in the system scan sheet, so it is read by staff mid-shift rather
+	     than by a reviewer. Says what is about to happen, in the words the design
+	     already uses on that screen. Required: without it, starting a tag session
+	     traps at runtime. -->
+	<key>NFCReaderUsageDescription</key>
+	<string>Reading a guest's bracelet to check them in, top up their balance, or take a payment.</string>
 </dict>
 </plist>

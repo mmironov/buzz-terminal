@@ -218,8 +218,39 @@ final class AppModel {
         // Cleared, not left standing: a chip checked in a moment ago would
         // otherwise still read "Not assigned" until the fresh reads land.
         simulatedChipStatus = [:]
+
+        // With hardware there is nothing to tap, so the read starts itself. The
+        // prototype panel waits for `selectSimulatedBracelet`; a chip does not.
+        if readerIsHardwareBacked {
+            Task { await scanWithHardware() }
+            return
+        }
+
         guard !runsOnFixtures else { return }
         Task { await loadSimulatedChipStatuses() }
+    }
+
+    /// Wait for a real chip, then resolve it exactly as a simulated read does.
+    ///
+    /// iOS presents its own scan sheet for the duration, so `isReading` is set for
+    /// the app's own overlay underneath rather than for anything the operator sees
+    /// during the read itself.
+    private func scanWithHardware() async {
+        guard var state = scan else { return }
+        state.isReading = true
+        scan = state
+
+        do {
+            let scanned = try await reader.read(selection: nil)
+            await resolveScan(scanned, purpose: state.purpose)
+        } catch is CancellationError {
+            // The operator closed the system sheet, or it timed out. Not a fault,
+            // and not worth an error banner: put them back where they were.
+            scan = nil
+        } catch {
+            scan = nil
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// What the backend says about each simulated chip, keyed by chip id.

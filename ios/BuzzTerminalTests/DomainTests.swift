@@ -365,3 +365,45 @@ struct StaffRoleTests {
         #expect(StaffRole(claim: "superuser") == nil)
     }
 }
+
+@Suite("Bracelet ids from NFC chips")
+struct BraceletIDNFCTests {
+
+    @Test("A four-byte MIFARE uid formats like the design")
+    func fourBytes() {
+        // The shape every screen, fixture and Firestore document id already uses.
+        #expect(BraceletID(nfcIdentifier: Data([0x04, 0xB4, 0x2F, 0x11]))?.rawValue == "04:B4:2F:11")
+    }
+
+    @Test("A seven-byte NTAG uid is accepted, not truncated")
+    func sevenBytes() {
+        // NTAG213/215/216 — the usual wristband chip — has a 7-byte uid. Truncating
+        // to four would collide two guests whose chips share a prefix, and the
+        // manufacturer byte 0x04 means they all do.
+        let data = Data([0x04, 0xA2, 0xB3, 0xC4, 0xD5, 0xE6, 0xF7])
+        #expect(BraceletID(nfcIdentifier: data)?.rawValue == "04:A2:B3:C4:D5:E6:F7")
+    }
+
+    @Test("Hex is upper-case and always two digits")
+    func formatting() {
+        // 0x0A must be "0A", not "A": a one-digit byte shifts every colon and two
+        // different chips could render to the same string.
+        #expect(BraceletID(nfcIdentifier: Data([0x00, 0x0A, 0xFF, 0x7B]))?.rawValue == "00:0A:FF:7B")
+    }
+
+    @Test("A chip reporting no uid is refused")
+    func empty() {
+        // Otherwise this becomes a Firestore document id of "", which is a write
+        // that fails deep in the repository rather than a scan that says no.
+        #expect(BraceletID(nfcIdentifier: Data()) == nil)
+    }
+
+    @Test("A round trip through the fixture chips is stable")
+    func roundTrip() {
+        // Whatever the formatter does, it must agree with the ids already stored in
+        // Firestore — a re-scan of a paired bracelet has to resolve to the same
+        // document, or the guest reads as unknown at the bar.
+        let bytes = Data([0x99, 0xC8, 0x65, 0x13])
+        #expect(BraceletID(nfcIdentifier: bytes) == BraceletID("99:C8:65:13"))
+    }
+}

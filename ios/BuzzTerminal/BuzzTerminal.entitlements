@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Core NFC. "TAG" is the raw-tag format, which NFCTagReaderSession needs to
+	     read a chip's UID. "NDEF" would only give us records written onto the tag,
+	     and a festival wristband's identity is its UID, not its contents: nothing
+	     has to be written to a bracelet for it to be scannable.
+
+	     This entitlement is also a capability on the App ID. Xcode adds it there
+	     when signing with a team that has permission — see docs/nfc.md if a build
+	     starts failing with a provisioning error after this file changed. -->
+	<key>com.apple.developer.nfc.readersession.formats</key>
+	<array>
+		<string>TAG</string>
+	</array>
+</dict>
+</plist>

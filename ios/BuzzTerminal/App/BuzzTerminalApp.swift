@@ -28,7 +28,13 @@ struct BuzzTerminalApp: App {
             overrides.usesFixtures || !configured
                 ? InMemoryTerminalRepository()
                 : FirebaseTerminalRepository()
-        let model = AppModel(repository: repository)
+        // Real chips whenever the hardware can read them. `-sbScanner simulated`
+        // forces the prototype panel back on a device, which is how a flow gets
+        // rehearsed without a bracelet in hand.
+        let model = AppModel(
+            repository: repository,
+            reader: overrides.forcesSimulatedScanner ? SimulatedBraceletReader() : Self.bestReader()
+        )
         model.apply(overrides)
         _model = State(initialValue: model)
         #else
@@ -55,8 +61,24 @@ struct BuzzTerminalApp: App {
                 docs/firebase-setup.md.
                 """)
         }
-        _model = State(initialValue: AppModel(repository: FirebaseTerminalRepository()))
+        _model = State(initialValue: AppModel(
+            repository: FirebaseTerminalRepository(),
+            reader: Self.bestReader()
+        ))
         #endif
+    }
+
+    /// Core NFC where it exists, the prototype panel where it does not.
+    ///
+    /// `readingAvailable` is false on the Simulator, on an iPhone 6 or earlier, and
+    /// if the entitlement is missing — so this also keeps a misbuilt app walkable
+    /// instead of offering a scan that cannot happen.
+    private static func bestReader() -> any BraceletReader {
+        #if canImport(CoreNFC)
+        let nfc = CoreNFCBraceletReader()
+        if nfc.isHardwareBacked { return nfc }
+        #endif
+        return SimulatedBraceletReader()
     }
 
     var body: some Scene {

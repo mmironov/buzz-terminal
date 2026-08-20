@@ -113,11 +113,13 @@ TestFlight, with a public link — no App Store listing, no UDIDs. Full runbook 
 `docs/distribution.md`; it needs an Apple Developer Program membership.
 
 ```bash
-DEVELOPMENT_TEAM=A1B2C3D4E5 ./ios/scripts/release.sh --upload
+ASC_KEY_ID=F85F3QH33R ASC_ISSUER_ID=<uuid> ASC_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_F85F3QH33R.p8 ./ios/scripts/release.sh --upload
 ```
 
-The build number is `git rev-list --count HEAD`, so it always rises and the same
-commit always yields the same number — App Store Connect rejects a repeat.
+The team id comes from the project, so it needs no flag. The build number is
+`git rev-list --count HEAD`, so it always rises and the same commit always yields
+the same number — App Store Connect rejects a repeat. Credentials are checked before
+anything builds, so a wrong path fails in under a second.
 
 ```bash
 ./ios/scripts/release.sh --unsigned
@@ -491,7 +493,7 @@ Three boundaries do the load-bearing work:
   behaves (`async throws`, mutations return new server state). Iteration 2 swaps
   `InMemoryTerminalRepository` for a Firebase one without touching a view.
 - **`BraceletReader`** — so the app is fully developable on a Mac, where Core NFC
-  does not exist. Iteration 3 adds `CoreNFCBraceletReader`.
+  does not exist. `CoreNFCBraceletReader` fills it in on hardware — see `docs/nfc.md`.
 - **`Domain/`** — imports `Foundation` only. Everything testable in microseconds.
 
 `AppModel` is one `@Observable` state machine with a flat `Screen` enum rather
@@ -514,7 +516,7 @@ equivalent is "The Android app" above — it is behind on more than this.
 | Data | ✅ Firestore by default, debug and release alike | — |
 | Balances | ✅ ledger + rules-enforced balance. The `-sbBackend memory` path is client-side arithmetic | — |
 | Offline | banner and queue count are cosmetic; no reachability, no queue | 3 — write-behind queue |
-| NFC | simulated chip picker | 3 — Core NFC (needs a device + entitlement) |
+| NFC | ✅ Core NFC reads real bracelets on a device; the simulated picker remains where hardware is absent, and behind `-sbScanner simulated` | — |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
 | Localisation | English strings inline; `"23.50 €"` is locale-independent by design | later |
 | App icon | generated, on-brand, deliberately plain — `ios/scripts/makeicon.swift` redraws it | when someone wants real artwork |
@@ -555,9 +557,10 @@ Two intentional deviations from the prototype, both improvements:
    stamped with the staff uid and terminal id. A **charge** has still only ever
    run against the emulator. `npm run reset -- --apply --confirm=swing-buzz`
    clears test traces before doors.
-3. **Iteration 3** — Core NFC bracelet reading, real offline queue with sync.
-   NFC needs a physical device and the entitlement, so it is the first thing here
-   the Simulator cannot verify.
+3. **Iteration 3** — Core NFC ✅ and a real offline queue (still to do). NFC is
+   verified against physical wristbands: a chip reads as `1D:94:9D:D4:11:10:80`.
+   `docs/nfc.md` covers the entitlement, the system scan sheet, and the two checks
+   worth running on a batch of bracelets before trusting it.
 4. 🔄 **Iteration 4** — Android app in Jetpack Compose against the same backend.
    Done: the Gradle project, the domain ported with its tests, Modernist in
    Compose, the `AppModel` state machine, all eleven screens, and a
