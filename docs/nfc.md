@@ -36,6 +36,35 @@ the instruction rather than a label.
 A consequence worth remembering: a hardware read starts **on its own** when the
 scan screen opens. The prototype panel waits for a tap; a chip does not.
 
+## Why the UID and not the vendor's serial
+
+The bracelets carry an NDEF URL — `https://nfclink.me/n/1000004222` — and the
+vendor says the trailing number is unique and consecutive within a batch. It is
+still not the identity, and the inspector settled why: **the NDEF area reports
+read/write**.
+
+Anyone who can touch a bracelet can rewrite that URL with a free phone app,
+including to another bracelet's serial. Keyed on the serial, that is a two-minute
+theft of somebody else's balance with no special hardware. A UID is burned in at
+manufacture and cannot be changed that way.
+
+So the serial is not captured anywhere in the app. Doing so would have cost a rules
+change, a field on `bracelets/{uid}`, and an NDEF read on every scan, to produce a
+label that cannot be trusted in precisely the situation it would be reached for — a
+guest disputing a charge.
+
+It keeps one honest use: **stock-taking a box before the festival**, where
+consecutive numbering makes a gap or a repeat obvious at a glance. That needs no
+code.
+
+Two consequences of read/write NDEF worth knowing:
+
+- A rewritten URL is a **guest-facing** risk, not an app one: the terminal never
+  reads NDEF, but a guest tapping their own bracelet with a phone opens whatever URL
+  is on it. Worth asking the vendor whether they can ship the batch NDEF-locked.
+- Locking is irreversible. Do not lock tags in bulk on a whim, and note the app
+  gains nothing from it — this is about protecting guests, not the till.
+
 ## The UID is the identity
 
 The chip's UID becomes the `BraceletID`, formatted as upper-case hex pairs joined
