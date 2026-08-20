@@ -318,24 +318,42 @@ final class AppModel {
             participant = found
             scan = nil
 
+            // Sound and haptics, so the answer arrives before anybody can look up.
+            // A bartender's eyes are on the guest and a queue; reception's hands are
+            // on somebody's wrist.
             switch purpose {
             case .checkInOrTopUp:
                 search = ""
                 if found == nil {
+                    // Not an error: an unpaired chip at reception is a check-in
+                    // about to happen, which is the desk's whole job.
                     screen = .assign
+                    ScanFeedback.shared.success()
                 } else if found?.isBlocked == true {
                     screen = .blocked
+                    ScanFeedback.shared.blocked()
                 } else {
                     screen = .participant
+                    ScanFeedback.shared.success()
                 }
 
             case .payment:
-                paymentDecision = PaymentDecision.evaluate(participant: found, total: cartTotal)
+                let decision = PaymentDecision.evaluate(participant: found, total: cartTotal)
+                paymentDecision = decision
                 screen = .payReview
+                switch decision {
+                case .approved:
+                    ScanFeedback.shared.success()
+                case .blocked:
+                    ScanFeedback.shared.blocked()
+                case .notAssigned, .insufficientFunds:
+                    ScanFeedback.shared.problem()
+                }
             }
         } catch {
             scan = nil
             errorMessage = error.localizedDescription
+            ScanFeedback.shared.problem()
         }
     }
 

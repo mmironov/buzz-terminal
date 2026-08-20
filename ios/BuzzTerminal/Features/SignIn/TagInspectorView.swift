@@ -81,10 +81,13 @@ struct TagInspectorView: View {
         do {
             lines = try await NFCTagInspector.inspect()
             status = .done
+            ScanFeedback.shared.success()
         } catch is CancellationError {
+            // Closing the sheet is not a failure and gets no sound.
             status = .cancelled
         } catch {
             status = .failed(error.localizedDescription)
+            ScanFeedback.shared.problem()
         }
         #endif
     }

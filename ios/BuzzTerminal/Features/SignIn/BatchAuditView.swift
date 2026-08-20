@@ -156,11 +156,15 @@ struct BatchAuditView: View {
                 switch audit.record(chip, at: Date()) {
                 case .new(let position):
                     lastOutcome = "#\(position)  \(chip.rawValue)"
+                    ScanFeedback.shared.success()
                 case .stillHolding:
-                    // Same chip still in the field. Deliberately silent.
+                    // Same chip still in the field: silent, and no haptic either.
+                    // The whole point is that holding a bracelet steady must not
+                    // produce a signal an operator learns to ignore.
                     break
                 case .repeated(let event):
                     lastOutcome = "Repeat of #\(event.firstSeenAt)"
+                    ScanFeedback.shared.problem()
                 }
             }
             isScanning = false
