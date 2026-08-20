@@ -110,6 +110,12 @@ private struct NetworkToggleStyle: ButtonStyle {
     }
 }
 
+// `#if DEBUG` because the preview drives `sync.simulate`, which only exists in a
+// debug build. Without the guard this compiles in Debug and fails the *archive* —
+// and the compiler reports it as a confusing "cannot use explicit 'return' in a
+// result builder" rather than a missing method, so the real cause is not in the
+// error. Previews are a development tool; they belong behind the same flag.
+#if DEBUG
 #Preview {
     let model = AppModel()
     model.role = .reception
@@ -120,3 +126,4 @@ private struct NetworkToggleStyle: ButtonStyle {
     }
     .background(Color.sbBackground)
 }
+#endif
