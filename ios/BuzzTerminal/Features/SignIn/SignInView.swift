@@ -3,6 +3,13 @@ import SwiftUI
 struct SignInView: View {
     @Environment(AppModel.self) private var model
 
+    #if DEBUG
+    /// The tag inspector hangs off this screen because it needs no account and no
+    /// backend — it talks to a chip, not to Firestore. DEBUG-only, so it cannot
+    /// exist in a build a staff member installs.
+    @State private var showingTagInspector = false
+    #endif
+
     var body: some View {
         // The idiom for getting bindings out of an `@Observable` object that
         // arrived through the environment: re-declare it locally as `@Bindable`.
@@ -76,11 +83,21 @@ struct SignInView: View {
                     .padding(.top, 26)
             }
 
+            #if DEBUG
+            Button("Inspect a tag") { showingTagInspector = true }
+                .font(.sbBody(12.5))
+                .foregroundStyle(.sbNeutral600)
+                .padding(.top, 18)
+            #endif
+
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 30)
         .padding(.bottom, 40)
         .frame(maxWidth: .infinity, alignment: .leading)
+        #if DEBUG
+        .sheet(isPresented: $showingTagInspector) { TagInspectorView() }
+        #endif
     }
 
     private var demoAccounts: some View {
