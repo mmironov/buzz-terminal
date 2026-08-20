@@ -8,6 +8,7 @@ struct SignInView: View {
     /// backend — it talks to a chip, not to Firestore. DEBUG-only, so it cannot
     /// exist in a build a staff member installs.
     @State private var showingTagInspector = false
+    @State private var showingBatchAudit = false
     #endif
 
     var body: some View {
@@ -84,10 +85,13 @@ struct SignInView: View {
             }
 
             #if DEBUG
-            Button("Inspect a tag") { showingTagInspector = true }
-                .font(.sbBody(12.5))
-                .foregroundStyle(.sbNeutral600)
-                .padding(.top, 18)
+            HStack(spacing: 18) {
+                Button("Inspect a tag") { showingTagInspector = true }
+                Button("Audit a box") { showingBatchAudit = true }
+            }
+            .font(.sbBody(12.5))
+            .foregroundStyle(.sbNeutral600)
+            .padding(.top, 18)
             #endif
 
             Spacer(minLength: 0)
@@ -97,6 +101,7 @@ struct SignInView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         #if DEBUG
         .sheet(isPresented: $showingTagInspector) { TagInspectorView() }
+        .sheet(isPresented: $showingBatchAudit) { BatchAuditView() }
         #endif
     }
 

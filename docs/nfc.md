@@ -114,8 +114,31 @@ message when the guest is holding an unused wristband — but it fails safe, whi
 the part that matters.
 
 Neither can be checked from a Mac, and both are five minutes with the bracelets in
-hand. The app already helps: the log line `read chip <uid>` appears on every
-successful read.
+hand.
+
+### Two DEBUG-only tools for exactly this
+
+Both hang off the sign-in screen, need no account, and are absent from a release
+build — verified by symbol, not assumed.
+
+**Inspect a tag.** One chip, everything it will say: UID, `GET_VERSION`, NDEF status
+and records, and raw pages. This is what established that these tags are non-NXP and
+that their NDEF is read/write.
+
+**Audit a box.** Chip after chip from a single session, keeping Apple's scan sheet up
+between reads and restarting automatically when Core NFC's 60-second ceiling
+expires. It lists each distinct UID in the order seen and flags any that repeats.
+
+The instruction on that screen is load-bearing: **scan from one pile into another**,
+so a bracelet is only ever presented once. Without a physical process a repeat is
+ambiguous — the same wristband scanned twice looks exactly like two wristbands
+sharing a UID, which is the same ambiguity the check-in flow has and cannot resolve
+either.
+
+A chip still sitting in the field is deliberately silent rather than reported: Core
+NFC re-detects a tag that has not moved, and an operator who learns to ignore the
+warning has lost the only warning that matters. `BraceletAudit` is pure and carries
+that rule, with tests.
 
 ## Still open
 

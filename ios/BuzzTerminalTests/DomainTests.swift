@@ -407,3 +407,99 @@ struct BraceletIDNFCTests {
         #expect(BraceletID(nfcIdentifier: bytes) == BraceletID("99:C8:65:13"))
     }
 }
+
+@Suite("Bracelet batch audit")
+struct BraceletAuditTests {
+
+    private let a = BraceletID("1D:94:9D:D4:11:10:80")
+    private let b = BraceletID("1D:94:9D:D4:11:10:81")
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test("Distinct chips are counted in the order they were seen")
+    func distinct() {
+        var audit = BraceletAudit()
+        #expect(audit.record(a, at: t0) == .new(position: 1))
+        #expect(audit.record(b, at: t0.addingTimeInterval(5)) == .new(position: 2))
+        #expect(audit.seen == [a, b])
+        #expect(audit.repeats.isEmpty)
+        #expect(audit.summary == "2 bracelets, all unique.")
+    }
+
+    @Test("A chip still sitting in the field is ignored, not reported")
+    func stillHolding() {
+        // Core NFC re-detects a tag that has not moved. Calling that a duplicate
+        // would make the tool cry wolf on its very first bracelet, and an operator
+        // who learns to ignore it has lost the only warning that matters.
+        var audit = BraceletAudit()
+        audit.record(a, at: t0)
+        #expect(audit.record(a, at: t0.addingTimeInterval(0.4)) == .stillHolding)
+        #expect(audit.record(a, at: t0.addingTimeInterval(2.9)) == .stillHolding)
+        #expect(audit.repeats.isEmpty)
+        #expect(audit.seen.count == 1)
+        // Reads still count, so the discrepancy is visible if anybody looks.
+        #expect(audit.reads == 3)
+    }
+
+    @Test("The same chip after the window is a repeat worth checking")
+    func repeatAfterWindow() {
+        var audit = BraceletAudit()
+        audit.record(a, at: t0)
+        let outcome = audit.record(a, at: t0.addingTimeInterval(4))
+        #expect(outcome == .repeated(.init(id: a, firstSeenAt: 1, secondSeenAt: 2)))
+        #expect(audit.repeats.count == 1)
+        // Not added twice: the point of the list is one row per physical bracelet.
+        #expect(audit.seen == [a])
+        #expect(audit.summary == "1 bracelet, 1 repeat to check.")
+    }
+
+    @Test("A chip interleaved with another still counts as a repeat")
+    func interleaved() {
+        // The window only forgives the *immediately* preceding chip. Scanning a,
+        // then b, then a again means bracelet a came back — which is the shape a
+        // genuine duplicate takes when working through a pile.
+        var audit = BraceletAudit()
+        audit.record(a, at: t0)
+        audit.record(b, at: t0.addingTimeInterval(0.2))
+        let outcome = audit.record(a, at: t0.addingTimeInterval(0.4))
+        #expect(outcome == .repeated(.init(id: a, firstSeenAt: 1, secondSeenAt: 3)))
+    }
+
+    @Test("Repeats are newest-first, so the last one found is on top")
+    func repeatOrder() {
+        var audit = BraceletAudit()
+        audit.record(a, at: t0)
+        audit.record(b, at: t0.addingTimeInterval(4))
+        audit.record(a, at: t0.addingTimeInterval(8))
+        audit.record(b, at: t0.addingTimeInterval(12))
+        #expect(audit.repeats.map(\.id) == [b, a])
+    }
+
+    @Test("An empty audit says so rather than claiming success")
+    func empty() {
+        // "0 bracelets, all unique" would read as a clean bill of health for a box
+        // nobody has scanned.
+        #expect(BraceletAudit().summary == "Nothing scanned yet.")
+    }
+
+    @Test("The transcript is pasteable, and names the repeats")
+    func transcript() {
+        var audit = BraceletAudit()
+        audit.record(a, at: t0)
+        audit.record(b, at: t0.addingTimeInterval(4))
+        audit.record(a, at: t0.addingTimeInterval(8))
+        let text = audit.transcript
+        #expect(text.contains("2 unique, 3 reads"))
+        #expect(text.contains("1. \(a.rawValue)"))
+        #expect(text.contains("also seen as #1"))
+    }
+
+    @Test("Reset clears everything")
+    func reset() {
+        var audit = BraceletAudit()
+        audit.record(a, at: t0)
+        audit.record(a, at: t0.addingTimeInterval(4))
+        audit.reset()
+        #expect(audit == BraceletAudit())
+        #expect(audit.reads == 0)
+    }
+}
