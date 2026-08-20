@@ -23,8 +23,20 @@ actor FirebaseTerminalRepository: TerminalRepository {
         category: "repository"
     )
 
+    /// How long a commit is given to reach the server before it is treated as
+    /// queued rather than pending.
+    ///
+    /// Firestore's `commit` completion fires only on server acknowledgement, so
+    /// offline it never fires at all — awaiting it would hang the till. But firing
+    /// and forgetting would be worse in the common case: a write the server refuses
+    /// while online must still fail in front of the operator, who can then retry
+    /// before the guest has walked away. So the two race, and only a write that has
+    /// genuinely gone quiet becomes somebody's reconciliation job.
+    private static let commitGrace: Duration = .seconds(3)
+
     private let db: Firestore
     private let auth: Auth
+    private let sync: SyncCenter
     /// Which physical device took the cash. Recorded on every ledger entry so a
     /// till can be reconciled at the end of the night.
     private let terminalId: String
@@ -39,11 +51,68 @@ actor FirebaseTerminalRepository: TerminalRepository {
     init(
         db: Firestore = .firestore(),
         auth: Auth = .auth(),
-        terminalId: String = TerminalIdentity.current
+        terminalId: String = TerminalIdentity.current,
+        sync: SyncCenter
     ) {
         self.db = db
         self.auth = auth
         self.terminalId = terminalId
+        self.sync = sync
+    }
+
+    // MARK: - Committing, online or not
+
+    private enum CommitOutcome {
+        /// The server said yes.
+        case acknowledged
+        /// Still unanswered after the grace period. Firestore's own durable queue
+        /// owns it now: it survives a restart and replays on reconnect. If it is
+        /// later refused, `SyncCenter` gets a `FailedWrite` — nobody is waiting to
+        /// be told by then.
+        case queued
+    }
+
+    /// Commit, giving the server a moment to object.
+    ///
+    /// `makeFailure` is only called for a write that had already been reported as
+    /// queued. A write refused *while the operator is still standing there* throws
+    /// instead, and is deliberately kept off the reconciliation list: they saw the
+    /// error, nothing was served, and a list that fills up with problems somebody
+    /// already handled is a list nobody reads.
+    private func commit(
+        _ batch: WriteBatch,
+        makeFailure: @escaping @Sendable (Error) -> FailedWrite
+    ) async throws -> CommitOutcome {
+        let sync = self.sync
+        await MainActor.run { sync.enqueued() }
+
+        let race = CommitRace()
+
+        return try await withCheckedThrowingContinuation { continuation in
+            batch.commit { error in
+                let alreadyQueued = race.finishFromServer()
+                Task { @MainActor in
+                    if let error, alreadyQueued {
+                        sync.failed(makeFailure(error))
+                    } else {
+                        sync.acknowledged()
+                    }
+                }
+                guard !alreadyQueued else { return }   // nobody is waiting
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: .acknowledged)
+                }
+            }
+
+            Task {
+                try? await Task.sleep(for: Self.commitGrace)
+                if race.finishFromTimeout() {
+                    continuation.resume(returning: .queued)
+                }
+            }
+        }
     }
 
     // MARK: - Auth
@@ -76,7 +145,58 @@ actor FirebaseTerminalRepository: TerminalRepository {
     }
 
     func signOut() async {
+        connectivity?.remove()
+        connectivity = nil
         try? auth.signOut()
+    }
+
+    // MARK: - Connectivity
+
+    private var connectivity: ListenerRegistration?
+
+    /// Watch whether Firestore can actually be reached.
+    ///
+    /// Not `NWPathMonitor`: a phone can hold a perfectly good wifi association to a
+    /// venue access point that routes nowhere, which is the exact failure a festival
+    /// produces. `metadata.isFromCache` answers the question that matters — is this
+    /// data coming from the server or from our own pocket — and it is Firestore's own
+    /// opinion rather than an inference.
+    ///
+    /// Listens to `drinks`, which every terminal already reads, is tiny, and changes
+    /// almost never. Started after sign-in because an unauthenticated listener is
+    /// refused by the rules.
+    func startMonitoringConnectivity() {
+        guard connectivity == nil else { return }
+        let sync = self.sync
+        connectivity = db.collection(Fire.Collection.drinks)
+            .addSnapshotListener(includeMetadataChanges: true) { snapshot, error in
+                guard let snapshot else {
+                    if let error {
+                        Self.log.error("connectivity listener: \(error.localizedDescription, privacy: .public)")
+                    }
+                    return
+                }
+                let offline = snapshot.metadata.isFromCache
+                Task { @MainActor in sync.setOffline(offline) }
+            }
+    }
+
+    /// Cut Firestore off from the network, or restore it.
+    ///
+    /// The only practical way to exercise the queue without finding a dead spot:
+    /// airplane mode also kills the debugger, and a venue's bad wifi cannot be
+    /// summoned on demand. Firestore keeps accepting writes while disabled and
+    /// replays them on enable, which is precisely the behaviour under test.
+    func setNetworkEnabled(_ enabled: Bool) async {
+        do {
+            if enabled {
+                try await db.enableNetwork()
+            } else {
+                try await db.disableNetwork()
+            }
+        } catch {
+            Self.log.error("could not toggle the network: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Turn an Auth failure into something an operator can act on — and log the
@@ -176,8 +296,25 @@ actor FirebaseTerminalRepository: TerminalRepository {
             Fire.Bracelet.pairedAt: FieldValue.serverTimestamp(),
         ], forDocument: braceletDocument(bracelet))
 
+        let name = participant.name
+        let participantId = participant.id.rawValue
+        let braceletValue = bracelet.rawValue
+        let terminal = terminalId
+
         do {
-            try await batch.commit()
+            _ = try await commit(batch) { error in
+                FailedWrite(
+                    transactionId: "pair-\(braceletValue)",
+                    kind: .checkIn,
+                    participantId: participantId,
+                    participantName: name,
+                    braceletId: braceletValue,
+                    amount: .zero,
+                    attemptedAt: Date(),
+                    terminalId: terminal,
+                    reason: error.localizedDescription
+                )
+            }
         } catch {
             // The rules allow `create` on a bracelet and never `update`, so the
             // common denial here is a chip that is already paired — which is
@@ -194,6 +331,10 @@ actor FirebaseTerminalRepository: TerminalRepository {
             }
             throw error
         }
+        // Resolves from the local cache when offline, and Firestore's latency
+        // compensation means the pending write is already reflected in it — so the
+        // screen shows the guest checked in, which is what actually happened at the
+        // desk.
         return try await reload(participant.id)
     }
 
@@ -337,7 +478,25 @@ actor FirebaseTerminalRepository: TerminalRepository {
             Fire.Participant.updatedAt: FieldValue.serverTimestamp(),
         ], forDocument: participantDocument(current.id))
 
-        try await batch.commit()
+        let kind: FailedWrite.Kind = type == Fire.Transaction.typeCharge ? .charge : .topUp
+        let name = current.name
+        let participantId = current.id.rawValue
+        let braceletValue = bracelet.rawValue
+        let terminal = terminalId
+
+        _ = try await commit(batch) { error in
+            FailedWrite(
+                transactionId: txId,
+                kind: kind,
+                participantId: participantId,
+                participantName: name,
+                braceletId: braceletValue,
+                amount: amount,
+                attemptedAt: Date(),
+                terminalId: terminal,
+                reason: error.localizedDescription
+            )
+        }
         return try await reload(current.id)
     }
 
@@ -381,5 +540,34 @@ enum TerminalIdentity {
         let created = "terminal-\(UUID().uuidString.prefix(8))"
         UserDefaults.standard.set(created, forKey: key)
         return created
+    }
+}
+
+/// Which of the two racers got there first, resolved exactly once.
+///
+/// `@unchecked Sendable` over a lock rather than an actor: both callers need a
+/// synchronous answer — one is a Firestore completion, the other a sleeping Task —
+/// and a continuation resumed twice is a crash, not a race to be smoothed over.
+private final class CommitRace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+
+    /// - Returns: true if the timeout already claimed it, meaning the caller has
+    ///   been told the write is queued and no longer waits for an answer.
+    func finishFromServer() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let alreadyQueued = finished
+        finished = true
+        return alreadyQueued
+    }
+
+    /// - Returns: true if the timeout won and should resume the continuation.
+    func finishFromTimeout() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !finished else { return false }
+        finished = true
+        return true
     }
 }

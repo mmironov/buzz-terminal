@@ -76,8 +76,7 @@ extension AppModel {
         guard overrides.isActive else { return }
 
         if overrides.offline {
-            isOffline = true
-            queuedTransactions = 3
+            sync.simulate(offline: true, pending: 3)
         }
 
         if let email = overrides.signInEmail, let password = overrides.signInPassword {

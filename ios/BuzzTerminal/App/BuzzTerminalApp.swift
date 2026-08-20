@@ -9,6 +9,11 @@ struct BuzzTerminalApp: App {
 
     init() {
         let configured = FirebaseBootstrap.configureIfAvailable()
+        // One SyncCenter, shared: the repository reports into it and the model reads
+        // from it. Created here rather than by either of them, because a refused
+        // write has to outlive both — it is persisted, and it is the record of money
+        // that went missing.
+        let sync = SyncCenter()
 
         #if DEBUG
         let overrides = LaunchOverrides.fromProcess
@@ -27,13 +32,14 @@ struct BuzzTerminalApp: App {
         let repository: any TerminalRepository =
             overrides.usesFixtures || !configured
                 ? InMemoryTerminalRepository()
-                : FirebaseTerminalRepository()
+                : FirebaseTerminalRepository(sync: sync)
         // Real chips whenever the hardware can read them. `-sbScanner simulated`
         // forces the prototype panel back on a device, which is how a flow gets
         // rehearsed without a bracelet in hand.
         let model = AppModel(
             repository: repository,
-            reader: overrides.forcesSimulatedScanner ? SimulatedBraceletReader() : Self.bestReader()
+            reader: overrides.forcesSimulatedScanner ? SimulatedBraceletReader() : Self.bestReader(),
+            sync: sync
         )
         model.apply(overrides)
         _model = State(initialValue: model)
@@ -62,8 +68,9 @@ struct BuzzTerminalApp: App {
                 """)
         }
         _model = State(initialValue: AppModel(
-            repository: FirebaseTerminalRepository(),
-            reader: Self.bestReader()
+            repository: FirebaseTerminalRepository(sync: sync),
+            reader: Self.bestReader(),
+            sync: sync
         ))
         #endif
     }

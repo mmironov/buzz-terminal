@@ -515,7 +515,7 @@ equivalent is "The Android app" above — it is behind on more than this.
 | Auth | ✅ real Firebase Auth, custom-claim roles. `-sbBackend memory` still accepts any `reception*` / `bar*` address, and that path only | — |
 | Data | ✅ Firestore by default, debug and release alike | — |
 | Balances | ✅ ledger + rules-enforced balance. The `-sbBackend memory` path is client-side arithmetic | — |
-| Offline | banner and queue count are cosmetic; no reachability, no queue | 3 — write-behind queue |
+| Offline | ✅ real: Firestore's durable queue, real connectivity, and a reconciliation screen for refused replays — `docs/offline.md` | — |
 | NFC | ✅ Core NFC reads real bracelets on a device; the simulated picker remains where hardware is absent, and behind `-sbScanner simulated` | — |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
 | Localisation | English strings inline; `"23.50 €"` is locale-independent by design | later |
@@ -557,7 +557,8 @@ Two intentional deviations from the prototype, both improvements:
    stamped with the staff uid and terminal id. A **charge** has still only ever
    run against the emulator. `npm run reset -- --apply --confirm=swing-buzz`
    clears test traces before doors.
-3. **Iteration 3** — Core NFC ✅ and a real offline queue (still to do). NFC is
+3. ✅ **Iteration 3** — Core NFC and the offline queue, both verified against real
+   hardware and a real backend rather than reasoned about. NFC is
    verified against physical wristbands: a chip reads as `1D:94:9D:D4:11:10:80`.
    `docs/nfc.md` covers the entitlement, the system scan sheet, and the two checks
    worth running on a batch of bracelets before trusting it.

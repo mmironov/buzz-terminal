@@ -4,6 +4,7 @@ import SwiftUI
 /// connection is doing, and the way out.
 struct StatusHeaderView: View {
     @Environment(AppModel.self) private var model
+    @State private var showingFailures = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,15 +30,19 @@ struct StatusHeaderView: View {
 
             SBDivider()
 
-            if model.isOffline {
-                offlineBanner
+            // One banner, three things to say: offline, queued, or refused. It
+            // appears whenever there is something worth saying rather than only
+            // when offline — a write refused an hour ago still matters once the
+            // wifi is back, and that is exactly when nobody would look.
+            if let message = model.syncMessage {
+                syncBanner(message)
             }
         }
     }
 
     private var networkToggle: some View {
         Button {
-            model.toggleOffline()
+            Task { await model.toggleOffline() }
         } label: {
             HStack(spacing: 6) {
                 // A hard 8pt square, not a circle — radius 0 applies to status
@@ -55,21 +60,42 @@ struct StatusHeaderView: View {
         .buttonStyle(NetworkToggleStyle())
     }
 
-    private var offlineBanner: some View {
+    private func syncBanner(_ message: String) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: SBSpace.x2) {
-                SBKicker(text: "Offline", color: .sbAccent800, tracking: 0.1)
-                Text(model.queueLabel)
-                    .font(.sbBody(11.5))
-                    .foregroundStyle(.sbAccent800)
-                Spacer(minLength: 0)
+            Button {
+                // Only a failure has anywhere to go. Queued and offline are
+                // statements, not invitations.
+                if model.syncIsAlarming { showingFailures = true }
+            } label: {
+                HStack(spacing: SBSpace.x2) {
+                    SBKicker(
+                        text: model.syncIsAlarming ? "Failed" : (model.isOffline ? "Offline" : "Syncing"),
+                        color: .sbAccent800,
+                        tracking: 0.1
+                    )
+                    Text(message)
+                        .font(.sbBody(11.5))
+                        .foregroundStyle(.sbAccent800)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                    if model.syncIsAlarming {
+                        Text("View")
+                            .font(.sbBody(11.5))
+                            .foregroundStyle(.sbAccent800)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, SBSpace.x2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, SBSpace.x2)
-            .background(Color.sbAccent100)
+            .buttonStyle(.plain)
+            .disabled(!model.syncIsAlarming)
+            .background(model.syncIsAlarming ? Color.sbAccent200 : Color.sbAccent100)
 
             SBDivider(weight: SBRule.hairline)
         }
+        .sheet(isPresented: $showingFailures) { FailedWritesView() }
     }
 }
 
@@ -87,8 +113,7 @@ private struct NetworkToggleStyle: ButtonStyle {
 #Preview {
     let model = AppModel()
     model.role = .reception
-    model.isOffline = true
-    model.queuedTransactions = 3
+    model.sync.simulate(offline: true, pending: 3)
     return VStack {
         StatusHeaderView().environment(model)
         Spacer()

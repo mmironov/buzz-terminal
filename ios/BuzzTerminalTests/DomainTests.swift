@@ -503,3 +503,117 @@ struct BraceletAuditTests {
         #expect(audit.reads == 0)
     }
 }
+
+@Suite("Sync state and failed writes")
+struct SyncStateTests {
+
+    private func failure(_ kind: FailedWrite.Kind = .charge, amount: Money = Money(euros: 8)) -> FailedWrite {
+        FailedWrite(
+            transactionId: "tx-1", kind: kind,
+            participantId: "tkt-1", participantName: "Anna Kowalski",
+            braceletId: "1D:94:9D:D4:11:10:80", amount: amount,
+            attemptedAt: Date(timeIntervalSince1970: 1_000_000),
+            terminalId: "terminal-abc", reason: "PERMISSION_DENIED"
+        )
+    }
+
+    @Test("Queueing and acknowledging balance out")
+    func counting() {
+        var state = SyncState()
+        state.enqueued()
+        state.enqueued()
+        #expect(state.pending == 2)
+        state.acknowledged()
+        #expect(state.pending == 1)
+    }
+
+    @Test("The pending count never goes negative")
+    func neverNegative() {
+        // Firestore's own queue survives a relaunch while this counter does not, so
+        // an acknowledgement can arrive for a write this run never saw enqueued. A
+        // count of -1 on a bar's screen would destroy trust in the whole banner.
+        var state = SyncState()
+        state.acknowledged()
+        state.acknowledged()
+        #expect(state.pending == 0)
+    }
+
+    @Test("A failure decrements pending and is recorded")
+    func failing() {
+        var state = SyncState()
+        state.enqueued()
+        state.failed(failure())
+        #expect(state.pending == 0)
+        #expect(state.failures.count == 1)
+        #expect(state.unsettledFailures.count == 1)
+    }
+
+    @Test("Settling keeps the record but takes it off the list")
+    func settling() {
+        // Kept, not deleted: what an organiser did about missing money is part of
+        // the record, and a list that erases itself cannot be audited afterwards.
+        var state = SyncState()
+        let write = failure()
+        state.enqueued()
+        state.failed(write)
+        state.settle(write.id)
+        #expect(state.failures.count == 1)
+        #expect(state.unsettledFailures.isEmpty)
+        #expect(state.failures[0].settled)
+    }
+
+    @Test("A failure outranks a queue in the banner")
+    func bannerPrecedence() {
+        var state = SyncState()
+        state.enqueued()
+        state.enqueued()
+        #expect(state.bannerMessage == "2 transactions waiting to sync")
+        #expect(state.bannerIsAlarming == false)
+
+        state.failed(failure())
+        #expect(state.bannerMessage == "1 transaction failed to sync — show an organiser")
+        #expect(state.bannerIsAlarming)
+    }
+
+    @Test("Offline alone says sales are being queued")
+    func offlineBanner() {
+        var state = SyncState()
+        state.isOffline = true
+        #expect(state.bannerMessage == "Offline — sales are being queued")
+        #expect(state.bannerIsAlarming == false)
+    }
+
+    @Test("Nothing to say means no banner at all")
+    func silence() {
+        // Not an empty string: the view checks one thing, and a permanent bar of
+        // whitespace across every screen is its own bug.
+        #expect(SyncState().bannerMessage == nil)
+    }
+
+    @Test("A failed write survives a round trip through JSON")
+    func codable() throws {
+        // The whole point of the type: it has to outlive a force-quit, because it is
+        // the only record that money went missing.
+        let write = failure(.topUp, amount: Money(euros: 20))
+        let data = try JSONEncoder().encode([write])
+        let decoded = try JSONDecoder().decode([FailedWrite].self, from: data)
+        #expect(decoded == [write])
+        #expect(decoded[0].amount == Money(euros: 20))
+    }
+
+    @Test("Each kind advises what to actually do about it")
+    func advice() {
+        // A charge and a top-up fail in opposite directions: one means a drink was
+        // given away, the other means a guest is owed credit. Identical wording
+        // would be worse than none.
+        #expect(failure(.topUp).advice.contains("Top the guest up again"))
+        #expect(failure(.charge).advice.contains("write it off"))
+        #expect(failure(.checkIn).advice.contains("Check the guest in again"))
+    }
+
+    @Test("The summary names the guest and the amount")
+    func summary() {
+        #expect(failure(.charge, amount: Money(euros: 8)).summary == "Charge 8.00 € — Anna Kowalski")
+        #expect(failure(.checkIn).summary.contains("bracelet 1D:94:9D:D4:11:10:80"))
+    }
+}

@@ -7,7 +7,10 @@ import Foundation
 /// represent 0.10 exactly, so repeated top-ups and charges accumulate error.
 /// `Money` stores cents in an `Int`, which is exact for every amount this app
 /// will ever see, and only converts to a decimal string at the edges.
-struct Money: Hashable, Comparable, Sendable {
+/// `Codable` so a `FailedWrite` can be persisted. It encodes as its integer cents,
+/// which is the same representation Firestore gets — a stored amount never becomes
+/// a Double on the way to disk and back.
+struct Money: Hashable, Comparable, Sendable, Codable {
     /// The amount in euro cents. May be negative (used for deltas).
     var cents: Int
 

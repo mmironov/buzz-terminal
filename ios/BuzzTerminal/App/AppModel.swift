@@ -42,12 +42,21 @@ final class AppModel {
     /// which is exactly what happened the first time this ran on production.
     var offersDemoAccounts: Bool { runsOnFixtures }
 
+    /// Queued writes, refused writes, and whether the backend is reachable.
+    ///
+    /// Shared with the repository, which is what reports into it — the model only
+    /// reads. Kept out of `AppModel` itself because a refused charge has to survive
+    /// the app being force-quit, and screen state does not.
+    let sync: SyncCenter
+
     init(
         repository: TerminalRepository = InMemoryTerminalRepository(),
-        reader: BraceletReader = SimulatedBraceletReader()
+        reader: BraceletReader = SimulatedBraceletReader(),
+        sync: SyncCenter = SyncCenter()
     ) {
         self.repository = repository
         self.reader = reader
+        self.sync = sync
         self.runsOnFixtures = repository is InMemoryTerminalRepository
     }
 
@@ -73,17 +82,32 @@ final class AppModel {
     var screenAfterSignIn: String?
     #endif
 
-    // MARK: Connectivity (prototype affordance — see `toggleOffline`)
+    // MARK: Connectivity
 
-    var isOffline = false
-    var queuedTransactions = 0
+    /// Real, from Firestore's own opinion of whether it is talking to a server —
+    /// not a manual toggle and not a guess from `NWPathMonitor`, which cannot tell
+    /// a working network from a venue access point that routes nowhere.
+    var isOffline: Bool { sync.state.isOffline }
+
+    /// Writes accepted at the till and not yet acknowledged.
+    var queuedTransactions: Int { sync.state.pending }
+
+    /// Writes the server refused after the operator had already been told they
+    /// worked. Money that went missing, and the reason this queue has a UI at all.
+    var failedWrites: [FailedWrite] { sync.state.unsettledFailures }
 
     var networkLabel: String { isOffline ? "Offline" : "Online" }
     var networkDotColor: Color { isOffline ? .sbAccent : .sbNeutral600 }
-    var queueLabel: String {
-        queuedTransactions == 1
-            ? "1 transaction waiting to sync"
-            : "\(queuedTransactions) transactions waiting to sync"
+
+    /// One line for the banner, or nil when there is nothing worth saying.
+    var syncMessage: String? { sync.state.bannerMessage }
+    var syncIsAlarming: Bool { sync.state.bannerIsAlarming }
+
+    /// Kept for the views that still read it.
+    var queueLabel: String { syncMessage ?? "" }
+
+    func settleFailure(_ id: UUID) {
+        sync.settle(id)
     }
 
     // MARK: Scanning
@@ -171,6 +195,9 @@ final class AppModel {
             loginFailed = false
             password = ""
             screen = role.homeScreen
+            // Only now: the rules refuse an unauthenticated listener, so starting
+            // this before sign-in would report "offline" for a healthy network.
+            await repository.startMonitoringConnectivity()
             await loadCatalogue()
         } catch {
             loginFailed = true
@@ -198,16 +225,16 @@ final class AppModel {
         loginFailed = false
     }
 
-    /// Flips the offline banner from the design.
+    /// Cut Firestore off from the network, or restore it.
     ///
-    /// Iteration 1 fakes this: there is no reachability monitoring and no real
-    /// queue, because there is no server to be disconnected from yet. What it
-    /// does do is exercise every piece of offline *UI* — the banner, the queue
-    /// count, the "Approved · offline" receipt band — so those are already built
-    /// and reviewed when iteration 3 adds a real write-behind queue.
-    func toggleOffline() {
-        isOffline.toggle()
-        if !isOffline { queuedTransactions = 0 }
+    /// No longer a fake. It used to flip a banner and a counter; it now disables
+    /// Firestore's transport, which is the only practical way to rehearse the queue
+    /// — airplane mode also kills the debugger, and a venue's bad wifi cannot be
+    /// summoned on demand. Writes keep being accepted while it is off and replay
+    /// when it comes back, which is the behaviour under test.
+    func toggleOffline() async {
+        let goingOffline = !isOffline
+        await repository.setNetworkEnabled(!goingOffline)
     }
 
     // MARK: - Scanning
@@ -433,21 +460,16 @@ final class AppModel {
         isWorking = true
         defer { isWorking = false }
 
+        // One path, online or not. The repository accepts the write, gives the
+        // server three seconds to object, and hands back what the local cache now
+        // says — which includes the pending write. There is no separate offline
+        // branch to keep in step with the real one.
         let updated: Participant
-        if isOffline {
-            // Applied locally and counted into the queue, matching the design.
-            // A real write-behind queue is iteration 3.
-            var local = current
-            local.balance += amount
-            updated = local
-            queuedTransactions += 1
-        } else {
-            do {
-                updated = try await repository.topUp(bracelet: bracelet, amount: amount)
-            } catch {
-                errorMessage = error.localizedDescription
-                return
-            }
+        do {
+            updated = try await repository.topUp(bracelet: bracelet, amount: amount)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
         }
 
         participant = updated
@@ -494,19 +516,16 @@ final class AppModel {
         isWorking = true
         defer { isWorking = false }
 
+        // Same single path as a top-up. Offline the charge is accepted, queued by
+        // Firestore, and shown as queued on the receipt — the drink gets served,
+        // which is the decision taken deliberately: refusing sales when a venue's
+        // wifi drops closes the bar mid-Saturday.
         let updated: Participant
-        if isOffline {
-            var local = current
-            local.balance -= total
-            updated = local
-            queuedTransactions += 1
-        } else {
-            do {
-                updated = try await repository.charge(bracelet: bracelet, lines: lines)
-            } catch {
-                errorMessage = error.localizedDescription
-                return
-            }
+        do {
+            updated = try await repository.charge(bracelet: bracelet, lines: lines)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
         }
 
         participant = updated
@@ -514,7 +533,7 @@ final class AppModel {
             kind: .payment,
             title: isOffline ? "Charged — queued" : "Charged",
             note: isOffline
-                ? "Held on this device and deducted locally. It syncs as soon as the bar is back online."
+                ? "Queued on this device and deducted locally. It syncs as soon as the bar is back online."
                 : "\(current.name)’s account was debited \(total).",
             rows: lines.map { .init(key: $0.label, value: "\($0.total)") }
                 + [.init(key: "Participant", value: current.name)],

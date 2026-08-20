@@ -23,6 +23,14 @@ protocol TerminalRepository: Sendable {
     func signIn(email: String, password: String) async throws -> StaffRole
     func signOut() async
 
+    // MARK: Connectivity
+    /// Begin reporting whether the backend is reachable.
+    func startMonitoringConnectivity() async
+
+    /// Cut the backend off from the network, or restore it — the only practical way
+    /// to exercise the offline queue without finding a dead spot.
+    func setNetworkEnabled(_ enabled: Bool) async
+
     // MARK: Catalogue
     func drinks() async throws -> [Drink]
 

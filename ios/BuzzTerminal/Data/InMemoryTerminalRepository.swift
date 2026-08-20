@@ -53,6 +53,14 @@ actor InMemoryTerminalRepository: TerminalRepository {
         await simulateNetwork()
     }
 
+    // MARK: Connectivity
+
+    /// Nothing to monitor and nothing to disconnect: the fixtures are in this
+    /// process. The offline banner on this path stays whatever the debug toggle
+    /// last set it to, which is what the design prototype did.
+    func startMonitoringConnectivity() async {}
+    func setNetworkEnabled(_ enabled: Bool) async {}
+
     // MARK: Catalogue
 
     func drinks() async throws -> [Drink] {
