@@ -17,6 +17,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import fest.swingbuzz.terminal.app.AppModel
 import fest.swingbuzz.terminal.app.RootScreen
 import fest.swingbuzz.terminal.app.TerminalBackend
+import fest.swingbuzz.terminal.data.BraceletReader
+import fest.swingbuzz.terminal.designsystem.ScanFeedback
+import fest.swingbuzz.terminal.data.SyncCenter
 import fest.swingbuzz.terminal.data.TerminalRepository
 import fest.swingbuzz.terminal.designsystem.SB
 import fest.swingbuzz.terminal.designsystem.sbBody
@@ -35,9 +38,20 @@ class MainActivity : ComponentActivity() {
         // the release build's refusal to run on fixtures — happens once, at
         // launch, with a Context to hand. Nothing has touched Firestore yet,
         // which is what lets the emulator override take effect.
-        val repository = TerminalBackend.choose(this, intent)
+        // One SyncCenter, shared: the repository reports into it and the model
+        // reads from it. Created here rather than by either, because a refused
+        // write has to outlive both — it is persisted, and it is the record of
+        // money that went missing.
+        val sync = SyncCenter(applicationContext)
+        val repository = TerminalBackend.choose(this, intent, sync)
 
-        setContent { BuzzTerminalApp(repository) }
+        // Real chips whenever the hardware can read them, the prototype panel
+        // otherwise — an emulator has no chip to present. `--es sbScanner simulated`
+        // forces the panel on a device, for rehearsing without a bracelet in hand.
+        val reader = TerminalBackend.reader(this, intent)
+        val feedback = ScanFeedback(applicationContext)
+
+        setContent { BuzzTerminalApp(repository, sync, reader, feedback) }
     }
 }
 
@@ -49,7 +63,12 @@ class MainActivity : ComponentActivity() {
  * as the default text style so nothing falls back to Roboto by omission.
  */
 @Composable
-fun BuzzTerminalApp(repository: TerminalRepository) {
+fun BuzzTerminalApp(
+    repository: TerminalRepository,
+    sync: SyncCenter,
+    reader: BraceletReader,
+    feedback: ScanFeedback,
+) {
     CompositionLocalProvider(LocalTextStyle provides sbBody(14.sp).copy(color = SB.ink)) {
         // No safe-area inset here on purpose: `RootScreen` applies it to the
         // screen content, so the scan overlay can still reach the status bar
@@ -63,7 +82,7 @@ fun BuzzTerminalApp(repository: TerminalRepository) {
             RootScreen(
                 viewModel(
                     factory = viewModelFactory {
-                        initializer { AppModel(repository) }
+                        initializer { AppModel(repository, reader, sync, feedback) }
                     }
                 )
             )

@@ -34,6 +34,21 @@ interface TerminalRepository {
     suspend fun signIn(email: String, password: String): StaffRole
     suspend fun signOut()
 
+    // ── Connectivity ──
+
+    /**
+     * Begin reporting whether the backend is reachable. A no-op for a backend that
+     * is always reachable, which is every fixture.
+     */
+    fun startMonitoringConnectivity() {}
+
+    /**
+     * Cut the backend off from the network, or restore it — the only practical way
+     * to exercise the offline queue without finding a dead spot. A no-op where there
+     * is no network to cut.
+     */
+    suspend fun setNetworkEnabled(enabled: Boolean) {}
+
     // ── Catalogue ──
     suspend fun drinks(): List<Drink>
 

@@ -25,7 +25,30 @@ It only runs on a physical iPhone 7 or later. Everything is behind
 falls back to `SimulatedBraceletReader`. `-sbScanner simulated` forces that
 fallback on a device, for rehearsing a flow with no bracelet to hand.
 
-## The system draws its own sheet
+## Android reads chips differently, and better
+
+Android uses **reader mode** (`NfcAdapter.enableReaderMode`), not the
+foreground-dispatch intent system. Two reasons, and the second is the one that
+matters: dispatch would deliver tags as Intents and mean routing a scan through
+`onNewIntent` and back into a suspend function, and reader mode **suppresses the
+platform's own tag animation and sound** — so the Modernist overlay stays on screen
+for the whole read.
+
+`FLAG_READER_SKIP_NDEF_CHECK` is set deliberately. The identity is the UID, so
+reading NDEF would delay every scan for data the app never looks at.
+
+`Tag.getId()` is the UID for every technology polled, so there is no per-technology
+branching — unlike Core NFC, where the identifier hangs off a per-family associated
+value. The one Kotlin-specific trap is in `BraceletID.fromNfcId`: `Byte` is signed,
+so without `toInt() and 0xFF` the byte `0xB4` formats as `FFFFFFB4` and every id
+read from a real chip is wrong. There is a test named after it.
+
+The manifest declares `android.hardware.nfc` as **not required**, so a phone without
+NFC still installs and falls back to the prototype chip panel. `required="true"`
+would hide the app from those devices in the Play Store, which is a distribution
+decision nobody asked for.
+
+## iOS draws its own sheet, and cannot be told not to
 
 Starting a tag session presents Apple's own "Ready to Scan" modal. It **cannot be
 suppressed or restyled**. So the app's Modernist scan overlay is what an operator

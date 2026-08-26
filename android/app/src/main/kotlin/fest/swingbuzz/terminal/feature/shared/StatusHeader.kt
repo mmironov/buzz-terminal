@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -69,7 +71,11 @@ fun StatusHeader(model: AppModel, modifier: Modifier = Modifier) {
 
         SBDivider()
 
-        if (model.isOffline) OfflineBanner(model)
+        // One banner, three things to say: offline, queued, or refused. It appears
+        // whenever there is something worth saying rather than only when offline — a
+        // write refused an hour ago still matters once the wifi is back, and that is
+        // exactly when nobody would look.
+        model.syncMessage?.let { SyncBanner(model, it) }
     }
 }
 
@@ -100,20 +106,46 @@ private fun NetworkToggle(model: AppModel) {
 }
 
 @Composable
-private fun OfflineBanner(model: AppModel) {
+private fun SyncBanner(model: AppModel, message: String) {
+    var showingFailures by remember { mutableStateOf(false) }
+    val alarming = model.syncIsAlarming
+
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SB.accent100)
+                .background(if (alarming) SB.accent200 else SB.accent100)
+                // Only a failure has anywhere to go. Queued and offline are
+                // statements, not invitations.
+                .then(
+                    if (alarming) {
+                        Modifier.clickable { showingFailures = true }
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(horizontal = 18.dp, vertical = SBSpace.x2),
             horizontalArrangement = Arrangement.spacedBy(SBSpace.x2),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SBKicker("Offline", color = SB.accent800, trackingEm = 0.1f)
-            Text(model.queueLabel, style = sbBody(11.5.sp), color = SB.accent800)
+            SBKicker(
+                if (alarming) "Failed" else if (model.isOffline) "Offline" else "Syncing",
+                color = SB.accent800,
+                trackingEm = 0.1f,
+            )
+            Text(
+                message,
+                style = sbBody(11.5.sp),
+                color = SB.accent800,
+                modifier = Modifier.weight(1f),
+            )
+            if (alarming) Text("View", style = sbBody(11.5.sp), color = SB.accent800)
         }
         SBDivider(weight = SBRule.hairline)
+    }
+
+    if (showingFailures) {
+        FailedWritesSheet(model) { showingFailures = false }
     }
 }
 
@@ -122,7 +154,7 @@ private fun OfflineBanner(model: AppModel) {
 private fun StatusHeaderPreview() {
     val model = AppModel().apply {
         signIn()
-        toggleOffline()
+        sync.simulate(offline = true, pending = 3)
     }
     Column(Modifier.background(SB.background)) { StatusHeader(model) }
 }

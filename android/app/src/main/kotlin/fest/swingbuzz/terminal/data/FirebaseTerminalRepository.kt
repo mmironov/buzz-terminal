@@ -16,9 +16,19 @@ import fest.swingbuzz.terminal.domain.Money
 import fest.swingbuzz.terminal.domain.Participant
 import fest.swingbuzz.terminal.domain.ParticipantID
 import fest.swingbuzz.terminal.domain.StaffRole
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
+import fest.swingbuzz.terminal.domain.FailedWrite
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -42,7 +52,119 @@ class FirebaseTerminalRepository(
      * till can be reconciled at the end of the night.
      */
     private val terminalId: String,
+    private val sync: SyncCenter,
 ) : TerminalRepository {
+
+    /**
+     * Reports acknowledgements and refusals that arrive after the caller has moved
+     * on. Its own scope because it must outlive the suspend function that started
+     * the write: the whole point is that nobody is waiting any more.
+     */
+    private val reporting = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * How long a commit is given to reach the server before it is treated as queued
+     * rather than pending.
+     *
+     * `commit()`'s Task completes only on server acknowledgement, so offline it
+     * never completes and awaiting it would hang the till. But firing and forgetting
+     * would be worse in the common case: a write the server refuses while online
+     * must still fail in front of the operator, who can retry before the guest has
+     * walked away. So the two race, and only a write that has genuinely gone quiet
+     * becomes somebody's reconciliation job.
+     */
+    private val commitGraceMillis = 3_000L
+
+    /**
+     * Commit, giving the server a moment to object.
+     *
+     * `makeFailure` is only called for a write already reported as queued. A write
+     * refused *while the operator is still standing there* throws instead, and is
+     * deliberately kept off the reconciliation list: they saw the error, nothing was
+     * served, and a list that fills with problems somebody already handled is a list
+     * nobody reads.
+     *
+     * Cleaner than the Swift twin, which has to race two continuations by hand:
+     * `withTimeoutOrNull` is the whole mechanism, and the Task keeps running after
+     * it gives up, which is exactly what is wanted.
+     */
+    private suspend fun commit(
+        batch: com.google.firebase.firestore.WriteBatch,
+        makeFailure: (Exception) -> FailedWrite,
+    ) {
+        withContext(Dispatchers.Main.immediate) { sync.enqueued() }
+
+        val task = batch.commit()
+        var queued = false
+
+        task.addOnCompleteListener { finished ->
+            val error = finished.exception
+            reporting.launch {
+                if (error != null && queued) {
+                    sync.failed(makeFailure(error))
+                } else {
+                    sync.acknowledged()
+                }
+            }
+        }
+
+        val answered = withTimeoutOrNull(commitGraceMillis) {
+            runCatching { task.await() }
+        }
+
+        if (answered == null) {
+            // Silence. Firestore's own durable queue owns it now: it survives a
+            // restart and replays on reconnect. A later refusal becomes a
+            // FailedWrite, because nobody is waiting to be told by then.
+            queued = true
+            return
+        }
+        answered.getOrThrow()
+    }
+
+    // ── Connectivity ──
+
+    private var connectivity: ListenerRegistration? = null
+
+    /**
+     * Watch whether Firestore can actually be reached.
+     *
+     * Not a connectivity manager callback: a phone can hold a perfectly good
+     * association to a venue access point that routes nowhere, which is the exact
+     * failure a festival produces. `metadata.isFromCache` answers the question that
+     * matters — is this data coming from the server or from our own pocket — and it
+     * is Firestore's own opinion rather than an inference.
+     *
+     * Listens to `drinks`, which every terminal already reads, is tiny, and changes
+     * almost never. Started after sign-in, because the rules refuse an
+     * unauthenticated listener.
+     */
+    override fun startMonitoringConnectivity() {
+        if (connectivity != null) return
+        connectivity = db.collection(Fire.Collection.DRINKS)
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
+                if (snapshot == null) {
+                    if (error != null) Log.e(LOG_TAG, "connectivity listener: " + error.message)
+                    return@addSnapshotListener
+                }
+                val offline = snapshot.metadata.isFromCache
+                reporting.launch { sync.setOffline(offline) }
+            }
+    }
+
+    /**
+     * Cut Firestore off from the network, or restore it.
+     *
+     * The only practical way to exercise the queue without finding a dead spot:
+     * aeroplane mode also drops adb, and a venue's bad wifi cannot be summoned on
+     * demand. Firestore keeps accepting writes while disabled and replays them on
+     * enable, which is precisely the behaviour under test.
+     */
+    override suspend fun setNetworkEnabled(enabled: Boolean) {
+        runCatching {
+            if (enabled) db.enableNetwork().await() else db.disableNetwork().await()
+        }.onFailure { Log.e(LOG_TAG, "could not toggle the network: " + it.message) }
+    }
 
     /**
      * The next evening-ticket number to try, per evening.
@@ -162,7 +284,22 @@ class FirebaseTerminalRepository(
         // that already exists must fail rather than quietly move a balance.
         batch.set(braceletDocument(bracelet), braceletPairingDocument(to.id, uid))
 
-        batch.commit().await()
+        commit(batch) { error ->
+            FailedWrite(
+                transactionId = "pair-" + bracelet.rawValue,
+                kind = FailedWrite.Kind.CHECK_IN,
+                participantId = to.id.rawValue,
+                participantName = to.name,
+                braceletId = bracelet.rawValue,
+                amount = Money.ZERO,
+                attemptedAt = Instant.now(),
+                terminalId = terminalId,
+                reason = error.message ?: error.toString(),
+            )
+        }
+        // Resolves from the local cache when offline, and Firestore's latency
+        // compensation means the pending write is already reflected in it — so the
+        // screen shows the guest checked in, which is what happened at the desk.
         return reload(to.id)
     }
 
@@ -306,7 +443,24 @@ class FirebaseTerminalRepository(
             ),
         )
 
-        batch.commit().await()
+        val kind = if (type == Fire.Transaction.TYPE_CHARGE) {
+            FailedWrite.Kind.CHARGE
+        } else {
+            FailedWrite.Kind.TOP_UP
+        }
+        commit(batch) { error ->
+            FailedWrite(
+                transactionId = txId,
+                kind = kind,
+                participantId = current.id.rawValue,
+                participantName = current.name,
+                braceletId = bracelet.rawValue,
+                amount = amount,
+                attemptedAt = Instant.now(),
+                terminalId = terminalId,
+                reason = error.message ?: error.toString(),
+            )
+        }
         return reload(current.id)
     }
 

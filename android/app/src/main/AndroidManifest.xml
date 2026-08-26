@@ -9,6 +9,14 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.NFC" />
+
+    <!-- Declared, but NOT required. A phone without NFC still runs the app: the
+         reader falls back to the prototype chip panel, which is how the whole thing
+         stays developable on an emulator. `required="true"` would instead hide the
+         app from those devices in the Play Store, which is a distribution decision
+         nobody asked for. -->
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
 
     <application
         android:allowBackup="false"

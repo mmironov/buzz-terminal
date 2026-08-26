@@ -404,4 +404,158 @@ class DomainTest {
             assertEquals(null, StaffRole.fromWire("organiser"))
         }
     }
+
+    @Nested
+    inner class `Bracelet ids from NFC chips` {
+
+        @Test
+        fun `a four-byte MIFARE uid formats like the design`() {
+            assertEquals(
+                "04:B4:2F:11",
+                BraceletID.fromNfcId(byteArrayOf(0x04, 0xB4.toByte(), 0x2F, 0x11))?.rawValue,
+            )
+        }
+
+        @Test
+        fun `a seven-byte NTAG uid is accepted, not truncated`() {
+            // NTAG213/215/216 — the usual wristband chip — has a 7-byte uid.
+            // Truncating to four would collide two guests whose chips share a
+            // prefix, and the manufacturer byte 0x04 means they all do.
+            val bytes = byteArrayOf(
+                0x04, 0xA2.toByte(), 0xB3.toByte(), 0xC4.toByte(),
+                0xD5.toByte(), 0xE6.toByte(), 0xF7.toByte(),
+            )
+            assertEquals("04:A2:B3:C4:D5:E6:F7", BraceletID.fromNfcId(bytes)?.rawValue)
+        }
+
+        @Test
+        fun `THE TRAP - high bytes are unsigned`() {
+            // Kotlin's Byte is signed, so 0xB4 without the 0xFF mask formats as
+            // "FFFFFFB4" and every id read from a real chip is wrong. This is the
+            // one bug in the port that iOS could not have.
+            val id = BraceletID.fromNfcId(byteArrayOf(0x00, 0x0A, 0xFF.toByte(), 0x7B))
+            assertEquals("00:0A:FF:7B", id?.rawValue)
+        }
+
+        @Test
+        fun `a chip reporting no uid is refused`() {
+            // Otherwise this becomes a Firestore document id of "", which is a write
+            // that fails deep in the repository rather than a scan that says no.
+            assertEquals(null, BraceletID.fromNfcId(byteArrayOf()))
+            assertEquals(null, BraceletID.fromNfcId(null))
+        }
+
+        @Test
+        fun `the format matches what fresh() produces`() {
+            // Both end up as Firestore document ids, so a chip read and a simulated
+            // one must be the same shape or the two paths diverge silently.
+            assertTrue(
+                BraceletID.fromNfcId(byteArrayOf(0x99.toByte(), 0xC8.toByte(), 0x65, 0x13))!!
+                    .rawValue.matches(Regex("([0-9A-F]{2}:){3}[0-9A-F]{2}"))
+            )
+        }
+    }
+
+    @Nested
+    inner class `Sync state and failed writes` {
+
+        private fun failure(
+            kind: FailedWrite.Kind = FailedWrite.Kind.CHARGE,
+            amount: Money = Money(800),
+        ) = FailedWrite(
+            transactionId = "tx-1",
+            kind = kind,
+            participantId = "tkt-1",
+            participantName = "Anna Kowalski",
+            braceletId = "1D:94:9D:D4:11:10:80",
+            amount = amount,
+            attemptedAt = Instant.ofEpochSecond(1_000_000),
+            terminalId = "terminal-abc",
+            reason = "PERMISSION_DENIED",
+        )
+
+        @Test
+        fun `queueing and acknowledging balance out`() {
+            val state = SyncState().enqueued().enqueued()
+            assertEquals(2, state.pending)
+            assertEquals(1, state.acknowledged().pending)
+        }
+
+        @Test
+        fun `the pending count never goes negative`() {
+            // Firestore's own queue survives a relaunch while this counter does not,
+            // so an acknowledgement can arrive for a write this run never saw
+            // enqueued. A count of -1 on a bar's screen would destroy trust in the
+            // whole banner.
+            assertEquals(0, SyncState().acknowledged().acknowledged().pending)
+        }
+
+        @Test
+        fun `a failure decrements pending and is recorded`() {
+            val state = SyncState().enqueued().failed(failure())
+            assertEquals(0, state.pending)
+            assertEquals(1, state.unsettledFailures.size)
+        }
+
+        @Test
+        fun `settling keeps the record but takes it off the list`() {
+            // Kept, not deleted: what an organiser did about missing money is part of
+            // the record, and a list that erases itself cannot be audited afterwards.
+            val write = failure()
+            val state = SyncState().enqueued().failed(write).settle(write.id)
+            assertEquals(1, state.failures.size)
+            assertTrue(state.unsettledFailures.isEmpty())
+            assertTrue(state.failures[0].settled)
+        }
+
+        @Test
+        fun `a failure outranks a queue in the banner`() {
+            val queued = SyncState().enqueued().enqueued()
+            assertEquals("2 transactions waiting to sync", queued.bannerMessage)
+            assertFalse(queued.bannerIsAlarming)
+
+            val failed = queued.failed(failure())
+            assertEquals("1 transaction failed to sync — show an organiser", failed.bannerMessage)
+            assertTrue(failed.bannerIsAlarming)
+        }
+
+        @Test
+        fun `offline alone says sales are being queued`() {
+            val state = SyncState(isOffline = true)
+            assertEquals("Offline — sales are being queued", state.bannerMessage)
+            assertFalse(state.bannerIsAlarming)
+        }
+
+        @Test
+        fun `nothing to say means no banner at all`() {
+            // Not an empty string: the view checks one thing, and a permanent bar of
+            // whitespace across every screen is its own bug.
+            assertEquals(null, SyncState().bannerMessage)
+        }
+
+        @Test
+        fun `each kind advises what to actually do about it`() {
+            // A charge and a top-up fail in opposite directions: one means a drink was
+            // given away, the other means a guest is owed credit.
+            assertTrue(failure(FailedWrite.Kind.TOP_UP).advice.contains("Top the guest up again"))
+            assertTrue(failure(FailedWrite.Kind.CHARGE).advice.contains("write it off"))
+            assertTrue(failure(FailedWrite.Kind.CHECK_IN).advice.contains("Check the guest in again"))
+        }
+
+        @Test
+        fun `the summary names the guest and the amount`() {
+            assertEquals("Charge 8.00 € — Anna Kowalski", failure().summary)
+            assertTrue(failure(FailedWrite.Kind.CHECK_IN).summary.contains("bracelet 1D:94:9D:D4:11:10:80"))
+        }
+
+        @Test
+        fun `kinds survive a round trip through their wire value`() {
+            // The wire strings are what SyncCenter writes to SharedPreferences, so a
+            // rename would silently drop every stored failure on the next launch.
+            FailedWrite.Kind.entries.forEach { kind ->
+                assertEquals(kind, FailedWrite.Kind.fromWire(kind.wire))
+            }
+            assertEquals(null, FailedWrite.Kind.fromWire("nonsense"))
+        }
+    }
 }

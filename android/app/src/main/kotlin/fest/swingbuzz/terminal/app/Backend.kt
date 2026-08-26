@@ -6,6 +6,12 @@ import android.util.Log
 import fest.swingbuzz.terminal.BuildConfig
 import fest.swingbuzz.terminal.data.FirebaseTerminalRepository
 import fest.swingbuzz.terminal.data.InMemoryTerminalRepository
+import android.app.Activity
+import fest.swingbuzz.terminal.data.BraceletReader
+import fest.swingbuzz.terminal.data.NfcBraceletReader
+import fest.swingbuzz.terminal.data.SimulatedBraceletReader
+import java.lang.ref.WeakReference
+import fest.swingbuzz.terminal.data.SyncCenter
 import fest.swingbuzz.terminal.data.TerminalIdentity
 import fest.swingbuzz.terminal.data.TerminalRepository
 
@@ -33,6 +39,11 @@ data class LaunchOverrides(
      * phone on the same wifi wants the host's LAN address here.
      */
     val emulatorHost: String = FirebaseBootstrap.DEFAULT_EMULATOR_HOST,
+    /**
+     * `--es sbScanner simulated` forces the prototype chip panel on a device that
+     * has working NFC — for rehearsing a flow with no bracelet to hand.
+     */
+    val forcesSimulatedScanner: Boolean = false,
 ) {
     companion object {
         fun from(intent: Intent?): LaunchOverrides {
@@ -42,6 +53,8 @@ data class LaunchOverrides(
                 useEmulators = intent.getBooleanExtra("sbEmulator", false),
                 emulatorHost = intent.getStringExtra("sbEmulatorHost")
                     ?: FirebaseBootstrap.DEFAULT_EMULATOR_HOST,
+                forcesSimulatedScanner =
+                    intent.getStringExtra("sbScanner")?.lowercase() == "simulated",
             )
         }
     }
@@ -58,7 +71,7 @@ object TerminalBackend {
 
     private const val TAG = "SBBackend"
 
-    fun choose(context: Context, intent: Intent?): TerminalRepository {
+    fun choose(context: Context, intent: Intent?, sync: SyncCenter): TerminalRepository {
         val configured = FirebaseBootstrap.isConfigured(context)
         val overrides = LaunchOverrides.from(intent)
 
@@ -87,7 +100,7 @@ object TerminalBackend {
                 docs/firebase-setup.md step 6.
                 """.trimIndent()
             }
-            return firebase(context)
+            return firebase(context, sync)
         }
 
         if (overrides.useEmulators && configured) {
@@ -102,13 +115,36 @@ object TerminalBackend {
             Log.i(TAG, "Fixtures: InMemoryTerminalRepository")
             InMemoryTerminalRepository()
         } else {
-            firebase(context)
+            firebase(context, sync)
         }
     }
 
-    private fun firebase(context: Context): TerminalRepository {
+    /**
+     * Real NFC where the hardware can read a chip, the prototype panel where it
+     * cannot — an emulator has no tag to present, and a phone with NFC switched off
+     * must not be offered a scan it cannot perform.
+     *
+     * Takes the Activity rather than a Context because reader mode is an
+     * Activity-lifecycle affair, and holds it weakly so a rotation does not leak it.
+     */
+    fun reader(activity: Activity, intent: Intent?): BraceletReader {
+        if (LaunchOverrides.from(intent).forcesSimulatedScanner) {
+            Log.i(TAG, "Scanner: simulated, forced by launch override")
+            return SimulatedBraceletReader()
+        }
+        val nfc = NfcBraceletReader(WeakReference(activity))
+        return if (nfc.isHardwareBacked) {
+            Log.i(TAG, "Scanner: Core NFC reader mode")
+            nfc
+        } else {
+            Log.i(TAG, "Scanner: simulated — no usable NFC on this device")
+            SimulatedBraceletReader()
+        }
+    }
+
+    private fun firebase(context: Context, sync: SyncCenter): TerminalRepository {
         val terminalId = TerminalIdentity.current(context)
         Log.i(TAG, "Firestore, as terminal $terminalId")
-        return FirebaseTerminalRepository(terminalId = terminalId)
+        return FirebaseTerminalRepository(terminalId = terminalId, sync = sync)
     }
 }

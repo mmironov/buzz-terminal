@@ -103,6 +103,29 @@ value class BraceletID(val rawValue: String) {
             BraceletID(
                 (1..4).joinToString(":") { "%02X".format(random.nextInt(256)) }
             )
+
+        /**
+         * Build an id from the raw UID bytes an NFC chip reports.
+         *
+         *     byteArrayOf(0x04, 0xB4, 0x2F, 0x11)  → "04:B4:2F:11"
+         *
+         * Null for empty bytes: a tag reporting no UID is not a bracelet, and an
+         * empty id would otherwise become a Firestore document id of `""` — a write
+         * that fails deep in the repository instead of a scan that simply says no.
+         *
+         * Length is deliberately **not** validated. A 4-byte MIFARE UID and a
+         * 7-byte NTAG21x UID are both real, and the festival's wristbands are
+         * whatever they are. Truncating to a fixed width would be worse still:
+         * every NXP chip opens with the same 0x04 manufacturer byte, so two guests
+         * could collide on one document — invisible until they share a balance.
+         *
+         * `toInt() and 0xFF` because Kotlin's `Byte` is signed: without the mask,
+         * 0xB4 formats as "FFFFFFB4" and every id from a real chip is wrong.
+         */
+        fun fromNfcId(bytes: ByteArray?): BraceletID? {
+            if (bytes == null || bytes.isEmpty()) return null
+            return BraceletID(bytes.joinToString(":") { "%02X".format(it.toInt() and 0xFF) })
+        }
     }
 }
 

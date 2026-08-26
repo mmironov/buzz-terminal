@@ -113,6 +113,28 @@ write refused: topUp 10.00 € participant 1043 tx 04294CA2-…
 
 ---
 
+## Android
+
+The same design, sharing `SyncState` and `FailedWrite` from `:domain` — the
+arithmetic and the banner copy are one implementation, tested once, used twice.
+
+Two places the platforms differ in mechanism rather than behaviour:
+
+- **The grace period is `withTimeoutOrNull`.** The Swift twin has to race two
+  continuations by hand and guard against resuming twice; Kotlin expresses the whole
+  thing in one expression, and the Task keeps running after the timeout gives up,
+  which is exactly what is wanted.
+- **Persistence is hand-written JSON** into `SharedPreferences` via `org.json`.
+  `:domain` has no serialisation dependency and gains nothing from one for six
+  fields, so `FailedWrite` stays annotation-free and `SyncCenter` does the encoding.
+  Amounts are stored as integer cents, never a decimal — the same rule as the Swift
+  `Codable` conformance. A test pins the wire strings of `FailedWrite.Kind`, because
+  renaming one would silently drop every stored failure on the next launch.
+
+Not yet verified on Android: the queued and refused paths have been exercised end to
+end on iOS only. The code path is shared in `:domain` but the Firestore plumbing is
+not, so this is worth repeating on a device.
+
 ## Still open
 
 - **A charge has never been refused on replay in a real test.** The mechanism is

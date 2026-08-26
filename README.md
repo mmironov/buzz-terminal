@@ -228,7 +228,14 @@ plays with `DEVELOPER_DIR`.
 
 ### What works today
 
-All eleven screens, against Firestore. Sign-in reads the staff role from the
+All eleven screens, against Firestore, plus NFC, scan feedback and the offline
+queue — the same three pieces iOS has, sharing the same pure logic in `:domain`.
+
+One platform difference worth knowing before somebody "fixes" it: Android reads
+chips in **reader mode**, which suppresses the platform's own tag animation, so the
+Modernist scan overlay stays on screen for the whole read. Core NFC always presents
+Apple's own sheet over the top. The Android scan is therefore closer to the design
+than the iOS one. Sign-in reads the staff role from the
 same custom claim the iOS app does, reception checks a bracelet in and takes
 cash, the bar charges a round, and all four refusals — not recognised, blocked,
 not enough balance, no role — reach the glass. The `when` over `Screen` is
@@ -569,9 +576,14 @@ Two intentional deviations from the prototype, both improvements:
    does — verified against the emulator, the same way iteration 2 was. Details in
    "The Android app" above.
 
-   Still to do: the offline queue and real NFC, which are iteration 3's work on
-   both platforms, and a run against production, which has not happened from
-   Android at all.
+   Also done, catching up with iteration 3: **real NFC** via reader mode, **scan
+   sounds and haptics** at the same three frequencies as iOS, and the **offline
+   queue** with the same reconciliation screen. `docs/nfc.md` and
+   `docs/offline.md` cover both platforms.
+
+   Still to do: a run against production, which has not happened from Android at
+   all, and the two DEBUG-only NFC diagnostics — tag inspector and batch audit —
+   which exist on iOS only.
 5. ✅ **Iteration 5** — the organiser panel, `web-admin/`. Blocks with an audit
    trail, purchase history, and the drinks menu moved out of a seed script and into
    an organiser's hands. It also added itemisation to the ledger, which is a change

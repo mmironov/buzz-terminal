@@ -7,6 +7,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fest.swingbuzz.terminal.data.BraceletReader
+import fest.swingbuzz.terminal.data.SyncCenter
+import fest.swingbuzz.terminal.designsystem.ScanFeedback
+import fest.swingbuzz.terminal.domain.FailedWrite
 import fest.swingbuzz.terminal.data.InMemoryTerminalRepository
 import fest.swingbuzz.terminal.data.ScanCancelled
 import fest.swingbuzz.terminal.data.SimulatedBraceletReader
@@ -45,6 +48,16 @@ import kotlinx.coroutines.launch
 class AppModel(
     private val repository: TerminalRepository = InMemoryTerminalRepository(),
     private val reader: BraceletReader = SimulatedBraceletReader(),
+    /**
+     * Queued writes, refused writes, and whether the backend is reachable.
+     *
+     * Shared with the repository, which is what reports into it — the model only
+     * reads. Kept out of [AppModel] because a refused charge has to survive the app
+     * being force-stopped, and screen state does not.
+     */
+    val sync: SyncCenter = SyncCenter(null),
+    /** Sound and haptics for a scan. Null in tests and previews. */
+    private val feedback: ScanFeedback? = null,
 ) : ViewModel() {
 
     /**
@@ -94,20 +107,34 @@ class AppModel(
     var signInErrorText by mutableStateOf<String?>(null)
         private set
 
-    // ── Connectivity (prototype affordance — see [toggleOffline]) ──
+    // ── Connectivity ──
 
-    var isOffline by mutableStateOf(false)
-        private set
-    var queuedTransactions by mutableStateOf(0)
-        private set
+    /**
+     * Real, from Firestore's own opinion of whether it is talking to a server — not
+     * a manual toggle, and not a guess from a connectivity callback, which cannot
+     * tell a working network from a venue access point that routes nowhere.
+     */
+    val isOffline: Boolean get() = sync.state.isOffline
+
+    /** Writes accepted at the till and not yet acknowledged. */
+    val queuedTransactions: Int get() = sync.state.pending
+
+    /**
+     * Writes the server refused after the operator had already been told they
+     * worked. Money that went missing, and the reason this queue has a UI at all.
+     */
+    val failedWrites: List<FailedWrite> get() = sync.state.unsettledFailures
 
     val networkLabel: String get() = if (isOffline) "Offline" else "Online"
-    val queueLabel: String
-        get() = if (queuedTransactions == 1) {
-            "1 transaction waiting to sync"
-        } else {
-            "$queuedTransactions transactions waiting to sync"
-        }
+
+    /** One line for the banner, or null when there is nothing worth saying. */
+    val syncMessage: String? get() = sync.state.bannerMessage
+    val syncIsAlarming: Boolean get() = sync.state.bannerIsAlarming
+
+    /** Kept for the views that still read it. */
+    val queueLabel: String get() = syncMessage ?: ""
+
+    fun settleFailure(id: java.util.UUID) = sync.settle(id)
 
     // ── Scanning ──
 
@@ -206,6 +233,10 @@ class AppModel(
                 signInErrorText = null
                 password = ""
                 screen = signedIn.homeScreen
+                // Only now: the rules refuse an unauthenticated listener, so
+                // starting this before sign-in would report "offline" for a
+                // perfectly healthy network.
+                repository.startMonitoringConnectivity()
                 loadCatalogue()
             } catch (error: Exception) {
                 // Report what actually failed rather than a house error: at the
@@ -256,9 +287,17 @@ class AppModel(
      * count, the "Approved · offline" receipt band — so those are already built
      * and reviewed when a real write-behind queue lands.
      */
+    /**
+     * Cut Firestore off from the network, or restore it.
+     *
+     * No longer a fake. It used to flip a banner and a counter; it now disables
+     * Firestore's transport, which is the only practical way to rehearse the queue —
+     * aeroplane mode also drops adb, and a venue's bad wifi cannot be summoned on
+     * demand. Writes keep being accepted while it is off and replay when it returns.
+     */
     fun toggleOffline() {
-        isOffline = !isOffline
-        if (!isOffline) queuedTransactions = 0
+        val goingOffline = !isOffline
+        viewModelScope.launch { repository.setNetworkEnabled(!goingOffline) }
     }
 
     // ── Scanning ──
@@ -269,7 +308,37 @@ class AppModel(
         // Cleared, not left standing: a chip checked in a moment ago would
         // otherwise still read "Not assigned" until the fresh reads land.
         simulatedChipStatus = emptyMap()
+
+        // With hardware there is nothing to tap, so the read starts itself. The
+        // prototype panel waits for `selectSimulatedBracelet`; a chip does not.
+        if (readerIsHardwareBacked) {
+            viewModelScope.launch { scanWithHardware() }
+            return
+        }
+
         if (!runsOnFixtures) viewModelScope.launch { loadSimulatedChipStatuses() }
+    }
+
+    /**
+     * Wait for a real chip, then resolve it exactly as a simulated read does.
+     *
+     * Unlike iOS there is no system sheet over the top: reader mode suppresses the
+     * platform's own animation, so the app's overlay is what the operator sees for
+     * the whole scan.
+     */
+    private suspend fun scanWithHardware() {
+        val state = scan ?: return
+        scan = state.copy(isReading = true)
+        try {
+            resolveScan(reader.read(null), state.purpose)
+        } catch (e: ScanCancelled) {
+            // The operator cancelled. Not a fault, and not worth an error dialog.
+            scan = null
+        } catch (e: Exception) {
+            scan = null
+            errorMessage = e.message
+            feedback?.problem()
+        }
     }
 
     /**
@@ -343,24 +412,38 @@ class AppModel(
             participant = found
             scan = null
 
+            // Sound and haptics, so the answer arrives before anybody can look up.
+            // A bartender's eyes are on the guest and a queue; reception's hands are
+            // on somebody's wrist.
             when (purpose) {
                 ScanState.Purpose.CHECK_IN_OR_TOP_UP -> {
                     search = ""
                     screen = when {
+                        // Not an error: an unpaired chip at reception is a check-in
+                        // about to happen, which is the desk's whole job.
                         found == null -> Screen.Assign
                         found.isBlocked -> Screen.Blocked
                         else -> Screen.Participant
                     }
+                    if (found?.isBlocked == true) feedback?.blocked() else feedback?.success()
                 }
 
                 ScanState.Purpose.PAYMENT -> {
-                    paymentDecision = PaymentDecision.evaluate(found, cartTotal)
+                    val decision = PaymentDecision.evaluate(found, cartTotal)
+                    paymentDecision = decision
                     screen = Screen.PayReview
+                    when (decision) {
+                        is PaymentDecision.Approved -> feedback?.success()
+                        is PaymentDecision.Blocked -> feedback?.blocked()
+                        PaymentDecision.NotAssigned,
+                        is PaymentDecision.InsufficientFunds -> feedback?.problem()
+                    }
                 }
             }
         } catch (error: Exception) {
             scan = null
             errorMessage = error.message
+            feedback?.problem()
         }
     }
 
@@ -468,14 +551,11 @@ class AppModel(
         viewModelScope.launch {
             isWorking = true
             try {
-                val updated = if (isOffline) {
-                    // Applied locally and counted into the queue, matching the
-                    // design. A real write-behind queue comes later.
-                    queuedTransactions += 1
-                    current.copy(balance = current.balance + amount)
-                } else {
-                    repository.topUp(chip, amount)
-                }
+                // One path, online or not. The repository accepts the write, gives
+                // the server three seconds to object, and hands back what the local
+                // cache now says — which includes the pending write. There is no
+                // separate offline branch to keep in step with the real one.
+                val updated = repository.topUp(chip, amount)
 
                 participant = updated
                 receipt = Receipt(
@@ -532,19 +612,19 @@ class AppModel(
         viewModelScope.launch {
             isWorking = true
             try {
-                val updated = if (isOffline) {
-                    queuedTransactions += 1
-                    current.copy(balance = current.balance - total)
-                } else {
-                    repository.charge(chip, lines)
-                }
+                // Same single path as a top-up. Offline the charge is accepted,
+                // queued by Firestore, and shown as queued on the receipt — the
+                // drink gets served, which is the decision taken deliberately:
+                // refusing sales when a venue's wifi drops closes the bar
+                // mid-Saturday.
+                val updated = repository.charge(chip, lines)
 
                 participant = updated
                 receipt = Receipt(
                     kind = Receipt.Kind.PAYMENT,
                     title = if (isOffline) "Charged — queued" else "Charged",
                     note = if (isOffline) {
-                        "Held on this device and deducted locally. It syncs as soon as " +
+                        "Queued on this device and deducted locally. It syncs as soon as " +
                             "the bar is back online."
                     } else {
                         "${current.name}’s account was debited $total."
