@@ -141,6 +141,12 @@ hand.
 
 ### Two DEBUG-only tools for exactly this
 
+**iOS only, deliberately.** The audit will be done on iPhones, so porting them to
+Compose would be work for a symmetry nobody needs — and a second implementation of
+the duplicate-detection rule is a second thing to get wrong. `BraceletAudit` is
+therefore not in `android/domain` either. If an Android phone ever has to walk a box,
+port `BraceletAudit` first: it is pure, and it carries the rule that matters.
+
 Both hang off the sign-in screen, need no account, and are absent from a release
 build — verified by symbol, not assumed.
 

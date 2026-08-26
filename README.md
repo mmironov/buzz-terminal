@@ -582,8 +582,11 @@ Two intentional deviations from the prototype, both improvements:
    `docs/offline.md` cover both platforms.
 
    Still to do: a run against production, which has not happened from Android at
-   all, and the two DEBUG-only NFC diagnostics — tag inspector and batch audit —
-   which exist on iOS only.
+   all, and a real chip read on Android hardware.
+
+   **Not** to do: the tag inspector and the batch audit stay iOS-only. Bracelet
+   auditing will be done on iPhones, so a Compose port would be a second
+   implementation of the duplicate-detection rule with nothing asking for it.
 5. ✅ **Iteration 5** — the organiser panel, `web-admin/`. Blocks with an audit
    trail, purchase history, and the drinks menu moved out of a seed script and into
    an organiser's hands. It also added itemisation to the ledger, which is a change
