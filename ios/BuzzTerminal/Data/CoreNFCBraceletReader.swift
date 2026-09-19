@@ -31,14 +31,16 @@ struct CoreNFCBraceletReader: BraceletReader {
     /// What the system sheet says while it waits for a chip.
     var prompt: String = "Hold the bracelet to the top of the phone."
 
-    func read(selection: BraceletID?) async throws -> BraceletID {
+    func read(selection: BraceletID?, prompt callerPrompt: String?) async throws -> BraceletID {
         // `selection` is the fixture the operator tapped in the prototype panel.
         // A hardware reader ignores it by contract: the chip decides, not the UI.
         guard isHardwareBacked else { throw BraceletReadError.unsupportedDevice }
 
+        let sheetMessage = callerPrompt ?? prompt
+
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let scan = NFCScan(continuation: continuation, prompt: prompt)
+                let scan = NFCScan(continuation: continuation, prompt: sheetMessage)
                 scan.begin()
             }
         } onCancel: {

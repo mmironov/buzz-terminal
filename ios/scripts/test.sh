@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run the unit tests. 41 tests across 7 suites; all should pass.
+# Run the unit tests. 73 tests across 12 suites; all should pass.
 set -euo pipefail
 source "$(dirname "$0")/_env.sh"
 xcodebuild -project "$PROJECT" -scheme "$SCHEME" \

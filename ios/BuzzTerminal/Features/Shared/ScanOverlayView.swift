@@ -16,12 +16,13 @@ struct ScanOverlayView: View {
                 target
 
                 VStack(spacing: SBSpace.x2) {
-                    Text(state.isReading ? "Reading chip…" : "Hold the bracelet")
+                    Text(state.isReading ? "Reading chip…" : title)
                         .font(.sbDisplay(27))
                         .tracking(-0.01 * 27)
+                        .multilineTextAlignment(.center)
                     Text(state.isReading
                          ? "Keep it still for a moment"
-                         : "Against the back of the phone, near the top")
+                         : subtitle)
                         .font(.sbBody(12.5))
                         .foregroundStyle(Color.sbNeutral100.opacity(0.6))
                         .multilineTextAlignment(.center)
@@ -46,6 +47,23 @@ struct ScanOverlayView: View {
         .padding(.bottom, 44)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.sbNeutral900)
+    }
+
+    /// A participant-first check-in names the guest, because the wristband about
+    /// to be held against the phone becomes theirs permanently. On hardware
+    /// Apple's own sheet covers this overlay during the read and carries the same
+    /// sentence (see `AppModel.scanPrompt`); here it is what the prototype panel
+    /// is read against.
+    private var title: String {
+        guard case .assignToSelected = state.purpose else { return "Hold the bracelet" }
+        return "Pair a bracelet"
+    }
+
+    private var subtitle: String {
+        guard case .assignToSelected = state.purpose, let guest = model.participant else {
+            return "Against the back of the phone, near the top"
+        }
+        return "This bracelet becomes \(guest.name)’s for the whole festival"
     }
 
     private var target: some View {

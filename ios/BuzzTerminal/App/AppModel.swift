@@ -113,7 +113,15 @@ final class AppModel {
     // MARK: Scanning
 
     struct ScanState: Equatable {
-        enum Purpose: Equatable { case checkInOrTopUp, payment }
+        enum Purpose: Equatable {
+            /// Bracelet-first: whoever the chip turns out to belong to.
+            case checkInOrTopUp
+            /// Participant-first: a guest is already chosen and this chip is
+            /// about to become theirs. A chip that belongs to somebody else is
+            /// refused here rather than resolved.
+            case assignToSelected
+            case payment
+        }
         var purpose: Purpose
         var isReading = false
     }
@@ -257,6 +265,18 @@ final class AppModel {
         Task { await loadSimulatedChipStatuses() }
     }
 
+    /// What Apple's scan sheet says while it waits for a chip.
+    ///
+    /// The sheet covers the app completely during a hardware read, so this is
+    /// the operator's only reading matter at the moment of the scan. A
+    /// participant-first check-in names the guest there deliberately: the
+    /// pairing about to happen is permanent, and this is the last surface it
+    /// appears on before it does.
+    private func scanPrompt(for purpose: ScanState.Purpose) -> String? {
+        guard case .assignToSelected = purpose, let guest = participant else { return nil }
+        return "Hold a fresh bracelet to the top of the phone to pair it with \(guest.name)."
+    }
+
     /// Wait for a real chip, then resolve it exactly as a simulated read does.
     ///
     /// iOS presents its own scan sheet for the duration, so `isReading` is set for
@@ -268,7 +288,7 @@ final class AppModel {
         scan = state
 
         do {
-            let scanned = try await reader.read(selection: nil)
+            let scanned = try await reader.read(selection: nil, prompt: scanPrompt(for: state.purpose))
             await resolveScan(scanned, purpose: state.purpose)
         } catch is CancellationError {
             // The operator closed the system sheet, or it timed out. Not a fault,
@@ -341,6 +361,16 @@ final class AppModel {
     private func resolveScan(_ scanned: BraceletID, purpose: ScanState.Purpose) async {
         do {
             let found = try await repository.participant(withBracelet: scanned)
+
+            // Participant-first check-in resolves differently from every other
+            // scan: the guest is already on screen and must survive the read, so
+            // this branch runs *before* `participant` is overwritten with
+            // whoever the chip belongs to.
+            if case .assignToSelected = purpose {
+                await pairScannedChip(scanned, existingHolder: found)
+                return
+            }
+
             bracelet = scanned
             participant = found
             scan = nil
@@ -349,6 +379,10 @@ final class AppModel {
             // A bartender's eyes are on the guest and a queue; reception's hands are
             // on somebody's wrist.
             switch purpose {
+            case .assignToSelected:
+                // Handled above, before `participant` was replaced.
+                break
+
             case .checkInOrTopUp:
                 search = ""
                 if found == nil {
@@ -386,6 +420,85 @@ final class AppModel {
 
     // MARK: - Reception: check in
 
+    /// What the participant screen's primary button should do right now.
+    /// The rule itself is pure and lives on `CheckInAction`.
+    var participantAction: CheckInAction? {
+        participant.map { CheckInAction.decide(for: $0, braceletInHand: bracelet) }
+    }
+
+    /// Enter check-in from the home screen, with no chip read yet.
+    ///
+    /// The other way in is still a scan: an unpaired chip lands on the same list
+    /// with `bracelet` already set. The list does not care which happened; the
+    /// participant screen does, and asks `CheckInAction`.
+    func goToCheckInSearch() {
+        bracelet = nil
+        participant = nil
+        search = ""
+        screen = .assign
+    }
+
+    /// A name was tapped on the check-in list.
+    ///
+    /// This no longer pairs anything. Pairing a bracelet is permanent and
+    /// irreversible, and it used to happen on the first tap of a row in a
+    /// scrolling list of 105 similar-looking names — one mis-tap and the wrong
+    /// guest owned the chip forever, with no way back short of an organiser.
+    /// Now the tap only shows who was chosen, and the pairing needs a second,
+    /// deliberate action on a screen showing the name in 32pt.
+    func select(candidate guest: Participant) {
+        participant = guest
+        screen = .participant
+    }
+
+    /// Back out of the participant screen to wherever it was reached from.
+    func leaveParticipant() {
+        // A guest still awaiting check-in can only have been reached from the
+        // check-in list, so that is where "Back" belongs. Anyone else was
+        // reached by scanning their chip, and the way out of that is home.
+        if participant?.isAwaitingCheckIn == true {
+            participant = nil
+            screen = .assign
+        } else {
+            goHome()
+        }
+    }
+
+    /// Read a chip and pair it to the participant already on screen.
+    func scanToAssignBracelet() {
+        guard participant?.isAwaitingCheckIn == true else { return }
+        beginScan(for: .assignToSelected)
+    }
+
+    /// Pair the chip that was just read to the guest already on screen.
+    ///
+    /// `existingHolder` is what the reverse lookup said about the chip. Non-nil
+    /// means the wristband already belongs to somebody — refuse, and say whose
+    /// it is, because the operator is holding it and can put it back in the right
+    /// pile. Assigning anyway is not an option: the rules allow `create` on a
+    /// bracelet document and never `update`, so the server would refuse it after
+    /// the desk had already said yes.
+    private func pairScannedChip(_ scanned: BraceletID, existingHolder: Participant?) async {
+        guard let guest = participant else {
+            scan = nil
+            return
+        }
+
+        if let existingHolder {
+            scan = nil
+            ScanFeedback.shared.problem()
+            errorMessage = existingHolder.id == guest.id
+                ? "\(guest.name) is already checked in with this bracelet."
+                : "This bracelet already belongs to \(existingHolder.name). Use a fresh one."
+            return
+        }
+
+        bracelet = scanned
+        scan = nil
+        ScanFeedback.shared.success()
+        await assign(to: guest)
+    }
+
     func assign(to guest: Participant) async {
         guard let bracelet else { return }
         isWorking = true
@@ -407,7 +520,16 @@ final class AppModel {
             )
             screen = .receipt
         } catch {
+            // Put the chip down. Whatever went wrong, the operator is now being
+            // told about it while still holding the wristband, and leaving it
+            // "in hand" would offer a one-tap retry of a pairing the server has
+            // already refused — most often because the chip is a duplicate of
+            // one that is paired, which retrying cannot fix.
+            // `self.` because the guard above shadows the property with the
+            // unwrapped chip.
+            self.bracelet = nil
             errorMessage = error.localizedDescription
+            ScanFeedback.shared.problem()
         }
     }
 

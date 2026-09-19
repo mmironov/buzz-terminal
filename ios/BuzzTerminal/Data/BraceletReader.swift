@@ -21,8 +21,19 @@ protocol BraceletReader: Sendable {
     /// - Parameter selection: which fixture bracelet the operator tapped in the
     ///   prototype panel. A hardware reader ignores this and waits for a real
     ///   chip instead.
+    /// - Parameter prompt: what the system scan sheet should say, or nil for the
+    ///   reader's own wording. iOS draws that sheet itself and covers the app
+    ///   entirely while a chip is being read, so on hardware this is the only
+    ///   copy an operator actually sees during a scan — which makes it the only
+    ///   place to name the guest a bracelet is about to be paired to, forever.
     /// - Throws: `CancellationError` if the operator cancels the scan sheet.
-    func read(selection: BraceletID?) async throws -> BraceletID
+    func read(selection: BraceletID?, prompt: String?) async throws -> BraceletID
+}
+
+extension BraceletReader {
+    func read(selection: BraceletID?) async throws -> BraceletID {
+        try await read(selection: selection, prompt: nil)
+    }
 }
 
 /// The reader used until Core NFC lands: the operator taps one of the four
@@ -34,7 +45,9 @@ struct SimulatedBraceletReader: BraceletReader {
     /// The handshake delay, matching the prototype's 950 ms.
     var readDuration: Duration = .milliseconds(950)
 
-    func read(selection: BraceletID?) async throws -> BraceletID {
+    /// `prompt` is ignored: there is no system sheet to put it on. The app's own
+    /// overlay shows the equivalent copy instead.
+    func read(selection: BraceletID?, prompt: String?) async throws -> BraceletID {
         guard let selection else { throw CancellationError() }
         try await Task.sleep(for: readDuration)
         return selection

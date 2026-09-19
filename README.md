@@ -375,19 +375,20 @@ goes through the rules and a wrong shape fails loudly. Full runbook, including
 
 ## Tests
 
-Four runners, **218 tests**, all green: 41 iOS, 67 Android, 69 rules, 41 importer.
+Four runners, **270 tests**, all green: 73 iOS, 85 Android, 71 rules, 41 importer.
 
 ```bash
 ./ios/scripts/test.sh
 ```
 
-**41 iOS tests in 7 suites.** The domain logic that carries real rules — the
-keypad, the check-in search, the charge decision, participant lifecycle, evening
-tickets, money arithmetic. `Domain/` imports `Foundation` only, so the whole run
-finishes in 0.02s once it has built. These are the parts most likely to be broken
+**73 iOS tests in 12 suites.** The domain logic that carries real rules — the
+keypad, the check-in search, the charge decision, which action the participant
+screen offers, participant lifecycle, evening tickets, money arithmetic, the sync
+state, the batch audit. `Domain/` imports `Foundation` only, so the whole run
+finishes in 0.05s once it has built. These are the parts most likely to be broken
 by a well-meaning change, so run them before you push.
 
-The seventh suite is the odd one out: it covers the ledger itemisation a charge
+One suite is the odd one out: it covers the ledger itemisation a charge
 carries, which is a Firestore payload rather than domain logic. It is there because
 the field names are a security contract, and because writing the line total where
 the unit price belongs would still add up against a total computed the same wrong
@@ -398,7 +399,7 @@ downstream would notice.
 cd android && ./scripts/test.sh
 ```
 
-**67 Android tests**, plain JVM, no emulator. Sixty are in `:domain`, and seven in
+**85 Android tests**, plain JVM, no emulator. Seventy-eight are in `:domain`, and seven in
 `:app` — the mirror of the iOS itemisation suite, and the only tests that module
 has, because the Firestore field names are a contract `:domain` deliberately cannot
 see. Thirty-six of the domain tests are
@@ -420,7 +421,7 @@ landing.
 cd backend/rules-tests && ./test.sh
 ```
 
-**69 rules tests in 10 suites**, against a throwaway Firestore emulator that the
+**71 rules tests in 10 suites**, against a throwaway Firestore emulator that the
 script starts and tears down itself — it needs a JDK, which it will find even when
 Homebrew has kept it off your `PATH`. Nothing here touches the real database: the
 emulator comes up empty and each test writes its own fixtures as an admin.
@@ -524,6 +525,7 @@ equivalent is "The Android app" above — it is behind on more than this.
 | Balances | ✅ ledger + rules-enforced balance. The `-sbBackend memory` path is client-side arithmetic | — |
 | Offline | ✅ real: Firestore's durable queue, real connectivity, and a reconciliation screen for refused replays — `docs/offline.md` | — |
 | NFC | ✅ Core NFC reads real bracelets on a device; the simulated picker remains where hardware is absent, and behind `-sbScanner simulated` | — |
+| Check-in | ✅ two ways in — read a bracelet, or search by name and pair afterwards. Selecting a name no longer pairs anything — `docs/check-in.md` | Android still pairs on the row tap |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
 | Localisation | English strings inline; `"23.50 €"` is locale-independent by design | later |
 | App icon | generated, on-brand, deliberately plain — `ios/scripts/makeicon.swift` redraws it | when someone wants real artwork |

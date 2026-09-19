@@ -1,22 +1,32 @@
 import SwiftUI
 
-/// Check-in: a fresh chip was read, now pick who it belongs to.
+/// The check-in list, reached two ways.
+///
+/// Either a fresh chip was read and now needs a name, or the desk started from
+/// "Check in new participant" and has no chip yet. Same roster, same search, same
+/// rows — the only differences are the subtitle and whether a door ticket can be
+/// sold, which needs a bracelet to pair to.
 struct AssignBraceletView: View {
     @Environment(AppModel.self) private var model
+
+    /// True when a chip was read before the list opened.
+    private var hasChipInHand: Bool { model.bracelet != nil }
 
     var body: some View {
         @Bindable var model = model
 
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: SBSpace.x2) {
-                Text("Who is this?")
+                Text(hasChipInHand ? "Who is this?" : "Check in")
                     .font(.sbHeading(26))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button("Cancel") { model.goHome() }
                     .buttonStyle(.sbGhost)
             }
 
-            Text("Bracelet \(model.braceletLabel) · not assigned yet")
+            Text(hasChipInHand
+                 ? "Bracelet \(model.braceletLabel) · not assigned yet"
+                 : "Find the participant, then pair their bracelet")
                 .font(.sbBody(11.5))
                 .foregroundStyle(.sbInk(0.55))
                 .padding(.top, 2)
@@ -32,15 +42,21 @@ struct AssignBraceletView: View {
             // Door sales. Below the list rather than above it, because scanning a
             // fresh chip usually means somebody from the roster — the door ticket
             // is the less common case and should not be the first thing thumbed.
-            VStack(alignment: .leading, spacing: 0) {
-                SBDivider(weight: SBRule.hairline)
-                Button("Assign evening ticket") { model.goToAssignEvening() }
-                    .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 14))
-                    .padding(.top, 10)
-                Text("Sold at the door · no name needed")
-                    .font(.sbBody(11))
-                    .foregroundStyle(.sbInk(0.5))
-                    .padding(.top, 6)
+            //
+            // Hidden without a chip in hand: an evening ticket is minted *onto* a
+            // bracelet in one write, so with nothing scanned the button would open
+            // a screen whose confirm silently does nothing.
+            if hasChipInHand {
+                VStack(alignment: .leading, spacing: 0) {
+                    SBDivider(weight: SBRule.hairline)
+                    Button("Assign evening ticket") { model.goToAssignEvening() }
+                        .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 14))
+                        .padding(.top, 10)
+                    Text("Sold at the door · no name needed")
+                        .font(.sbBody(11))
+                        .foregroundStyle(.sbInk(0.5))
+                        .padding(.top, 6)
+                }
             }
         }
         .padding(.horizontal, 18)
@@ -52,8 +68,10 @@ struct AssignBraceletView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(model.candidates) { guest in
+                    // Opens the guest; it does not pair anything. See
+                    // `AppModel.select(candidate:)` for why that changed.
                     Button {
-                        Task { await model.assign(to: guest) }
+                        model.select(candidate: guest)
                     } label: {
                         candidateRow(guest)
                     }
@@ -85,7 +103,10 @@ struct AssignBraceletView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                SBTag(text: "Assign", style: .outline)
+                // Not "Assign" any more: the row no longer pairs anything, and a
+                // label that promises an irreversible action is how a mis-tap
+                // becomes somebody else's bracelet.
+                SBTag(text: "Select", style: .outline)
             }
             .padding(.vertical, 13)
             .padding(.horizontal, 2)
@@ -126,10 +147,19 @@ struct SBSearchField: View {
     }
 }
 
-#Preview {
+#Preview("Chip in hand") {
     let model = AppModel()
     model.role = .reception
     model.bracelet = SampleData.braceletA
+    model.awaitingCheckIn = SampleData.awaitingCheckIn
+    return AssignBraceletView()
+        .environment(model)
+        .background(Color.sbBackground)
+}
+
+#Preview("By name") {
+    let model = AppModel()
+    model.role = .reception
     model.awaitingCheckIn = SampleData.awaitingCheckIn
     return AssignBraceletView()
         .environment(model)
