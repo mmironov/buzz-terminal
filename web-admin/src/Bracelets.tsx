@@ -10,6 +10,7 @@ import {
   isHexColour,
   normaliseHexColour,
   slugify,
+  splitsByLevel,
   toBraceletColour,
   toParticipant,
   type BraceletColour,
@@ -19,17 +20,18 @@ import {
 //  Which colour wristband each pass type gets, and where it matters, each
 //  level within it.
 //
-//  Two things are derived from the roster rather than hard-coded: the pass
-//  types, and which levels are actually in use within each. The Sheet's pass
-//  types are free text — "Full Pass - 205 € (Upgrade from Party)" is a real
-//  value — and the importer keeps anything it does not recognise verbatim. A
-//  fixed list here would silently leave those people with no colour, and nobody
-//  would find out until somebody stood at the desk holding the wrong wristband.
+//  The pass types are derived from the roster rather than hard-coded. The
+//  Sheet's pass types are free text — "Full Pass - 205 € (Upgrade from Party)"
+//  is a real value — and the importer keeps anything it does not recognise
+//  verbatim. A fixed list here would silently leave those people with no
+//  colour, and nobody would find out until somebody stood at the desk holding
+//  the wrong wristband.
 //
 //  Every pass type gets an "Any level" row, which is the fallback and usually
-//  the only row anybody fills in. Level rows are offered beneath it and are
-//  overrides: Full Pass and Full Pass Gold are the two where the classes
-//  actually split, and the others can be left alone.
+//  the only row anybody fills in. Beneath it, Full Pass and Full Pass Gold get
+//  a row per level in use — see SPLITS_BY_LEVEL. The other pass types record a
+//  level too, but it is mostly "Other", and four rows of it per pass type is
+//  noise in a table somebody has to scan.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** A sensible starting colour for a combination nobody has coloured yet. */
@@ -110,9 +112,14 @@ export function Bracelets() {
           holders: holders(passType, ANY_LEVEL),
           colour: byCell.get(cellKey(passType, ANY_LEVEL)) ?? null,
         };
-        // Only levels somebody actually holds, or has already been coloured.
+        // Levels are offered for Full Pass and Full Pass Gold only — the two
+        // whose classes split. A level already coloured is still listed
+        // whatever its pass type, so a mapping made before this rule existed
+        // can still be seen and cleared rather than being stranded.
         const levels = LEVELS.filter(
-          (level) => holders(passType, level) > 0 || byCell.has(cellKey(passType, level))
+          (level) =>
+            byCell.has(cellKey(passType, level)) ||
+            (splitsByLevel(passType) && holders(passType, level) > 0)
         );
         return [
           base,
@@ -177,10 +184,9 @@ export function Bracelets() {
       <p className="note">
         A level row overrides the <strong>Any level</strong> row above it; leave the
         level rows empty and everybody with that pass type gets the one colour.
-        Levels are worth splitting for Full Pass and Full Pass Gold, where the
-        classes actually differ — the rest can be left alone. A combination with no
-        colour simply shows no colour on a phone; nothing breaks, and nobody is told
-        the wrong wristband.
+        Only Full Pass and Full Pass Gold split by level, because those are the
+        passes whose classes do. A combination with no colour simply shows no
+        colour on a phone; nothing breaks, and nobody is told the wrong wristband.
       </p>
     </div>
   );

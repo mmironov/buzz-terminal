@@ -24,10 +24,18 @@ braceletColours/full-pass-pro
 
 **Level first, then the pass type's fallback.** Colour `Full Pass` once and
 everybody with one is covered; add `Full Pass · Pro` and that track gets its own
-band while everybody else keeps the first. Only Full Pass and Full Pass Gold
-split in practice — the classes differ there and nowhere else — but nothing in
-the code knows that. It is a fact about the festival, not a rule, so the panel
-offers levels everywhere and the organiser colours what matters.
+band while everybody else keeps the first.
+
+**Only Full Pass and Full Pass Gold split by level**, because those are the
+passes whose classes do — `SPLITS_BY_LEVEL` in `web-admin/src/schema.ts`, and
+`Participant.levelForDisplay` in the app, which is the same decision about the
+festival written down on both sides. Every other pass type records a level too,
+but it is mostly `Other` — the form's way of saying "not applicable" — and four
+level rows apiece would be noise in a table an organiser has to scan.
+
+A level colour that already exists on some other pass type is still listed, so a
+mapping made before that rule can be seen and cleared rather than stranded in the
+database with no way to reach it.
 
 The four levels are `Intermediate`, `Advanced`, `Pro` and `Other`, pinned by the
 rules. A fifth would match nobody and look like a colour that silently does
@@ -78,8 +86,8 @@ the dance role and not `StaffRole`. Same trap, two columns apart.
 ## The pass-type list is derived, not hard-coded
 
 The Bracelets tab reads the roster and counts the distinct `ticketType` values
-actually in use, most people first, and beneath each one the levels anybody
-actually holds. It does not work from a fixed list.
+actually in use, most people first. It does not work from a fixed list. Beneath
+the two that split by level, it lists the levels anybody actually holds.
 
 The Sheet's pass types are free text — `Full Pass - 205 € (Upgrade from Party -
 135€ + 70€)` is a real value — and the importer keeps anything it does not

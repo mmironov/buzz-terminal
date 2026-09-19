@@ -64,6 +64,33 @@ export const BRACELET_COLOUR_FIELDS = {
  */
 export const LEVELS = ['Intermediate', 'Advanced', 'Pro', 'Other'] as const;
 
+/**
+ * The pass types whose colour may differ by level.
+ *
+ * Only these two: they are the ones whose classes actually split by level. On
+ * every other pass type the Sheet's answer is mostly `Other` — the form's way
+ * of saying "not applicable" — so offering four level rows there would be four
+ * rows of noise per pass type in a table an organiser has to scan.
+ *
+ * The same rule lives on `Participant.levelForDisplay` in the iOS app, which
+ * decides whether to print the level at the desk. Two copies, like every other
+ * field name here, and for the same reason: this one is a decision about the
+ * festival and belongs written down on both sides rather than inferred.
+ */
+export const SPLITS_BY_LEVEL = ['Full Pass', 'Full Pass Gold'] as const;
+
+/**
+ * Whether this pass type's colour may differ by level.
+ *
+ * Case- and whitespace-insensitive: `ticketType` comes from a hand-maintained
+ * Sheet, and `"Full Pass "` failing to match would silently cost an organiser
+ * the rows they came here for.
+ */
+export function splitsByLevel(passType: string): boolean {
+  const clean = (value: string) => value.trim().toLowerCase();
+  return SPLITS_BY_LEVEL.map(clean).includes(clean(passType));
+}
+
 /** The most characters `firestore.rules` accepts in a block reason. */
 export const MAX_BLOCK_REASON = 300;
 /** The most characters it accepts in a colour's spoken name. */
