@@ -23,6 +23,7 @@ import {
   IDENTITY_COLUMN,
   IMPORTABLE_STATUSES,
   isCanonicalPassType,
+  normaliseLevel,
   normaliseTicketType,
   toDocumentId,
   toRosterFields,
@@ -43,10 +44,11 @@ const NO_ATTIRE = 'No Swing Buzz attire';
 
 const row = ({
   id, name, pass = 'Full pass', country = 'Bulgaria', status = 'Paid',
+  level = 'Intermediate - you have been dancing Lindy Hop for at least 1 year',
   attire = NO_ATTIRE, size = NO_ATTIRE, colour = NO_ATTIRE,
 }) =>
   [id, '2026-07-01 10:00:00', name, `${id}@example.com`, '+359000000', 'Follower',
-   pass, 'Intermediate', country, '', status, attire, size, colour];
+   pass, level, country, '', status, attire, size, colour];
 
 const SHEET = [
   row({ id: '1041', name: 'Amélie Roux', country: 'France' }),
@@ -124,12 +126,50 @@ test('personal data in the Sheet does not reach the participant document', () =>
   // on the participant itself, where every terminal can read it.
   const { creates } = buildPlan(rowsFrom(SHEET), new Map());
   const fields = Object.keys(creates[0].data);
-  for (const forbidden of [/email/i, /phone/i, /comment/i, /level/i, /shirt/i, /merch/i]) {
+  // `level` is deliberately NOT in this list any more. The dance level IS
+  // imported, because wristband colours depend on it — but only the one-word
+  // token, never the Sheet's paragraph of class description. The test below
+  // pins that.
+  for (const forbidden of [/email/i, /phone/i, /comment/i, /shirt/i, /merch/i]) {
     assert.ok(!fields.some((f) => forbidden.test(f)), `${forbidden} leaked into ${fields.join(',')}`);
   }
   // `Role` in this Sheet is the DANCE role. It must never land in a field called
   // `role`, which is what the security rules read for authorisation.
   assert.ok(!fields.includes('role'), fields.join(','));
+});
+
+test('the dance level is imported as one word, never the form paragraph', () => {
+  const { creates } = buildPlan(
+    rowsFrom([
+      row({
+        id: '1041',
+        name: 'Amélie Roux',
+        level:
+          "Advanced - you have significant experience in Lindy Hop and you can't wait to improve",
+      }),
+    ]),
+    new Map()
+  );
+  assert.equal(creates[0].data.level, 'Advanced');
+  const serialised = JSON.stringify(creates[0].data);
+  assert.ok(!serialised.includes('Lindy Hop'), serialised);
+});
+
+test('an unrecognised level is blank rather than kept verbatim', () => {
+  // The opposite rule to pass types, on purpose: a pass type is what somebody
+  // bought and must show even if odd, a level is a closed set of four.
+  assert.equal(normaliseLevel('Beginner - just started'), '');
+  assert.equal(normaliseLevel(''), '');
+  assert.equal(normaliseLevel(undefined), '');
+});
+
+test('the level matches on the word before the dash, ignoring the description', () => {
+  // "Other" appears with two different trailing sentences in the real roster,
+  // so anything comparing whole strings would see two levels.
+  assert.equal(normaliseLevel('Other - choose this option if you are …'), 'Other');
+  assert.equal(normaliseLevel('Other - choose this option if you are registering with X'), 'Other');
+  assert.equal(normaliseLevel('  pro  '), 'Pro');
+  assert.equal(normaliseLevel('INTERMEDIATE - you have been dancing for a year'), 'Intermediate');
 });
 
 test('re-running with an unchanged Sheet writes nothing', () => {

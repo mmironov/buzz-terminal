@@ -1061,3 +1061,105 @@ describe('preordered merch', () => {
     await assertFails(deleteDoc(merchRef(reception())));
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Bracelet colours
+//
+//  Which colour wristband a pass type gets. Organisers set it, everybody reads
+//  it — including the bar, deliberately: the colour is a function of a field
+//  every terminal already reads, so restricting it would protect nothing and
+//  would produce a terminal that silently shows no colour.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('bracelet colours', () => {
+  const ref = (db, id = 'full-pass') => doc(db, 'braceletColours', id);
+  const colour = (overrides = {}) => ({
+    passType: 'Full Pass',
+    colour: '#1E6BB8',
+    name: 'Sky Blue',
+    ...overrides,
+  });
+
+  async function seed(overrides = {}) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(ref(context.firestore()), colour(overrides));
+    });
+  }
+
+  it('is readable by every role, the bar included', async () => {
+    await seed();
+    await assertSucceeds(getDoc(ref(reception())));
+    await assertSucceeds(getDoc(ref(bar())));
+    await assertSucceeds(getDoc(ref(admin())));
+  });
+
+  it('is not readable without a role', async () => {
+    await seed();
+    await assertFails(getDoc(ref(roleless())));
+    await assertFails(getDoc(ref(anonymous())));
+  });
+
+  it('is written by an organiser and nobody else', async () => {
+    await assertSucceeds(setDoc(ref(admin()), colour()));
+    await assertFails(setDoc(ref(reception(), 'party-pass'), colour({ passType: 'Party Pass' })));
+    await assertFails(setDoc(ref(bar(), 'party-pass'), colour({ passType: 'Party Pass' })));
+  });
+
+  it('accepts a colour with no name — a swatch is enough', async () => {
+    await assertSucceeds(
+      setDoc(ref(admin()), { passType: 'Full Pass', colour: '#1E6BB8' })
+    );
+  });
+
+  /// Pinned because both apps parse this string, and Swift has no forgiving
+  /// colour parser: "red" would reach a phone as no colour at all.
+  it('refuses anything that is not #RRGGBB in upper case', async () => {
+    for (const bad of ['red', '#f00', '#1e6bb8', '1E6BB8', '#1E6BB', '#1E6BB8F', '']) {
+      await assertFails(setDoc(ref(admin()), colour({ colour: bad })));
+    }
+    await assertSucceeds(setDoc(ref(admin()), colour({ colour: '#00FF00' })));
+  });
+
+  it('refuses a blank pass type, which could never match anybody', async () => {
+    await assertFails(setDoc(ref(admin()), colour({ passType: '' })));
+  });
+
+  it('refuses extra fields', async () => {
+    await assertFails(
+      setDoc(ref(admin()), { ...colour(), sortOrder: 2 })
+    );
+  });
+
+  it('accepts a level, so Full Pass Advanced can differ from Full Pass Pro', async () => {
+    for (const level of ['Intermediate', 'Advanced', 'Pro', 'Other']) {
+      await assertSucceeds(
+        setDoc(ref(admin(), `full-pass-${level.toLowerCase()}`), colour({ level }))
+      );
+    }
+  });
+
+  it('treats an absent or empty level as "any level"', async () => {
+    await assertSucceeds(setDoc(ref(admin()), colour()));
+    await assertSucceeds(setDoc(ref(admin()), colour({ level: '' })));
+  });
+
+  /// A fifth level would match nobody, so a mapping using one would look like a
+  /// colour that silently does nothing.
+  it('refuses a level that is not one of the four', async () => {
+    for (const bad of ['Beginner', 'advanced', 'Pro - fixed partner track', 'Expert']) {
+      await assertFails(setDoc(ref(admin()), colour({ level: bad })));
+    }
+  });
+
+  it('lets an organiser recolour and remove a mapping', async () => {
+    await seed();
+    await assertSucceeds(updateDoc(ref(admin()), { colour: '#C8A64B' }));
+    await assertSucceeds(deleteDoc(ref(admin())));
+  });
+
+  it('refuses a terminal deleting one', async () => {
+    await seed();
+    await assertFails(deleteDoc(ref(reception())));
+    await assertFails(deleteDoc(ref(bar())));
+  });
+});

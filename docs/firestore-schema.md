@@ -48,6 +48,7 @@ participants/tkt-10432
   searchTokens:  ["amélie", "roux", "full", "pass"]
   ticketType:    "Full pass"
   country:       "France"          // the Sheet asks for a country, not a city
+  level:         "Advanced"        // DANCE level, one word. NOT a permission.
   importedAt:    <timestamp>
   rosterHash:    "9f2c…"            // skip the write when the row is unchanged
 
@@ -83,6 +84,39 @@ Notes on specific fields:
   `blockedAt` are the audit trail — a block is an organiser decision somebody will
   ask about afterwards — and the rules pin `blockedAt` to `request.time`, so it is
   the server's clock.
+
+## `braceletColours/{passTypeSlug}`
+
+Which colour of wristband each pass type gets. Set by organisers in the panel's
+Bracelets tab; read by every terminal.
+
+```
+braceletColours/full-pass
+  passType:  "Full Pass"        // verbatim, as it appears on a participant
+  level:     absent | ""        // the fallback: anybody with this pass type
+  colour:    "#1E6BB8"          // #RRGGBB, upper case — the rules pin the shape
+  name:      "Sky Blue"         // what staff call it out loud; optional
+
+braceletColours/full-pass-pro
+  passType:  "Full Pass"
+  level:     "Pro"              // an override for one class track
+  colour:    "#1B1B1B"
+```
+
+A participant's `level` is looked up first; if it has no document, the pass
+type's level-less one applies. `level` is one of `Intermediate`, `Advanced`,
+`Pro`, `Other`, pinned by the rules.
+
+**The apps match on `passType`, never on the document id.** The id is a slug
+derived for readability, and two long pass types could slug to the same key;
+matching on the field means that shows up in the panel as one row overwriting
+another rather than as a participant quietly getting somebody else's colour.
+Matching is case- and whitespace-insensitive, because one side is typed into a
+web form and the other comes from a hand-maintained Sheet.
+
+Readable by every role including the bar, unlike merch: the colour is a function
+of `ticketType`, which every terminal already reads. See
+`docs/bracelet-colours.md`.
 
 ## `participants/{participantId}/merch/order`
 

@@ -39,6 +39,16 @@ struct ParticipantView: View {
                     .sbLineHeight(1.1, size: 30)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
+
+                // Its own line rather than appended to the pass type: the
+                // operator is scanning for one word, and "Full Pass Gold · Pro"
+                // at 30pt wraps and buries it.
+                if let level = model.participant?.levelForDisplay {
+                    Text(level)
+                        .font(.sbHeading(15))
+                        .foregroundStyle(.sbInk(0.6))
+                        .padding(.top, 4)
+                }
             } else {
                 SBKicker(text: "Balance")
                 Text((model.participant?.balance ?? .zero).description)
@@ -171,6 +181,11 @@ struct ParticipantView: View {
                 Text(subtitle)
                     .font(.sbBody(12))
                     .foregroundStyle(.sbInk(0.6))
+
+                if let colour = model.participantColour {
+                    braceletColourRow(colour)
+                        .padding(.top, 7)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
@@ -182,16 +197,49 @@ struct ParticipantView: View {
         }
     }
 
+    /// Which colour wristband this guest gets.
+    ///
+    /// Inside the identity card, under the ticket line, because it answers a
+    /// question about this person rather than about the festival — reception is
+    /// reaching for a pile of wristbands while looking at this block.
+    ///
+    /// A full-width bar with the name written on it, rather than a small square
+    /// beside a label. The operator is matching this against a physical band in
+    /// whatever light the venue has: a 16pt chip was too little colour to judge,
+    /// and at arm's length across a desk it read as an icon rather than as the
+    /// colour itself. A band that spans the card is the thing being compared.
+    ///
+    /// The text on it flips between dark and white by luminance — an organiser
+    /// can pick a pale yellow, and white on that is unreadable. The hairline
+    /// border keeps a near-white colour from dissolving into the card.
+    private func braceletColourRow(_ colour: BraceletColour) -> some View {
+        Text("\(colour.label) bracelet".uppercased())
+            .font(.sbHeading(13, weight: .extrabold))
+            .tracking(0.1 * 13)
+            .foregroundStyle(colour.prefersDarkText ? Color.sbInk : Color.sbNeutral100)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .background(Color(hex: colour.hex) ?? .clear)
+            .overlay {
+                Rectangle().stroke(Color.sbInk(0.18), lineWidth: SBRule.hairline)
+            }
+    }
+
     /// Ticket and country identify a guest at the desk; the bracelet id only
     /// exists once there is one. Printing "Bracelet —" under somebody's name is
     /// noise at exactly the moment the operator is checking they have the right
     /// person.
+    /// The level rides here rather than on its own line, because this state has
+    /// no "Ticket" section to hang it under — the 66pt balance takes that space
+    /// — and this is the line already carrying the pass type.
     private var subtitle: String {
         guard let participant = model.participant else { return "—" }
         guard !isAwaitingCheckIn else {
             return "\(participant.ticketRef) · \(participant.country)"
         }
-        return "\(participant.ticketDescription) · Bracelet \(model.braceletLabel)"
+        let level = participant.levelForDisplay.map { " · \($0)" } ?? ""
+        return "\(participant.ticketDescription)\(level) · Bracelet \(model.braceletLabel)"
     }
 }
 

@@ -119,6 +119,11 @@ actor InMemoryTerminalRepository: TerminalRepository {
         return updated
     }
 
+    func braceletColours() async throws -> [BraceletColour] {
+        await simulateNetwork()
+        return SampleData.braceletColours
+    }
+
     // MARK: Merch
 
     func merchOrder(for participant: Participant) async throws -> MerchOrder? {

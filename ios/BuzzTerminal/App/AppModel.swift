@@ -181,11 +181,32 @@ final class AppModel {
 
     private static let log = Logger(subsystem: "fest.swingbuzz.BuzzTerminal", category: "model")
 
+    /// Which wristband colour each pass type gets. Loaded with the catalogue.
+    ///
+    /// Empty until it loads, and empty is a legitimate steady state — a festival
+    /// that has not coloured anything simply shows no swatches.
+    private(set) var braceletColours = BraceletColourScheme()
+
+    /// The colour for the participant on screen, if their pass type has one.
+    var participantColour: BraceletColour? {
+        participant.flatMap(braceletColours.colour(for:))
+    }
+
     /// Load the catalogue once a role is known.
     func loadCatalogue() async {
         do {
             menu = try await repository.drinks()
             awaitingCheckIn = try await repository.awaitingCheckIn()
+            // Its own do/catch, after the two that matter. A missing swatch is
+            // cosmetic; an empty roster or an empty menu stops the desk and the
+            // bar. Neither should be reported as a failure because a colour
+            // read went wrong, and an alert at sign-in about wristband colours
+            // would be a fine way to teach staff to dismiss alerts.
+            do {
+                braceletColours = BraceletColourScheme(try await repository.braceletColours())
+            } catch {
+                Self.log.error("bracelet colours failed to load: \(error.localizedDescription, privacy: .public)")
+            }
             // Logged because "the list is empty" has two very different causes —
             // an empty roster, or a read the rules refused — and they look
             // identical on screen.

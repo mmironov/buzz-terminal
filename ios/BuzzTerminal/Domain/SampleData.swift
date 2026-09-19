@@ -55,6 +55,7 @@ enum SampleData {
             name: "Marta Lindqvist",
             ticketType: TicketType.fullPass,
             country: "Sweden",
+            level: "Advanced",
             braceletId: braceletB,
             checkedInAt: earlier(6),
             balance: Money(euros: 23, cents: 50)
@@ -86,9 +87,9 @@ enum SampleData {
     /// Arrived, no bracelet yet. These are what the check-in list shows.
     static let awaitingCheckIn: [Participant] = [
         Participant(id: ParticipantID("tkt-10432"), ticketRef: "TKT-10432", name: "Amélie Roux", ticketType: TicketType.fullPass, country: "France"),
-        Participant(id: ParticipantID("tkt-10433"), ticketRef: "TKT-10433", name: "Tomás Herrera", ticketType: TicketType.fullPass, country: "Spain"),
-        Participant(id: ParticipantID("tkt-10434"), ticketRef: "TKT-10434", name: "Nina Kowalski", ticketType: TicketType.partyPass, country: "Poland"),
-        Participant(id: ParticipantID("tkt-10435"), ticketRef: "TKT-10435", name: "Sofia Ferreira", ticketType: TicketType.fullPass, country: "Portugal"),
+        Participant(id: ParticipantID("tkt-10433"), ticketRef: "TKT-10433", name: "Tomás Herrera", ticketType: TicketType.fullPass, country: "Spain", level: "Pro"),
+        Participant(id: ParticipantID("tkt-10434"), ticketRef: "TKT-10434", name: "Nina Kowalski", ticketType: TicketType.partyPass, country: "Poland", level: "Other"),
+        Participant(id: ParticipantID("tkt-10435"), ticketRef: "TKT-10435", name: "Sofia Ferreira", ticketType: TicketType.fullPass, country: "Portugal", level: "Advanced"),
         Participant(id: ParticipantID("tkt-10436"), ticketRef: "TKT-10436", name: "Dmitri Alvarez", ticketType: TicketType.partyPassPlus, country: "Germany"),
         Participant(id: ParticipantID("tkt-10437"), ticketRef: "TKT-10437", name: "Hannah Vos", ticketType: TicketType.partyPass, country: "Netherlands"),
     ]
@@ -103,6 +104,33 @@ enum SampleData {
 
     /// Everything in Firestore: the imported roster plus door sales.
     static var roster: [Participant] { checkedIn + awaitingCheckIn + eveningTickets }
+
+    /// Wristband colours, as an organiser would have set them in the panel.
+    ///
+    /// Deliberately not exhaustive: `Jazz Performance Track` has no colour, so
+    /// the "this pass type was never coloured" path is one of the fixtures
+    /// rather than something only production can produce.
+    static let braceletColours: [BraceletColour] = [
+        BraceletColour(id: "full-pass", passType: TicketType.fullPass,
+                       hex: "#1E6BB8", name: "Sky Blue"),
+        // A level override: a Full Pass Pro gets a different band from the
+        // Full Pass above, and everybody else with a Full Pass falls back to it.
+        BraceletColour(id: "full-pass-pro", passType: TicketType.fullPass,
+                       level: "Pro", hex: "#1B1B1B", name: "Black"),
+        BraceletColour(id: "full-pass-gold", passType: TicketType.fullPassGold,
+                       hex: "#C8A64B", name: "Gold"),
+        // Pale on purpose: this is the fixture that proves the label flips to
+        // dark text rather than staying white and vanishing.
+        BraceletColour(id: "full-pass-gold-pro", passType: TicketType.fullPassGold,
+                       level: "Pro", hex: "#FFE24D", name: "Yellow"),
+        BraceletColour(id: "party-pass", passType: TicketType.partyPass,
+                       hex: "#C6453C", name: "Red"),
+        BraceletColour(id: "party-pass-plus", passType: TicketType.partyPassPlus,
+                       hex: "#2E7D52", name: "Green"),
+        // No spoken name: the screen falls back to the hex rather than a blank.
+        BraceletColour(id: "evening-ticket", passType: TicketType.eveningTicket,
+                       hex: "#6B4E9B", name: ""),
+    ]
 
     /// Preordered merch, keyed by participant. Only a minority of the roster
     /// ordered anything — 28 of 105 on the real Sheet — so most of these people

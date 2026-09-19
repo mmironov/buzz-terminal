@@ -7,7 +7,8 @@ React in `web-admin/`, all three against the same Firebase backend in `backend/`
 
 iOS is the finished one and everything down to "The Android app" describes it.
 Android is in progress; that section says exactly how far. `web-admin/` is the
-organiser panel — blocks and the drinks menu — and has its own section below.
+organiser panel — blocks, the drinks menu and wristband colours — and has its own
+section below.
 
 ---
 
@@ -329,7 +330,7 @@ address into the sign-in field impossible from the host keyboard.
 ## The organiser panel
 
 `web-admin/` — React and TypeScript on Vite, the same Modernist look, the same
-`swing-buzz` project. Two screens, and the interesting part is what it cannot do.
+`swing-buzz` project. Three screens, and the interesting part is what it cannot do.
 
 **Participants.** The whole roster live, searchable by name, ticket reference, pass
 type or chip id, showing each person's bracelet, balance and block state. Expanding
@@ -340,6 +341,11 @@ a footer saying whether the entries add up to the balance on the bracelet.
 **Bar.** The drinks catalogue: add, rename, reprice, reorder, take off the menu,
 delete. Taking off the menu (`isActive: false`) is the reversible one for a keg that
 ran out; deleting is for something entered by mistake.
+
+**Bracelets.** Which colour wristband each pass type gets. The pass types are read
+off the roster rather than kept in a list here, so one the Sheet invents appears by
+itself — and a pass type nobody has coloured simply shows no colour on a phone.
+`docs/bracelet-colours.md`.
 
 Blocking a bracelet is the panel's only write to a person. It cannot edit the roster
 or touch history, and it cannot adjust a balance silently — a balance moves only
@@ -375,13 +381,13 @@ goes through the rules and a wrong shape fails loudly. Full runbook, including
 
 ## Tests
 
-Four runners, **306 tests**, all green: 82 iOS, 85 Android, 82 rules, 57 importer.
+Four runners, **341 tests**, all green: 102 iOS, 85 Android, 94 rules, 60 importer.
 
 ```bash
 ./ios/scripts/test.sh
 ```
 
-**82 iOS tests in 13 suites.** The domain logic that carries real rules — the
+**102 iOS tests in 15 suites.** The domain logic that carries real rules — the
 keypad, the check-in search, the charge decision, which action the participant
 screen offers, participant lifecycle, evening tickets, money arithmetic, the sync
 state, the batch audit. `Domain/` imports `Foundation` only, so the whole run
@@ -421,7 +427,7 @@ landing.
 cd backend/rules-tests && ./test.sh
 ```
 
-**82 rules tests in 11 suites**, against a throwaway Firestore emulator that the
+**94 rules tests in 12 suites**, against a throwaway Firestore emulator that the
 script starts and tears down itself — it needs a JDK, which it will find even when
 Homebrew has kept it off your `PATH`. Nothing here touches the real database: the
 emulator comes up empty and each test writes its own fixtures as an admin.
@@ -443,7 +449,7 @@ because the test ran.
 cd backend/import-roster && npm test
 ```
 
-**57 importer tests** over the Sheet mapping, merch, the drinks menu and the reset, against
+**60 importer tests** over the Sheet mapping, merch, the drinks menu and the reset, against
 pure functions and a fake Firestore — no network, no emulator. Four earn their keep
 on their own: the one that stops `Full Pass Gold` being filed as plain `Full Pass`,
 the one asserting no personal data can reach Firestore, the one pinning a drink the
@@ -527,6 +533,7 @@ equivalent is "The Android app" above — it is behind on more than this.
 | NFC | ✅ Core NFC reads real bracelets on a device; the simulated picker remains where hardware is absent, and behind `-sbScanner simulated` | — |
 | Check-in | ✅ nothing pairs a bracelet unless the operator chose to pair one. Reading an unowned chip is a dead end; check-in and door sales each start from the home screen — `docs/check-in.md` | Android still pairs on the row tap |
 | Merch | ✅ preorders in a subcollection the **bar cannot read**, shown on the participant screen, collected and un-collected by reception. Rules deployed, 28 orders imported — `docs/merch.md` | nothing collected on a real phone yet; no Android |
+| Bracelet colours | ✅ pass type — and level within it — → wristband colour, set in the panel's Bracelets tab, shown as a named band on the participant screen, with the level beside the pass type for Full Pass and Full Pass Gold — `docs/bracelet-colours.md` | not deployed, no colours set, roster has no `level` until re-imported, no Android |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
 | Localisation | English strings inline; `"23.50 €"` is locale-independent by design | later |
 | App icon | generated, on-brand, deliberately plain — `ios/scripts/makeicon.swift` redraws it | when someone wants real artwork |

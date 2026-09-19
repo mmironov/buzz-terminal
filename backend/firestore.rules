@@ -489,6 +489,52 @@ service cloud.firestore {
       }
     }
 
+    // ── Bracelet colours ─────────────────────────────────────────────────
+    //
+    // Which colour of wristband a pass type gets. One document per pass type,
+    // keyed by a slug of it, set by organisers in the admin panel.
+    //
+    // Readable by every role rather than reception only, unlike merch: the
+    // colour is a function of `ticketType`, which every terminal already reads
+    // off the participant. Restricting it would protect nothing and would mean
+    // a bar terminal silently showing no colour, which is the failure mode we
+    // just spent an evening on.
+    match /braceletColours/{passTypeId} {
+      allow read: if canRead();
+
+      // Organisers only, exactly like the drinks menu. No terminal writes here,
+      // whatever it is compiled to send.
+      allow create, update: if isAdmin() && isWellFormedColour();
+      allow delete: if isAdmin();
+
+      function isWellFormedColour() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['passType', 'level', 'colour', 'name'])
+          && d.keys().hasAll(['passType', 'colour'])
+          // Absent or empty means "any level", which is what a pass type with
+          // one colour uses and what everything falls back to. A named level
+          // must be one of the four the Sheet has, because a fifth would match
+          // nobody and look like a mapping that silently does nothing.
+          && (!('level' in d)
+                || d.level == ''
+                || d.level in ['Intermediate', 'Advanced', 'Pro', 'Other'])
+          // The pass type verbatim, as it appears on a participant. The apps
+          // match on this string rather than on the document id, so an id that
+          // disagreed with its contents would simply never match anybody.
+          && d.passType is string
+          && d.passType.size() > 0
+          && d.passType.size() <= 100
+          // `#RRGGBB`, upper case. Pinned because both apps parse it: Swift has
+          // no forgiving colour parser, and a value like "red" or "#f00" would
+          // reach a phone as no colour at all.
+          && d.colour is string
+          && d.colour.matches('^#[0-9A-F]{6}$')
+          // What staff call it out loud. Optional — a swatch is enough on
+          // screen — but useful when the room is dark and two colours are close.
+          && (!('name' in d) || (d.name is string && d.name.size() <= 40));
+      }
+    }
+
     // Anything not matched above is denied by default.
   }
 }

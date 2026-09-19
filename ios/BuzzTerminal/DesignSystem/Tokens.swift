@@ -109,3 +109,17 @@ enum SBRule {
     static let hairline: CGFloat = 1
     static let strong: CGFloat = 2
 }
+
+// MARK: - Organiser-chosen colours
+
+extension Color {
+    /// A colour an organiser picked in the admin panel, as `#RRGGBB`.
+    ///
+    /// The only colour in the app that is not a Modernist token, and it is not
+    /// decoration: it is matched against a physical wristband. The parsing
+    /// itself lives on `BraceletColour` so it is testable without SwiftUI.
+    init?(hex: String) {
+        guard let parts = BraceletColour.components(hex: hex) else { return nil }
+        self.init(.sRGB, red: parts.red, green: parts.green, blue: parts.blue)
+    }
+}

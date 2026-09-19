@@ -30,6 +30,15 @@ export const COLUMNS = {
   /// Decides whether the row is importable at all. See IMPORTABLE_STATUSES.
   status: 'Status',
 
+  /// The DANCE level — Intermediate, Advanced, Pro, Other. Not a permission of
+  /// any kind; see the note on `Role` below, which is the same trap.
+  ///
+  /// This was an excluded column until wristband colours started depending on
+  /// it. Only the single-word token is imported, never the Sheet's paragraph:
+  /// the values there run to 300 characters of class description, and every
+  /// field on a participant is readable by every terminal.
+  level: 'Level',
+
   // ── Merch ────────────────────────────────────────────────────────────────
   //
   // These three used to be in EXCLUDED_COLUMNS, on the rule that every field
@@ -142,7 +151,6 @@ export const EXCLUDED_COLUMNS = [
   'Email',
   'Phone Number',
   'Role',                   // DANCE role (leader/follower) — NOT StaffRole. See below.
-  'Level',
   'Are you registering with a partner',
   "If you are registering with a partner, write down your partner's email.",
   'Comments',               // free text; could contain anything
@@ -219,7 +227,46 @@ export function toRosterFields(row) {
     searchTokens: toSearchTokens({ name: row.name ?? '', ticketType }),
     ticketType,
     country: String(row.country ?? '').trim(),
+    // One word, or empty. See normaliseLevel.
+    level: normaliseLevel(row.level),
   };
+}
+
+// ── Dance level ────────────────────────────────────────────────────────────
+
+/**
+ * The only four levels there are.
+ *
+ * The Sheet stores each as a sentence — "Advanced - you have significant
+ * experience in Lindy Hop and you can't wait to improve" — and one of them runs
+ * to three hundred characters. Only the leading word is kept: it is the part
+ * that means anything, it is what a wristband colour keys on, and importing the
+ * rest would put a paragraph of class description on a document every terminal
+ * can read.
+ */
+export const LEVELS = ['Intermediate', 'Advanced', 'Pro', 'Other'];
+
+/**
+ * Reduce a Sheet value to one of `LEVELS`, or `''`.
+ *
+ * Matched on the leading word before the dash, case-insensitively, because the
+ * description after it is not stable — "Other" appears with two different
+ * trailing sentences in the current roster, so anything comparing whole strings
+ * would treat them as two levels.
+ *
+ * An unrecognised value becomes `''` rather than being kept verbatim, which is
+ * the opposite of the rule for pass types and deliberately so: a pass type is
+ * what somebody bought and must show up even if it looks odd, whereas a level
+ * is one of a closed set and anything else is a form change nobody has looked
+ * at yet. The import reports how many it could not place.
+ */
+export function normaliseLevel(raw) {
+  const head = String(raw ?? '')
+    .split('-')[0]
+    .trim()
+    .toLowerCase();
+  if (!head) return '';
+  return LEVELS.find((level) => level.toLowerCase() === head) ?? '';
 }
 
 // ── Merch ──────────────────────────────────────────────────────────────────
@@ -346,6 +393,7 @@ export const IMPORT_OWNED_FIELDS = [
   'searchTokens',
   'ticketType',
   'country',
+  'level',
   'rosterHash',
   'importedAt',
 ];

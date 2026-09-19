@@ -24,6 +24,17 @@ enum Fire {
         /// A subcollection of a participant, holding exactly one document. See
         /// `Merch.documentId` and `docs/merch.md`.
         static let merch = "merch"
+        /// Pass type → wristband colour, one document per pass type.
+        static let braceletColours = "braceletColours"
+    }
+
+    enum BraceletColour {
+        /// The pass type verbatim. What the apps match on — never the id.
+        static let passType = "passType"
+        /// One of the four dance levels, or absent for "any level".
+        static let level = "level"
+        static let colour = "colour"
+        static let name = "name"
     }
 
     enum Merch {
@@ -48,6 +59,8 @@ enum Fire {
         static let searchTokens = "searchTokens"
         static let ticketType = "ticketType"
         static let country = "country"
+        /// The DANCE level. Never a permission — see `Participant.level`.
+        static let level = "level"
         static let evening = "evening"
         static let eveningNumber = "eveningNumber"
         static let braceletId = "braceletId"
@@ -136,6 +149,7 @@ extension Participant {
             name: name,
             ticketType: data[Fire.Participant.ticketType] as? String ?? "",
             country: data[Fire.Participant.country] as? String ?? "",
+            level: data[Fire.Participant.level] as? String ?? "",
             source: (data[Fire.Participant.source] as? String).flatMap(Source.init(rawValue:)) ?? .sheet,
             evening: (data[Fire.Participant.evening] as? String).flatMap(Evening.init(rawValue:)),
             eveningNumber: data[Fire.Participant.eveningNumber] as? Int,
@@ -155,6 +169,31 @@ extension Drink {
               let priceCents = data[Fire.Drink.price] as? Int
         else { return nil }
         self.init(id: document.documentID, name: name, price: Money(cents: priceCents))
+    }
+}
+
+extension BraceletColour {
+    /// Build from `braceletColours/{passTypeSlug}`.
+    ///
+    /// A document with a malformed colour is dropped rather than rendered. The
+    /// rules pin `#RRGGBB` so this should not happen, but a swatch of the wrong
+    /// colour is worse than no swatch — somebody hands over a wristband because
+    /// of it.
+    init?(document: DocumentSnapshot) {
+        guard let data = document.data(),
+              let passType = data[Fire.BraceletColour.passType] as? String,
+              !passType.isEmpty,
+              let hex = data[Fire.BraceletColour.colour] as? String,
+              BraceletColour.components(hex: hex) != nil
+        else { return nil }
+
+        self.init(
+            id: document.documentID,
+            passType: passType,
+            level: data[Fire.BraceletColour.level] as? String ?? "",
+            hex: hex,
+            name: data[Fire.BraceletColour.name] as? String ?? ""
+        )
     }
 }
 

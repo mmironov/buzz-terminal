@@ -17,6 +17,8 @@ export const COLLECTIONS = {
   transactions: 'transactions',
   bracelets: 'bracelets',
   drinks: 'drinks',
+  /** Which colour wristband each pass type gets. One document per pass type. */
+  braceletColours: 'braceletColours',
 } as const;
 
 export const PARTICIPANT_FIELDS = {
@@ -25,6 +27,7 @@ export const PARTICIPANT_FIELDS = {
   nameLower: 'nameLower',
   ticketType: 'ticketType',
   country: 'country',
+  level: 'level',
   source: 'source',
   evening: 'evening',
   eveningNumber: 'eveningNumber',
@@ -44,8 +47,27 @@ export const DRINK_FIELDS = {
   isActive: 'isActive',
 } as const;
 
+export const BRACELET_COLOUR_FIELDS = {
+  passType: 'passType',
+  /** One of `LEVELS`, or `''` meaning "any level". */
+  level: 'level',
+  colour: 'colour',
+  name: 'name',
+} as const;
+
+/**
+ * The four dance levels, as `mapping.mjs` normalises them.
+ *
+ * The Sheet stores each as a sentence; the importer keeps only the leading
+ * word. `firestore.rules` pins this exact list, so a fifth value cannot be
+ * written — it would match nobody and look like a colour that does nothing.
+ */
+export const LEVELS = ['Intermediate', 'Advanced', 'Pro', 'Other'] as const;
+
 /** The most characters `firestore.rules` accepts in a block reason. */
 export const MAX_BLOCK_REASON = 300;
+/** The most characters it accepts in a colour's spoken name. */
+export const MAX_COLOUR_NAME = 40;
 /** The most characters it accepts in a drink name. */
 export const MAX_DRINK_NAME = 60;
 /** The typo ceiling on a price, in cents. 1000 € is clear of any real drink. */
@@ -59,6 +81,8 @@ export interface Participant {
   name: string;
   ticketType: string;
   country: string;
+  /** The DANCE level: one of LEVELS, or `''`. Never a permission. */
+  level: string;
   /** `'sheet'` for an imported registration, `'evening'` for a door sale. */
   source: string;
   /** `null` until reception pairs a chip. Permanent once set. */
@@ -77,6 +101,21 @@ export interface Drink {
   price: number;
   sortOrder: number;
   isActive: boolean;
+}
+
+export interface BraceletColour {
+  /** The slug of the pass type. Only ever a document key. */
+  id: string;
+  /** The pass type verbatim, as it appears on a participant. This is what the
+   *  apps match on — never the id, which is derived and could drift. */
+  passType: string;
+  /** One of `LEVELS`, or `''` for "any level" — the fallback every pass type
+   *  uses until somebody splits it by level. */
+  level: string;
+  /** `#RRGGBB`, upper case. The rules pin the format; see `isWellFormedColour`. */
+  colour: string;
+  /** What staff call it out loud. May be empty. */
+  name: string;
 }
 
 /** One line of a charge, as the ledger snapshotted it at the moment of sale. */
@@ -141,6 +180,7 @@ export function toParticipant(doc: Doc): Participant | null {
     name,
     ticketType: str(data[PARTICIPANT_FIELDS.ticketType]),
     country: str(data[PARTICIPANT_FIELDS.country]),
+    level: str(data[PARTICIPANT_FIELDS.level]),
     source: str(data[PARTICIPANT_FIELDS.source], 'sheet'),
     braceletId: str(data[PARTICIPANT_FIELDS.braceletId]) || null,
     checkedInAt: date(data[PARTICIPANT_FIELDS.checkedInAt]),
@@ -165,6 +205,41 @@ export function toDrink(doc: Doc): Drink | null {
     // before the bar started querying on it.
     isActive: data[DRINK_FIELDS.isActive] !== false,
   };
+}
+
+export function toBraceletColour(doc: Doc): BraceletColour | null {
+  const data = doc.data();
+  const passType = data[BRACELET_COLOUR_FIELDS.passType];
+  const colour = data[BRACELET_COLOUR_FIELDS.colour];
+  // Both required, and a malformed colour is dropped rather than rendered: a
+  // swatch of the wrong colour is worse than no swatch, because somebody hands
+  // over a wristband on the strength of it.
+  if (typeof passType !== 'string' || !passType) return null;
+  if (typeof colour !== 'string' || !isHexColour(colour)) return null;
+
+  return {
+    id: doc.id,
+    passType,
+    level: str(data[BRACELET_COLOUR_FIELDS.level]),
+    colour,
+    name: str(data[BRACELET_COLOUR_FIELDS.name]),
+  };
+}
+
+/** `#RRGGBB`, upper case — the exact shape `firestore.rules` enforces. */
+export function isHexColour(value: string): boolean {
+  return /^#[0-9A-F]{6}$/.test(value);
+}
+
+/**
+ * What an `<input type="color">` produces, in the shape the rules accept.
+ *
+ * Browsers return lower case; the rules demand upper. Normalising here rather
+ * than loosening the rule keeps one spelling in the database, so two organisers
+ * picking the same colour cannot produce two different strings.
+ */
+export function normaliseHexColour(value: string): string {
+  return value.trim().toUpperCase();
 }
 
 export function toTransaction(doc: Doc): Transaction | null {

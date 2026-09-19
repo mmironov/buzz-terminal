@@ -36,16 +36,17 @@ staff() {  # email, role
   echo "  $1 → role=$2"
 }
 
-person() {  # id, name, ticketType, country
+person() {  # id, name, ticketType, country, level
   curl -s -X PATCH "$FS/participants/$1" "${OWNER[@]}" -d "{\"fields\":{
     \"source\":{\"stringValue\":\"sheet\"},\"ticketRef\":{\"stringValue\":\"$1\"},
     \"name\":{\"stringValue\":\"$2\"},\"nameLower\":{\"stringValue\":\"$(echo "$2" | tr '[:upper:]' '[:lower:]')\"},
     \"ticketType\":{\"stringValue\":\"$3\"},\"country\":{\"stringValue\":\"$4\"},
+    \"level\":{\"stringValue\":\"${5:-}\"},
     \"searchTokens\":{\"arrayValue\":{\"values\":[]}},
     \"braceletId\":{\"nullValue\":null},\"checkedInAt\":{\"nullValue\":null},
     \"balance\":{\"integerValue\":\"0\"},\"lastTxId\":{\"nullValue\":null},
     \"isBlocked\":{\"booleanValue\":false},\"blockReason\":{\"nullValue\":null}}}" >/dev/null
-  echo "  $2 ($3, $4)"
+  echo "  $2 ($3, $4${5:+, $5})"
 }
 
 drink() {  # id, name, cents, order
@@ -59,9 +60,10 @@ drink() {  # id, name, cents, order
 # correctly refused.
 echo "staff:";        staff reception@example.test reception; staff bar@example.test bar
                       staff admin@example.test admin
-echo "participants:"; person 1041 "Amélie Roux" "Full Pass" France
-                      person 1042 "Tomás Herrera" "Party Pass" Spain
-                      person 1043 "Nina Kowalski" "Full Pass Gold" Poland
+echo "participants:"; person 1041 "Amélie Roux" "Full Pass" France Advanced
+                      person 1042 "Tomás Herrera" "Party Pass" Spain Other
+                      person 1043 "Nina Kowalski" "Full Pass Gold" Poland Pro
+                      person 1044 "Karol Chrząszcz" "Full Pass" Poland Pro
 # The real menu, matching DEFAULT_DRINKS in import-roster/firestore.mjs. An
 # emulator that sells different drinks at different prices than production is a
 # rehearsal for the wrong show.

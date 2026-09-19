@@ -617,3 +617,59 @@ struct SyncStateTests {
         #expect(failure(.checkIn).summary.contains("bracelet 1D:94:9D:D4:11:10:80"))
     }
 }
+
+// MARK: - Which level the desk is shown
+
+@Suite("Level on the participant screen")
+struct LevelForDisplayTests {
+
+    private func guest(_ ticketType: String, level: String) -> Participant {
+        Participant(
+            id: ParticipantID("101"), ticketRef: "SB-101", name: "Nina Kowalski",
+            ticketType: ticketType, country: "PL", level: level
+        )
+    }
+
+    @Test("Full Pass and Full Pass Gold show it — the two where classes split")
+    func passTypesThatSplit() {
+        #expect(guest(TicketType.fullPass, level: "Pro").levelForDisplay == "Pro")
+        #expect(guest(TicketType.fullPassGold, level: "Advanced").levelForDisplay == "Advanced")
+    }
+
+    /// Mostly "Other" on these, which is the form's way of saying "not
+    /// applicable". Printing it under a Party Pass is noise on a screen that
+    /// has to stay scannable while somebody waits.
+    @Test("Every other pass type shows nothing, even when a level is recorded")
+    func passTypesThatDoNot() {
+        #expect(guest(TicketType.partyPass, level: "Other").levelForDisplay == nil)
+        #expect(guest(TicketType.partyPassPlus, level: "Advanced").levelForDisplay == nil)
+        #expect(guest(TicketType.jazzPerformanceTrack, level: "Pro").levelForDisplay == nil)
+        #expect(guest(TicketType.eveningTicket, level: "Other").levelForDisplay == nil)
+    }
+
+    @Test("No level recorded shows nothing")
+    func noLevel() {
+        #expect(guest(TicketType.fullPass, level: "").levelForDisplay == nil)
+    }
+
+    /// `ticketType` comes from a hand-maintained Sheet, so a stray space would
+    /// otherwise silently cost a Full Pass holder their level.
+    @Test("Case and surrounding whitespace do not decide it")
+    func tolerantMatching() {
+        #expect(guest("  full pass  ", level: "Pro").levelForDisplay == "Pro")
+        #expect(guest("FULL PASS GOLD", level: "Pro").levelForDisplay == "Pro")
+    }
+
+    /// Exact match, not a prefix one.
+    ///
+    /// The importer normally spares this: `normaliseTicketType` turns
+    /// "Full Pass - Dragon Swing Winner" into "Full Pass" before it ever
+    /// reaches Firestore. This is for the raw strings that bypass it — a
+    /// document edited by hand, or a pass type the Sheet grows that the
+    /// importer keeps verbatim because it matches nothing.
+    @Test("An unnormalised pass type does not count as one of the two")
+    func exactMatchNotPrefix() {
+        #expect(guest("Full Pass - 205 €", level: "Pro").levelForDisplay == nil)
+        #expect(guest("Saturday Party - 50 €", level: "Pro").levelForDisplay == nil)
+    }
+}

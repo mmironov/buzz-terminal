@@ -273,6 +273,13 @@ actor FirebaseTerminalRepository: TerminalRepository {
         return snapshot.documents.compactMap(Participant.init(document:))
     }
 
+    /// No ordering and no index: a handful of documents, sorted by nobody,
+    /// looked up by pass type once they are in memory.
+    func braceletColours() async throws -> [BraceletColour] {
+        let snapshot = try await db.collection(Fire.Collection.braceletColours).getDocuments()
+        return snapshot.documents.compactMap(BraceletColour.init(document:))
+    }
+
     // MARK: - Bracelets
 
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant? {

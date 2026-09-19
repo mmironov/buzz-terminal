@@ -38,6 +38,13 @@ protocol TerminalRepository: Sendable {
     /// `braceletId == nil`. The check-in list.
     func awaitingCheckIn() async throws -> [Participant]
 
+    /// Which colour of wristband each pass type gets, as organisers set it.
+    ///
+    /// Loaded with the catalogue rather than per participant: it is a handful
+    /// of documents that change about twice a festival, and a point read on
+    /// every check-in would be a round trip for something already in hand.
+    func braceletColours() async throws -> [BraceletColour]
+
     // MARK: Bracelets
     /// The account paired to this chip, or `nil` if the chip is unassigned.
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant?

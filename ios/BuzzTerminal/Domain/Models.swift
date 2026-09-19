@@ -223,6 +223,13 @@ struct Participant: Identifiable, Hashable, Sendable {
     /// One of `TicketType.all`, or whatever the Sheet said.
     var ticketType: String
     var country: String
+    /// The DANCE level — `Intermediate`, `Advanced`, `Pro`, `Other`, or empty.
+    ///
+    /// Nothing to do with `StaffRole`, and never a permission: it is imported
+    /// because a wristband colour can differ by level within a pass type. Only
+    /// the single word is stored; the Sheet's paragraph of class description
+    /// stays in the Sheet.
+    var level: String = ""
 
     var source: Source = .sheet
     /// Set only on door-sold tickets.
@@ -243,6 +250,27 @@ struct Participant: Identifiable, Hashable, Sendable {
 
     /// The check-in list is everybody this is true for.
     var isAwaitingCheckIn: Bool { braceletId == nil }
+
+    /// The dance level, when it is worth putting in front of somebody.
+    ///
+    /// Only Full Pass and Full Pass Gold. Those are the two where the classes
+    /// actually split by level; on every other pass type the answer is mostly
+    /// "Other" — the form's own way of saying "not applicable" — and printing
+    /// that under a Party Pass is noise on the one screen that has to stay
+    /// scannable while somebody waits.
+    ///
+    /// Matched case- and whitespace-insensitively, because `ticketType` comes
+    /// from a hand-maintained Sheet and `"Full Pass "` failing to match would
+    /// be invisible.
+    var levelForDisplay: String? {
+        guard !level.isEmpty else { return nil }
+        let clean = { (value: String) in
+            value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        let splitsByLevel = [TicketType.fullPass, TicketType.fullPassGold].map(clean)
+        guard splitsByLevel.contains(clean(ticketType)) else { return nil }
+        return level
+    }
 
     var isEveningTicket: Bool { source == .evening }
 

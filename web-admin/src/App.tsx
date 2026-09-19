@@ -1,12 +1,13 @@
 import { useState } from 'react';
 
 import { Bar } from './Bar';
+import { Bracelets } from './Bracelets';
 import { Participants } from './Participants';
 import { SignIn } from './SignIn';
 import { usingEmulator } from './firebase';
 import { useAuth } from './useAuth';
 
-type Tab = 'participants' | 'bar';
+type Tab = 'participants' | 'bar' | 'bracelets';
 
 export function App() {
   const { state, signIn, leave } = useAuth();
@@ -94,10 +95,20 @@ export function App() {
         >
           Bar
         </button>
+        <button
+          className="tab"
+          role="tab"
+          aria-selected={tab === 'bracelets'}
+          onClick={() => setTab('bracelets')}
+        >
+          Bracelets
+        </button>
       </nav>
 
       <main className="page">
-        {tab === 'participants' ? <Participants uid={state.uid} /> : <Bar />}
+        {tab === 'participants' ? <Participants uid={state.uid} /> : null}
+        {tab === 'bar' ? <Bar /> : null}
+        {tab === 'bracelets' ? <Bracelets /> : null}
       </main>
     </div>
   );
