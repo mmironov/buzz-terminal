@@ -58,7 +58,11 @@ enum Screen: Hashable, Sendable {
     // Reception
     case receptionHome
     case assign
-    /// Selling a door ticket, reached from the check-in screen.
+    /// A chip nobody owns. A dead end on purpose: reading a bracelet answers
+    /// "whose is this?", and the answer "nobody's" ends there. Pairing one is
+    /// its own flow, started deliberately from the home screen.
+    case unassignedBracelet
+    /// Selling a door ticket, on a bracelet that has just been scanned.
     case assignEvening
     case participant
     case blocked

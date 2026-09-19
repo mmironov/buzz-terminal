@@ -114,12 +114,16 @@ final class AppModel {
 
     struct ScanState: Equatable {
         enum Purpose: Equatable {
-            /// Bracelet-first: whoever the chip turns out to belong to.
-            case checkInOrTopUp
+            /// "Whose is this?" — and nothing more. An unowned chip ends the
+            /// flow rather than sliding into a check-in.
+            case identify
             /// Participant-first: a guest is already chosen and this chip is
             /// about to become theirs. A chip that belongs to somebody else is
             /// refused here rather than resolved.
             case assignToSelected
+            /// A door sale: mint an anonymous evening ticket onto a fresh chip.
+            /// A chip that already belongs to somebody is refused.
+            case eveningTicket
             case payment
         }
         var purpose: Purpose
@@ -383,13 +387,32 @@ final class AppModel {
                 // Handled above, before `participant` was replaced.
                 break
 
-            case .checkInOrTopUp:
+            case .eveningTicket:
+                if let found {
+                    // Minting a ticket onto an owned chip would either be
+                    // refused by the rules or, worse, hand a guest's balance to
+                    // an anonymous door sale. Refuse it here, by name.
+                    bracelet = nil
+                    participant = nil
+                    ScanFeedback.shared.problem()
+                    errorMessage = "This bracelet already belongs to \(found.name). Use a fresh one."
+                } else {
+                    eveningSelection = Evening.today ?? .friday
+                    screen = .assignEvening
+                    ScanFeedback.shared.success()
+                }
+
+            case .identify:
                 search = ""
                 if found == nil {
-                    // Not an error: an unpaired chip at reception is a check-in
-                    // about to happen, which is the desk's whole job.
-                    screen = .assign
-                    ScanFeedback.shared.success()
+                    // A dead end, deliberately. Reading a bracelet asks "whose
+                    // is this?" and this is the answer; it is not the opening
+                    // move of a check-in. Pairing a chip to a guest is its own
+                    // flow, started on purpose from the home screen, because a
+                    // permanent pairing should never be something an operator
+                    // fell into by scanning a wristband from the wrong pile.
+                    screen = .unassignedBracelet
+                    ScanFeedback.shared.problem()
                 } else if found?.isBlocked == true {
                     screen = .blocked
                     ScanFeedback.shared.blocked()
@@ -423,7 +446,7 @@ final class AppModel {
     /// What the participant screen's primary button should do right now.
     /// The rule itself is pure and lives on `CheckInAction`.
     var participantAction: CheckInAction? {
-        participant.map { CheckInAction.decide(for: $0, braceletInHand: bracelet) }
+        participant.map(CheckInAction.decide(for:))
     }
 
     /// Enter check-in from the home screen, with no chip read yet.
@@ -535,9 +558,15 @@ final class AppModel {
 
     // MARK: - Reception: door sales
 
-    func goToAssignEvening() {
-        eveningSelection = Evening.today ?? .friday
-        screen = .assignEvening
+    /// Start a door sale: read a chip, then pick the evening.
+    ///
+    /// Chip first because an evening ticket is *minted onto* a bracelet in a
+    /// single write — there is no ticket to sell until there is a wristband to
+    /// put it on. The evening is chosen afterwards, on `AssignEveningTicketView`.
+    func beginEveningTicketSale() {
+        participant = nil
+        bracelet = nil
+        beginScan(for: .eveningTicket)
     }
 
     /// Sell an evening ticket on the bracelet that was just scanned.
@@ -708,7 +737,7 @@ final class AppModel {
             self.receipt = nil
         case .topUp:
             self.receipt = nil
-            beginScan(for: .checkInOrTopUp)
+            beginScan(for: .identify)
         case .checkIn:
             self.receipt = nil
             goToTopUp()

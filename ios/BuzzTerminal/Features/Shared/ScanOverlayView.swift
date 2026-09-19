@@ -55,16 +55,26 @@ struct ScanOverlayView: View {
     /// sentence (see `AppModel.scanPrompt`); here it is what the prototype panel
     /// is read against.
     private var title: String {
-        guard case .assignToSelected = state.purpose else { return "Hold the bracelet" }
-        return "Pair a bracelet"
+        switch state.purpose {
+        case .assignToSelected: "Pair a bracelet"
+        case .eveningTicket: "Fresh bracelet"
+        case .identify, .payment: "Hold the bracelet"
+        }
     }
 
     private var subtitle: String {
-        guard case .assignToSelected = state.purpose, let guest = model.participant else {
-            return "Against the back of the phone, near the top"
+        switch state.purpose {
+        case .assignToSelected:
+            guard let guest = model.participant else { return Self.genericSubtitle }
+            return "This bracelet becomes \(guest.name)’s for the whole festival"
+        case .eveningTicket:
+            return "It will be sold as tonight’s door ticket"
+        case .identify, .payment:
+            return Self.genericSubtitle
         }
-        return "This bracelet becomes \(guest.name)’s for the whole festival"
     }
+
+    private static let genericSubtitle = "Against the back of the phone, near the top"
 
     private var target: some View {
         ZStack {
@@ -241,7 +251,7 @@ private struct CancelStyle: ButtonStyle {
 }
 
 #Preview("Waiting") {
-    ScanOverlayView(state: .init(purpose: .checkInOrTopUp))
+    ScanOverlayView(state: .init(purpose: .identify))
         .environment(AppModel())
 }
 

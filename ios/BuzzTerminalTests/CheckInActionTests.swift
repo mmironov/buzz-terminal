@@ -12,7 +12,8 @@ import Testing
 //    • offering "Add money" to somebody with no bracelet takes cash for an
 //      account nothing can spend from;
 //    • offering "Assign bracelet" to somebody already paired promises a write
-//      the security rules refuse, after the desk has said yes.
+//      the security rules refuse, after the desk has said yes — and pairing is
+//      permanent, so there is no undo at the desk either way.
 // ═══════════════════════════════════════════════════════════════════════════
 
 @Suite("Check-in action")
@@ -32,49 +33,35 @@ struct CheckInActionTests {
         )
     }
 
-    @Test("No bracelet and nothing scanned: the desk has to read a chip")
-    func awaitingWithNothingInHand() {
-        #expect(CheckInAction.decide(for: guest(), braceletInHand: nil) == .scanAndAssign)
-    }
-
-    @Test("No bracelet but a chip was already read: pair it without scanning twice")
-    func awaitingWithChipInHand() {
-        #expect(
-            CheckInAction.decide(for: guest(), braceletInHand: chip) == .assignInHand(chip)
-        )
+    @Test("No bracelet: the desk has to read a chip")
+    func awaiting() {
+        #expect(CheckInAction.decide(for: guest()) == .scanAndAssign)
     }
 
     @Test("Already paired: the only thing left to do is add money")
     func checkedIn() {
-        #expect(CheckInAction.decide(for: guest(bracelet: chip), braceletInHand: chip) == .topUp)
+        #expect(CheckInAction.decide(for: guest(bracelet: chip)) == .topUp)
     }
 
-    /// The case that would quietly lose money. A guest is checked in, reception
-    /// picks up somebody else's wristband, and the screen must not offer to
-    /// re-point it: pairing is permanent, the rules allow `create` and never
-    /// `update`, and a button promising otherwise is a refusal waiting to happen
-    /// at the desk.
-    @Test("Paired guest with a different chip in hand still gets a top-up, never a re-pairing")
-    func checkedInWithForeignChip() {
-        #expect(
-            CheckInAction.decide(for: guest(bracelet: chip), braceletInHand: otherChip) == .topUp
-        )
+    /// An evening ticket is a participant like any other once it exists: door
+    /// sales are anonymous, but the wristband is theirs and it takes money.
+    @Test("A door-sold evening ticket behaves like any other paired guest")
+    func eveningTicket() {
+        var sold = guest(bracelet: otherChip)
+        sold.source = .evening
+        sold.evening = .friday
+        #expect(CheckInAction.decide(for: sold) == .topUp)
     }
 
-    @Test("Only the pairing actions are irreversible")
+    @Test("Only the pairing action is irreversible")
     func irreversibility() {
         #expect(CheckInAction.topUp.isCheckIn == false)
         #expect(CheckInAction.scanAndAssign.isCheckIn)
-        #expect(CheckInAction.assignInHand(chip).isCheckIn)
     }
 
-    /// The in-hand label names the chip. This is the operator's last chance to
-    /// notice they are holding the wrong wristband, so the id has to be on the
-    /// button rather than only in the small print.
-    @Test("The in-hand label names the bracelet")
+    @Test("Each action carries its own button label")
     func labels() {
         #expect(CheckInAction.topUp.label == "Add money")
         #expect(CheckInAction.scanAndAssign.label == "Scan and assign bracelet")
-        #expect(CheckInAction.assignInHand(chip).label == "Assign bracelet 04:B4:2F:11")
     }
 }

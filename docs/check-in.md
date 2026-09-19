@@ -1,68 +1,88 @@
-# Check-in has two ways in
+# Every action starts on purpose
 
-Reception's day has two shapes. A guest walks up with a wristband already on and
-wants to know what is on it, or top it up. Or a guest walks up with nothing and
-needs to be checked in. Those start differently, so the home screen offers both:
+Three things the desk does, three ways to start, all of them chosen by name on
+the home screen:
 
 | | |
 | --- | --- |
-| **Read bracelet** | chip first — the app finds out who it belongs to |
-| **Check in new participant** | name first — search the roster, then pair a chip |
+| **Read bracelet** | whose is this — and nothing else |
+| **Check in new participant** | search the roster, then pair a chip |
+| **Sell evening ticket** | read a fresh chip, then pick the evening |
 
 Admins see the same screen. `StaffRole(claim:)` maps the `admin` claim to
 `.reception`, because that is exactly what the rules grant an organiser, so there
 is no separate admin home to keep in step.
 
+The shape of this is one rule: **nothing pairs a bracelet unless the operator
+said they were pairing a bracelet.** Pairing is permanent — the rules allow
+`create` on `bracelets/{uid}` and never `update`, deliberately — so it must never
+be something somebody arrives at, only something they chose.
+
 ---
 
-## Selecting a name does not pair anything
+## Reading a bracelet is a question, not a flow
 
-This is the change that mattered. Tapping a row used to call `assignBracelet`
-immediately — one tap, in a scrolling list of a hundred-odd similar-looking
-names, committing a pairing that **cannot be undone by anybody at the desk**. The
-rules allow `create` on `bracelets/{uid}` and never `update`, deliberately, so a
-mis-tap meant the wrong guest owned that wristband for the festival and the fix
-was an organiser deleting a document.
+Reading an unowned chip used to drop straight into the check-in list. That made a
+permanent pairing reachable by scanning a wristband off the wrong pile, two taps
+from a scan nobody meant as a check-in.
+
+Now it is a dead end. `UnassignedBraceletView` states the fact, names the chip,
+and offers **Done** — the same shape as `BlockedBraceletView`, for the same
+reason: the screen answers the question that was asked, and the next move belongs
+somewhere the operator picks deliberately.
+
+It plays the *problem* tone rather than the success one. An operator scanning a
+wristband expecting a balance and getting nobody has hit a snag, and the sound
+should say so.
+
+## Selecting a name does not pair anything either
+
+Tapping a row used to call `assignBracelet` immediately — one tap, in a scrolling
+list of a hundred-odd similar-looking names, committing something **nobody at the
+desk can undo**. A mis-tap meant the wrong guest owned that wristband for the
+festival and the fix was an organiser deleting a document.
 
 Now a tap opens the guest. The pairing needs a second, deliberate action on a
 screen showing the name at 32pt, the ticket reference, and a sentence saying it
 cannot be undone.
 
-## One list, one participant screen
-
-Both entry points land on the same two screens, because they are the same job.
-The differences are small and derived, never duplicated:
-
-- The **list** changes its title and subtitle, and hides *Assign evening ticket*
-  when no chip has been read — an evening ticket is minted onto a bracelet in one
-  write, so with nothing in hand that button opens a screen whose confirm would
-  silently do nothing.
-- The **participant screen** asks `CheckInAction` what to offer.
+## The participant screen asks `CheckInAction`
 
 ```swift
-static func decide(for participant: Participant, braceletInHand: BraceletID?) -> CheckInAction {
-    guard participant.isAwaitingCheckIn else { return .topUp }
-    guard let braceletInHand else { return .scanAndAssign }
-    return .assignInHand(braceletInHand)
+static func decide(for participant: Participant) -> CheckInAction {
+    participant.isAwaitingCheckIn ? .scanAndAssign : .topUp
 }
 ```
-
-Three outcomes, and the order matters:
 
 | State | Button |
 | --- | --- |
 | Already paired | **Add money** |
-| Awaiting, chip already read | **Assign bracelet 04:A1:9C:7E** |
-| Awaiting, nothing read | **Scan and assign bracelet** |
+| Awaiting | **Scan and assign bracelet** |
 
-`assignInHand` is why the chip-first route did not become a double scan. It also
-names the chip on the button, which is the operator's last chance to notice they
-are holding the wrong wristband.
+There was a third case, `assignInHand`, which paired a chip that had already been
+read without scanning twice. Reading a chip no longer leads to the check-in list,
+so no route puts a bracelet in hand before a guest is chosen, and the case was
+deleted rather than left unreachable — the point of the flat `Screen` enum is
+that the states in this app are the ones it can actually be in.
 
-The first line is the one worth keeping: a guest who **already** has a bracelet
-gets a top-up even when a different chip is in hand. Offering to re-point it would
-be promising a write the server refuses — and, if it somehow succeeded, silently
-moving somebody's balance.
+A thin rule for a type, but it keeps the button label and the footnote copy out
+of a `ViewBuilder` and under test, and offering *Add money* to somebody with no
+bracelet would take cash for an account nothing can spend from.
+
+## Door sales scan first
+
+An evening ticket is minted **onto** a bracelet in a single write: there is no
+ticket to sell until there is a wristband to put it on. So *Sell evening ticket*
+reads a chip, then shows the evening picker, with tonight preselected.
+
+This used to hang off the bottom of the check-in list, which only worked because
+that list was reached by scanning. Once reading a chip stopped leading there, the
+button would have been unreachable and door sales would have quietly vanished
+from the app — worth stating, because nothing would have failed loudly.
+
+A chip that already belongs to somebody is refused during that scan, by name.
+Minting an anonymous ticket onto an owned wristband would either be refused by
+the rules or, worse, hand a guest's balance to a door sale.
 
 ## A chip that belongs to somebody else
 
@@ -101,28 +121,38 @@ the equivalent sentence instead.
 
 Driven through the real UI on the Simulator against fixtures, 2026-09-19:
 
-1. **Name first.** Home → *Check in new participant* → search → *Select* Nina
-   Kowalski → the screen shows an accent *Awaiting check-in* band, her ticket ref
-   and country, and *Scan and assign bracelet*.
-2. **Refusal.** Presenting Marta's chip was refused by name, the screen stayed on
-   Nina, and the button stayed *Scan and assign bracelet* — nothing left in hand.
-3. **Happy path.** A fresh chip paired; the receipt named her, the ticket and the
-   bracelet.
-4. **Reading it back** resolved to Nina, checked in, green band, *Add money*.
-5. **Chip first.** Home → *Read bracelet* → fresh chip → *Who is this?* with the
-   chip in the subtitle and the door-ticket button present → *Select* Sofia
-   Ferreira → **no second scan**: the button read *Assign bracelet 04:A1:9C:7E*
-   and paired on one tap.
-6. **Back** from a participant returns to the list with the search text intact.
+1. **Name first.** Home → *Check in new participant* → *Select* Nina Kowalski →
+   accent *Awaiting check-in* band, her ticket ref and country, and *Scan and
+   assign bracelet*. A fresh chip paired; the receipt named her, the ticket and
+   the bracelet.
+2. **Refusal on check-in.** Presenting Marta's chip was refused by name, the
+   screen stayed on Nina, and the button stayed *Scan and assign bracelet* —
+   nothing left in hand.
+3. **Reading a paired chip** resolved to Marta, checked in, green band, her
+   balance, *Add money*.
+4. **Reading an unpaired chip** showed *Not assigned · Nobody has this bracelet*
+   with the chip id and a single *Done*. **No list, no check-in.**
+5. **Door sale.** Home → *Sell evening ticket* → fresh chip → evening picker with
+   Saturday preselected → *Assign · Saturday* → receipt: `Evening #1`, valid
+   Saturday, on that bracelet.
+6. **Refusal on a door sale.** Presenting Marta's chip was refused by name and
+   returned to home with nothing in hand.
+7. **Back** from a participant returns to the check-in list with the search text
+   intact.
 
 ## Still open
 
-- **Android is unchanged.** It still pairs on the row tap, which is the behaviour
-  this replaced. `CheckInAction` is pure and should port to `:domain` more or less
-  mechanically, as `SyncState` did.
-- **Never run against production**, on either platform. The refusal path in
-  particular resolves through the reverse-lookup collection, which behaves
+- **Android is unchanged.** It still pairs on the row tap and still leads from an
+  unpaired chip into the list — both behaviours this replaced. `CheckInAction` is
+  pure and should port to `:domain` more or less mechanically, as `SyncState` did.
+- **Never run against production**, on either platform. The refusal paths in
+  particular resolve through the reverse-lookup collection, which behaves
   differently offline than the fixtures do.
 - **The search only covers people awaiting check-in.** Looking up a guest who is
   already checked in still means reading their bracelet. That is fine at the desk
   and wrong the moment somebody loses a wristband.
+- **An evening ticket sale cannot be started from a chip already in hand.** The
+  operator taps *Sell evening ticket* and scans; if they scanned first out of
+  habit, they read the same wristband twice. Cheap to fix by offering the sale on
+  the unassigned-bracelet screen, and deliberately not done — that screen exists
+  to be a dead end, and putting an action on it starts eroding the rule.

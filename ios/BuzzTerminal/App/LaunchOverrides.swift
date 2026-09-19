@@ -204,7 +204,7 @@ extension AppModel {
         }
 
         if overrides.scanning {
-            beginScan(for: role == .bar ? .payment : .checkInOrTopUp)
+            beginScan(for: role == .bar ? .payment : .identify)
         }
     }
 

@@ -1,7 +1,11 @@
 import SwiftUI
 
-/// Selling a pass on the door. Reached from the check-in screen, on a bracelet
-/// that has already been scanned.
+/// Selling a pass on the door, on the fresh bracelet that was just scanned.
+///
+/// Reached from the home screen: *Sell evening ticket* reads a chip first,
+/// because a ticket is minted *onto* a bracelet in a single write — there is no
+/// ticket to sell until there is a wristband to put it on. A chip that already
+/// belongs to somebody is refused during that scan and never reaches this screen.
 ///
 /// Deliberately the shortest screen in the app: pick an evening, confirm. Nothing
 /// is asked of the guest, because evening tickets are anonymous — the whole point
@@ -15,7 +19,10 @@ struct AssignEveningTicketView: View {
                 Text("Evening ticket")
                     .font(.sbHeading(26))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button("Cancel") { model.screen = .assign }
+                // Home, not the check-in list: the scan that reached this screen
+                // started from home, and abandoning a door sale should not drop
+                // the operator into an unrelated flow holding a loose chip.
+                Button("Cancel") { model.goHome() }
                     .buttonStyle(.sbGhost)
             }
 

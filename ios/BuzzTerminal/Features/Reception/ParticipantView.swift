@@ -74,9 +74,6 @@ struct ParticipantView: View {
             model.goToTopUp()
         case .scanAndAssign:
             model.scanToAssignBracelet()
-        case .assignInHand:
-            guard let guest = model.participant else { return }
-            Task { await model.assign(to: guest) }
         }
     }
 
@@ -85,8 +82,6 @@ struct ParticipantView: View {
         switch action {
         case .topUp:
             return "This bracelet is permanently paired with \(name). Checking in someone else needs a new bracelet."
-        case .assignInHand(let bracelet):
-            return "Bracelet \(bracelet.rawValue) will be paired with \(name) for the whole festival. This cannot be undone."
         case .scanAndAssign:
             return "Check the name, then hold a fresh bracelet to the phone. The pairing is permanent, so the wrong wristband cannot be taken back."
         }
@@ -154,16 +149,6 @@ struct ParticipantView: View {
 #Preview("Awaiting check-in") {
     let model = AppModel()
     model.role = .reception
-    model.participant = SampleData.awaitingCheckIn.first
-    return ParticipantView()
-        .environment(model)
-        .background(Color.sbBackground)
-}
-
-#Preview("Chip already in hand") {
-    let model = AppModel()
-    model.role = .reception
-    model.bracelet = SampleData.braceletA
     model.participant = SampleData.awaitingCheckIn.first
     return ParticipantView()
         .environment(model)

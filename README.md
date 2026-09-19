@@ -55,7 +55,7 @@ none yet:
 
 | Chip | What it exercises |
 | --- | --- |
-| `04:A1:9C:7E` | unassigned → check-in flow |
+| `04:A1:9C:7E` | unassigned → the "nobody has this" dead end; also the chip to pair in a check-in or a door sale |
 | `04:B4:2F:11` | Marta, 23.50 € → top-up and successful payment |
 | `04:C8:5D:03` | Jonas, 2.00 € → declined payment (insufficient funds) |
 | `04:D2:0B:6A` | Elena, blocked → blocked screens |
@@ -525,7 +525,7 @@ equivalent is "The Android app" above — it is behind on more than this.
 | Balances | ✅ ledger + rules-enforced balance. The `-sbBackend memory` path is client-side arithmetic | — |
 | Offline | ✅ real: Firestore's durable queue, real connectivity, and a reconciliation screen for refused replays — `docs/offline.md` | — |
 | NFC | ✅ Core NFC reads real bracelets on a device; the simulated picker remains where hardware is absent, and behind `-sbScanner simulated` | — |
-| Check-in | ✅ two ways in — read a bracelet, or search by name and pair afterwards. Selecting a name no longer pairs anything — `docs/check-in.md` | Android still pairs on the row tap |
+| Check-in | ✅ nothing pairs a bracelet unless the operator chose to pair one. Reading an unowned chip is a dead end; check-in and door sales each start from the home screen — `docs/check-in.md` | Android still pairs on the row tap |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
 | Localisation | English strings inline; `"23.50 €"` is locale-independent by design | later |
 | App icon | generated, on-brand, deliberately plain — `ios/scripts/makeicon.swift` redraws it | when someone wants real artwork |

@@ -1,32 +1,27 @@
 import SwiftUI
 
-/// The check-in list, reached two ways.
+/// The check-in list: find the participant, then pair their bracelet.
 ///
-/// Either a fresh chip was read and now needs a name, or the desk started from
-/// "Check in new participant" and has no chip yet. Same roster, same search, same
-/// rows — the only differences are the subtitle and whether a door ticket can be
-/// sold, which needs a bracelet to pair to.
+/// Only one way in now — "Check in new participant" on the home screen. Reading
+/// a chip no longer leads here, so there is never a bracelet in hand at this
+/// point, and the door-ticket shortcut that used to live at the bottom has moved
+/// to the home screen where it starts with its own scan.
 struct AssignBraceletView: View {
     @Environment(AppModel.self) private var model
-
-    /// True when a chip was read before the list opened.
-    private var hasChipInHand: Bool { model.bracelet != nil }
 
     var body: some View {
         @Bindable var model = model
 
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: SBSpace.x2) {
-                Text(hasChipInHand ? "Who is this?" : "Check in")
+                Text("Check in")
                     .font(.sbHeading(26))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button("Cancel") { model.goHome() }
                     .buttonStyle(.sbGhost)
             }
 
-            Text(hasChipInHand
-                 ? "Bracelet \(model.braceletLabel) · not assigned yet"
-                 : "Find the participant, then pair their bracelet")
+            Text("Find the participant, then pair their bracelet")
                 .font(.sbBody(11.5))
                 .foregroundStyle(.sbInk(0.55))
                 .padding(.top, 2)
@@ -38,26 +33,6 @@ struct AssignBraceletView: View {
 
             candidateList
                 .padding(.top, 6)
-
-            // Door sales. Below the list rather than above it, because scanning a
-            // fresh chip usually means somebody from the roster — the door ticket
-            // is the less common case and should not be the first thing thumbed.
-            //
-            // Hidden without a chip in hand: an evening ticket is minted *onto* a
-            // bracelet in one write, so with nothing scanned the button would open
-            // a screen whose confirm silently does nothing.
-            if hasChipInHand {
-                VStack(alignment: .leading, spacing: 0) {
-                    SBDivider(weight: SBRule.hairline)
-                    Button("Assign evening ticket") { model.goToAssignEvening() }
-                        .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 14))
-                        .padding(.top, 10)
-                    Text("Sold at the door · no name needed")
-                        .font(.sbBody(11))
-                        .foregroundStyle(.sbInk(0.5))
-                        .padding(.top, 6)
-                }
-            }
         }
         .padding(.horizontal, 18)
         .padding(.top, SBSpace.x4)
@@ -145,16 +120,6 @@ struct SBSearchField: View {
                 Rectangle().stroke(Color.sbDivider, lineWidth: SBRule.hairline)
             }
     }
-}
-
-#Preview("Chip in hand") {
-    let model = AppModel()
-    model.role = .reception
-    model.bracelet = SampleData.braceletA
-    model.awaitingCheckIn = SampleData.awaitingCheckIn
-    return AssignBraceletView()
-        .environment(model)
-        .background(Color.sbBackground)
 }
 
 #Preview("By name") {
