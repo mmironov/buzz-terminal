@@ -308,9 +308,17 @@ export function assertTouchesOnlyImportOwnedFields(data) {
   }
 }
 
-/** Human-readable field changes for the dry-run output. */
+/**
+ * Human-readable field changes for the dry-run output.
+ *
+ * Every roster field belongs here, not a chosen few. Adding `level` to the
+ * import made all 105 rows show as updates with an empty explanation beside
+ * them, which is the worst thing a dry run can say: something is about to be
+ * rewritten and here is no reason. A field missing from this list is invisible
+ * at exactly the moment somebody is deciding whether to type --apply.
+ */
 function describeChanges(current, roster) {
-  const interesting = ['name', 'ticketType', 'country', 'ticketRef'];
+  const interesting = ['name', 'ticketType', 'country', 'ticketRef', 'level'];
   return interesting
     .filter((k) => current[k] !== roster[k])
     .map((k) => `${k}: ${JSON.stringify(current[k] ?? null)} → ${JSON.stringify(roster[k])}`);

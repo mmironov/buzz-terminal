@@ -194,6 +194,9 @@ test('THE IMPORTANT ONE: a corrected name does not disturb festival state', () =
     name: 'Amelie Roux',
     ticketType: 'Full pass',
     country: 'France',
+    // Same level as the Sheet row, so the name really is the only difference.
+    // Leaving it out made this test assert two changes and call it one.
+    level: 'Intermediate - you have been dancing Lindy Hop for at least 1 year',
   });
   const existing = new Map([
     [
