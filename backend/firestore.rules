@@ -242,6 +242,49 @@ service cloud.firestore {
           && entry.staffUid == request.auth.uid;
       }
 
+      // ── Preordered merch ─────────────────────────────────────────────────
+      //
+      // A subcollection rather than fields on the participant, and that is the
+      // entire point of it being here. Every field on a participant document is
+      // readable by every signed-in terminal, the bar included, which is why
+      // the Sheet's t-shirt columns were excluded from the import in the first
+      // place. They are imported now, into a document `isBar()` cannot read.
+      //
+      // A bartender pouring a gin and tonic has no business knowing what size
+      // somebody wears. Reception hands the shirt over, so reception reads it.
+      match /merch/{merchId} {
+
+        // Not `canRead()`. The narrower rule is the feature.
+        allow read: if isReception();
+
+        // The order comes from the Sheet, through the Admin SDK, which bypasses
+        // rules entirely. No client creates one, and no client deletes one —
+        // the record that a shirt was handed over outlives the festival.
+        allow create, delete: if false;
+
+        // The one thing a terminal may do: say it was handed over, or take that
+        // back. Reversible on purpose, unlike a bracelet pairing — the cost of
+        // a mis-tap here is a guest being told their shirt is already gone, and
+        // the fix should not need an organiser with a database open.
+        allow update: if isReception() && isCollectionChange();
+
+        function isCollectionChange() {
+          let after = request.resource.data;
+          return after.diff(resource.data).affectedKeys()
+                   .hasOnly(['collectedAt', 'collectedBy'])
+            // What was ordered belongs to the Sheet. A terminal that could edit
+            // `item` could turn a tote bag into a t-shirt.
+            && (after.collectedAt == null
+                  ? after.get('collectedBy', null) == null
+                  // Server clock. A phone with a wrong date must not be able to
+                  // record a collection that happened before the festival.
+                  : (after.collectedAt == request.time
+                       && after.collectedBy == request.auth.uid))
+            // Nothing is collected that was never ordered.
+            && resource.data.get('item', 'none') != 'none';
+        }
+      }
+
       // ── The ledger ───────────────────────────────────────────────────────
 
       match /transactions/{txId} {

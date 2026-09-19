@@ -57,6 +57,23 @@ protocol TerminalRepository: Sendable {
     /// transfer their balance, so the security rules forbid it outright.
     func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant
 
+    // MARK: Merch
+
+    /// What this person preordered, or nil if they ordered nothing.
+    ///
+    /// A separate call rather than a field on `Participant` because it lives in
+    /// a subcollection the bar cannot read — see `docs/merch.md`. A bar terminal
+    /// calling this gets nil rather than an error, so the bar's screens never
+    /// have to know the rule exists.
+    func merchOrder(for participant: Participant) async throws -> MerchOrder?
+
+    /// Record that the merch was handed over, or undo that.
+    ///
+    /// Reversible, unlike a bracelet pairing: the cost of a mis-tap is a guest
+    /// being told their shirt is already gone, and fixing that should not need
+    /// an organiser with a database open.
+    func setMerchCollected(_ collected: Bool, for participant: Participant) async throws -> MerchOrder
+
     /// Take cash at reception and credit the account.
     /// Must be atomic server-side — two reception desks may top up at once.
     func topUp(bracelet: BraceletID, amount: Money) async throws -> Participant
@@ -77,6 +94,7 @@ enum TerminalError: Error, Equatable, LocalizedError {
     case braceletAlreadyPaired
     case eveningSequenceExhausted
     case braceletBlocked
+    case noMerchOrdered
     case insufficientFunds(balance: Money, required: Money)
     case tooManyDrinksInOneRound(limit: Int)
     case offline
@@ -103,6 +121,8 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "Could not allocate an evening ticket number. Try again."
         case .braceletBlocked:
             "This bracelet is blocked. An organiser must lift the block."
+        case .noMerchOrdered:
+            "There is no merch order for this participant."
         case .insufficientFunds(let balance, let required):
             "Balance is \(balance) but the round costs \(required)."
         case .tooManyDrinksInOneRound(let limit):

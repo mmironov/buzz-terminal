@@ -84,6 +84,36 @@ Notes on specific fields:
   ask about afterwards — and the rules pin `blockedAt` to `request.time`, so it is
   the server's clock.
 
+## `participants/{participantId}/merch/order`
+
+Exactly one document, at a fixed id, for the t-shirt or tote bag somebody
+preordered when they registered.
+
+```
+participants/tkt-10432/merch/order
+  // ── from the Sheet, import-only ──
+  item:         "shirt" | "tote" | "shirtAndTote" | "none" | "unknown"
+  size:         null | "M"
+  colour:       null | "Sky Blue"
+  orderHash:    "4b1e…"
+  importedAt:   <timestamp>
+
+  // ── festival state: from the terminals ──
+  collectedAt:  null | <server timestamp>
+  collectedBy:  null | "<uid of whoever was on the desk>"
+```
+
+**A subcollection rather than fields on the participant, and that is the point.**
+`allow read` on a participant is `canRead()` — every signed-in role, the bar
+included. This document's rule is `isReception()`. A bartender has no business
+knowing what size somebody wears, which is why the Sheet's t-shirt columns were
+excluded from the import until there was somewhere safe to put them.
+
+A fixed document id means a point read rather than a query: no index, and it
+resolves from the offline cache. `collectedAt` and `collectedBy` are festival
+state and never import-owned, for the same reason `balance` is not — see
+`docs/merch.md`.
+
 ## `participants/{participantId}/transactions/{clientTxId}`
 
 Append-only ledger. Immutable once written — a dispute at the bar is answered by

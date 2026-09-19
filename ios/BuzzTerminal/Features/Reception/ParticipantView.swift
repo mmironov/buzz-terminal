@@ -47,6 +47,25 @@ struct ParticipantView: View {
                     .padding(.top, 6)
             }
 
+            if let merch = model.merch, merch.hasSomethingToCollect {
+                merchSection(merch)
+                    .padding(.top, SBSpace.x4)
+            } else if model.merchUnavailable {
+                // Said out loud, because "nothing ordered" and "could not find
+                // out" are the same blank space otherwise — and the difference
+                // is a guest going home without a t-shirt they paid for.
+                VStack(alignment: .leading, spacing: 0) {
+                    SBDivider(weight: SBRule.hairline)
+                    Text("Preorders could not be read. Check with an organiser before telling anybody they ordered nothing.")
+                        .font(.sbBody(11.5))
+                        .foregroundStyle(.sbAccent800)
+                        .sbLineHeight(1.5, size: 11.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 10)
+                }
+                .padding(.top, SBSpace.x4)
+            }
+
             Spacer(minLength: SBSpace.x4)
 
             VStack(alignment: .leading, spacing: 0) {
@@ -66,6 +85,46 @@ struct ParticipantView: View {
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, 20)
+    }
+
+    /// Preordered merch, and the one thing to do with it.
+    ///
+    /// Only drawn when something was actually ordered — 28 of 105 people on the
+    /// real Sheet — so the other 77 screens are unchanged rather than carrying
+    /// an empty "Merch: none" row that trains everybody to stop reading.
+    ///
+    /// Collected state is a filled band rather than a tick beside the text: the
+    /// question at the desk is "have they had it?", asked across a counter, and
+    /// it should be answerable from the colour alone.
+    private func merchSection(_ merch: MerchOrder) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SBDivider(weight: SBRule.hairline)
+
+            HStack(alignment: .firstTextBaseline, spacing: SBSpace.x2) {
+                SBKicker(text: "Preordered")
+                Spacer(minLength: 0)
+                if let collected = merch.collectedLabel {
+                    Text(collected)
+                        .font(.sbBody(11))
+                        .foregroundStyle(.sbOk)
+                }
+            }
+            .padding(.top, 12)
+
+            Text(merch.summary)
+                .font(.sbHeading(19))
+                .foregroundStyle(merch.isCollected ? .sbInk(0.45) : .sbInk)
+                .strikethrough(merch.isCollected, pattern: .solid, color: .sbInk(0.4))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 5)
+
+            Button(merch.isCollected ? "Undo — not handed over" : "Mark as collected") {
+                Task { await model.setMerchCollected(!merch.isCollected) }
+            }
+            .buttonStyle(.sbBlock(.secondary, minHeight: 44, fontSize: 14))
+            .disabled(model.isWorking)
+            .padding(.top, 12)
+        }
     }
 
     private func perform(_ action: CheckInAction) {

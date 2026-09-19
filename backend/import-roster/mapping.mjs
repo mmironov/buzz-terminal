@@ -29,6 +29,17 @@ export const COLUMNS = {
   country: 'Which country are you coming from?',
   /// Decides whether the row is importable at all. See IMPORTABLE_STATUSES.
   status: 'Status',
+
+  // ── Merch ────────────────────────────────────────────────────────────────
+  //
+  // These three used to be in EXCLUDED_COLUMNS, on the rule that every field
+  // reaching Firestore is readable by every terminal including the bar. That
+  // rule has not been relaxed — the merch order does not go on the participant
+  // document. It goes in `participants/{id}/merch/order`, which the rules let
+  // reception read and the bar not. See docs/merch.md.
+  merchAttire: 'Festival T-Shirt and tote bag. Choose your Swing Buzz attire.',
+  merchSize: 'T-Shirt Size',
+  merchColour: 'T-Shirt Color',
 };
 
 /**
@@ -134,9 +145,6 @@ export const EXCLUDED_COLUMNS = [
   'Level',
   'Are you registering with a partner',
   "If you are registering with a partner, write down your partner's email.",
-  'Festival T-Shirt and tote bag. Choose your Swing Buzz attire.',
-  'T-Shirt Size',
-  'T-Shirt Color',
   'Comments',               // free text; could contain anything
   'Terms and Conditions',
   'Code of Conduct',
@@ -212,6 +220,101 @@ export function toRosterFields(row) {
     ticketType,
     country: String(row.country ?? '').trim(),
   };
+}
+
+// ── Merch ──────────────────────────────────────────────────────────────────
+
+/**
+ * What the form says when somebody ordered nothing.
+ *
+ * The same sentence appears in all three merch columns — attire, size and
+ * colour — because it is an option in each dropdown rather than a blank. Treat
+ * it exactly as a blank, or 79 people arrive at the desk with a t-shirt order
+ * reading "No Swing Buzz attire, size No Swing Buzz attire".
+ */
+const NO_MERCH = 'no swing buzz attire';
+
+/**
+ * The three things the form sells, plus the two states that are not a sale:
+ * `none` for an empty order, and `unknown` for an option this parser did not
+ * recognise. Both apps must handle all five — the rules pin the field to this
+ * list, so a sixth value cannot appear without a rules change.
+ */
+export const MERCH_ITEMS = ['none', 'shirt', 'tote', 'shirtAndTote', 'unknown'];
+
+/**
+ * Parse the attire column into one of `MERCH_ITEMS`.
+ *
+ * The Sheet's values carry a price — "T-Shirt only: 20 €" — and the price is
+ * deliberately dropped, the same rule that keeps pass-type prices in the Sheet.
+ * The merch is already paid for by the time anybody reads this; the desk is
+ * handing over a shirt, not selling one, and a price on that screen is a number
+ * somebody will eventually try to collect.
+ *
+ * Matched on what the option contains rather than on the exact string, because
+ * the price in it changes between early-bird and full rates and a new price
+ * must not silently become "ordered nothing".
+ */
+export function parseMerchItem(raw) {
+  const text = String(raw ?? '').trim().toLowerCase();
+  if (!text || text === NO_MERCH) return 'none';
+
+  const hasShirt = text.includes('t-shirt') || text.includes('tshirt');
+  const hasTote = text.includes('tote');
+
+  if (hasShirt && hasTote) return 'shirtAndTote';
+  if (hasShirt) return 'shirt';
+  if (hasTote) return 'tote';
+
+  // An option nobody anticipated. Recorded as unknown rather than guessed at or
+  // silently dropped: the desk sees that something was ordered and can ask,
+  // which is better than a guest being told they ordered nothing.
+  return 'unknown';
+}
+
+/**
+ * Size and colour, or null when there is nothing to say.
+ *
+ * Strips a trailing parenthetical: one colour in the Sheet reads
+ * "French Navy (Available only in XS, M, L, XL)", which is a note to the person
+ * filling in the form and noise to the person handing over the shirt.
+ */
+export function parseMerchDetail(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text || text.toLowerCase() === NO_MERCH) return null;
+  const withoutNote = text.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  return withoutNote || null;
+}
+
+/**
+ * The merch order a row describes, or null when there is none.
+ *
+ * Size and colour are kept even for a tote-only order if the Sheet has them —
+ * reporting what the guest actually answered is more useful at the desk than
+ * second-guessing which fields "should" apply to which item.
+ */
+export function toMerchOrder(row) {
+  const item = parseMerchItem(row.merchAttire);
+  if (item === 'none') return null;
+  return {
+    item,
+    size: parseMerchDetail(row.merchSize),
+    colour: parseMerchDetail(row.merchColour),
+  };
+}
+
+/**
+ * Fields the importer owns on a merch document.
+ *
+ * `collectedAt` and `collectedBy` are absent, and that is the whole guard: a
+ * re-import in the middle of Saturday must not tell forty people their shirt is
+ * waiting for them when they are already wearing it. Same rule as balances.
+ */
+export const MERCH_IMPORT_OWNED_FIELDS = ['item', 'size', 'colour', 'orderHash', 'importedAt'];
+
+/** Festival state given to a merch order the first time it is imported. */
+export function initialMerchState() {
+  return { collectedAt: null, collectedBy: null };
 }
 
 /** Festival state given to a person the first time they are imported. */

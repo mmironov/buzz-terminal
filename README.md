@@ -375,13 +375,13 @@ goes through the rules and a wrong shape fails loudly. Full runbook, including
 
 ## Tests
 
-Four runners, **270 tests**, all green: 73 iOS, 85 Android, 71 rules, 41 importer.
+Four runners, **306 tests**, all green: 82 iOS, 85 Android, 82 rules, 57 importer.
 
 ```bash
 ./ios/scripts/test.sh
 ```
 
-**73 iOS tests in 12 suites.** The domain logic that carries real rules — the
+**82 iOS tests in 13 suites.** The domain logic that carries real rules — the
 keypad, the check-in search, the charge decision, which action the participant
 screen offers, participant lifecycle, evening tickets, money arithmetic, the sync
 state, the batch audit. `Domain/` imports `Foundation` only, so the whole run
@@ -421,7 +421,7 @@ landing.
 cd backend/rules-tests && ./test.sh
 ```
 
-**71 rules tests in 10 suites**, against a throwaway Firestore emulator that the
+**82 rules tests in 11 suites**, against a throwaway Firestore emulator that the
 script starts and tears down itself — it needs a JDK, which it will find even when
 Homebrew has kept it off your `PATH`. Nothing here touches the real database: the
 emulator comes up empty and each test writes its own fixtures as an admin.
@@ -443,7 +443,7 @@ because the test ran.
 cd backend/import-roster && npm test
 ```
 
-**41 importer tests** over the Sheet mapping, the drinks menu and the reset, against
+**57 importer tests** over the Sheet mapping, merch, the drinks menu and the reset, against
 pure functions and a fake Firestore — no network, no emulator. Four earn their keep
 on their own: the one that stops `Full Pass Gold` being filed as plain `Full Pass`,
 the one asserting no personal data can reach Firestore, the one pinning a drink the
@@ -526,6 +526,7 @@ equivalent is "The Android app" above — it is behind on more than this.
 | Offline | ✅ real: Firestore's durable queue, real connectivity, and a reconciliation screen for refused replays — `docs/offline.md` | — |
 | NFC | ✅ Core NFC reads real bracelets on a device; the simulated picker remains where hardware is absent, and behind `-sbScanner simulated` | — |
 | Check-in | ✅ nothing pairs a bracelet unless the operator chose to pair one. Reading an unowned chip is a dead end; check-in and door sales each start from the home screen — `docs/check-in.md` | Android still pairs on the row tap |
+| Merch | ✅ preorders in a subcollection the **bar cannot read**, shown on the participant screen, collected and un-collected by reception. Rules deployed, 28 orders imported — `docs/merch.md` | nothing collected on a real phone yet; no Android |
 | Dynamic Type | fixed point sizes; text does not scale | later — the 66pt display sizes need a layout pass first |
 | Localisation | English strings inline; `"23.50 €"` is locale-independent by design | later |
 | App icon | generated, on-brand, deliberately plain — `ios/scripts/makeicon.swift` redraws it | when someone wants real artwork |

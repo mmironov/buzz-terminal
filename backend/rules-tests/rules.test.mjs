@@ -934,3 +934,130 @@ describe('selling an evening ticket at the door', () => {
     await assertSucceeds(batch.commit());
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Preordered merch
+//
+//  The reason this lives in a subcollection at all: a participant document is
+//  readable by every signed-in terminal, and a bartender has no business
+//  knowing what size somebody wears. The first test here is the feature.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('preordered merch', () => {
+  const merchRef = (db, pid = PARTICIPANT) => doc(db, 'participants', pid, 'merch', 'order');
+
+  /** An imported order, written the way the Admin SDK writes it. */
+  async function seedOrder(overrides = {}) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(merchRef(context.firestore()), {
+        item: 'shirt',
+        size: 'M',
+        colour: 'Sky Blue',
+        orderHash: 'hash1',
+        collectedAt: null,
+        collectedBy: null,
+        ...overrides,
+      });
+    });
+  }
+
+  it('is readable by reception, who hand it over', async () => {
+    await seedOrder();
+    await assertSucceeds(getDoc(merchRef(reception())));
+  });
+
+  it('is readable by an admin, who is reception when the desk is busy', async () => {
+    await seedOrder();
+    await assertSucceeds(getDoc(merchRef(admin())));
+  });
+
+  it('THE POINT: the bar cannot read it, though it can read the participant', async () => {
+    await seedOrder();
+    // The bar needs the person — name, balance, whether they are blocked.
+    await assertSucceeds(getDoc(doc(bar(), 'participants', PARTICIPANT)));
+    // It does not need their t-shirt size, and cannot have it.
+    await assertFails(getDoc(merchRef(bar())));
+  });
+
+  it('is unreadable without a role at all', async () => {
+    await seedOrder();
+    await assertFails(getDoc(merchRef(roleless())));
+    await assertFails(getDoc(merchRef(anonymous())));
+  });
+
+  it('lets reception mark it collected, stamped by the server and the staff uid', async () => {
+    await seedOrder();
+    await assertSucceeds(
+      updateDoc(merchRef(reception()), {
+        collectedAt: serverTimestamp(),
+        collectedBy: RECEPTION_UID,
+      })
+    );
+  });
+
+  it('lets reception undo a collection, unlike a bracelet pairing', async () => {
+    await seedOrder({ collectedAt: new Date(), collectedBy: RECEPTION_UID });
+    await assertSucceeds(
+      updateDoc(merchRef(reception()), { collectedAt: null, collectedBy: null })
+    );
+  });
+
+  it('refuses a collection stamped with anybody else, or with the phone clock', async () => {
+    await seedOrder();
+    await assertFails(
+      updateDoc(merchRef(reception()), {
+        collectedAt: serverTimestamp(),
+        collectedBy: BAR_UID,
+      })
+    );
+    await assertFails(
+      updateDoc(merchRef(reception()), {
+        collectedAt: new Date('2020-01-01'),
+        collectedBy: RECEPTION_UID,
+      })
+    );
+  });
+
+  it('refuses the bar handing merch over', async () => {
+    await seedOrder();
+    await assertFails(
+      updateDoc(merchRef(bar()), {
+        collectedAt: serverTimestamp(),
+        collectedBy: BAR_UID,
+      })
+    );
+  });
+
+  it('keeps what was ordered in the Sheet: a terminal cannot edit the order', async () => {
+    await seedOrder();
+    for (const change of [
+      { item: 'shirtAndTote' },
+      { size: 'XL' },
+      { colour: 'French Navy' },
+      { orderHash: 'forged' },
+    ]) {
+      await assertFails(updateDoc(merchRef(reception()), change));
+    }
+  });
+
+  it('refuses collecting something that was never ordered', async () => {
+    await seedOrder({ item: 'none', size: null, colour: null });
+    await assertFails(
+      updateDoc(merchRef(reception()), {
+        collectedAt: serverTimestamp(),
+        collectedBy: RECEPTION_UID,
+      })
+    );
+  });
+
+  it('is never created or deleted by a terminal — the Sheet owns it', async () => {
+    await assertFails(
+      setDoc(merchRef(reception()), {
+        item: 'shirt', size: 'S', colour: 'Natural',
+        orderHash: 'x', collectedAt: null, collectedBy: null,
+      })
+    );
+    await seedOrder();
+    await assertFails(deleteDoc(merchRef(reception())));
+  });
+});

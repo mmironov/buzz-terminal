@@ -225,6 +225,8 @@ final class AppModel {
         cart.removeAll()
         bracelet = nil
         participant = nil
+        merch = nil
+        merchUnavailable = false
         receipt = nil
         paymentDecision = nil
         search = ""
@@ -394,6 +396,8 @@ final class AppModel {
                     // an anonymous door sale. Refuse it here, by name.
                     bracelet = nil
                     participant = nil
+                    merch = nil
+                    merchUnavailable = false
                     ScanFeedback.shared.problem()
                     errorMessage = "This bracelet already belongs to \(found.name). Use a fresh one."
                 } else {
@@ -416,8 +420,8 @@ final class AppModel {
                 } else if found?.isBlocked == true {
                     screen = .blocked
                     ScanFeedback.shared.blocked()
-                } else {
-                    screen = .participant
+                } else if let found {
+                    showParticipant(found)
                     ScanFeedback.shared.success()
                 }
 
@@ -441,6 +445,75 @@ final class AppModel {
         }
     }
 
+    // MARK: - Merch
+
+    /// What the participant on screen preordered, once it has loaded.
+    ///
+    /// Nil covers three different situations that all look the same to the
+    /// screen and should: nothing ordered, not loaded yet, and a role that may
+    /// not read it. None of them is worth a distinct UI at a busy desk.
+    private(set) var merch: MerchOrder?
+
+    /// True while the merch read is in flight, so the section can hold its
+    /// place rather than appearing a moment after the rest of the screen.
+    private(set) var isLoadingMerch = false
+
+    /// The merch read failed rather than came back empty.
+    ///
+    /// Worth a line on screen. "Nothing ordered" and "could not find out" look
+    /// identical otherwise, and the difference is a guest going home without
+    /// the t-shirt they paid for.
+    private(set) var merchUnavailable = false
+
+    /// Show a participant, and start loading what they preordered.
+    ///
+    /// One funnel for both routes to the screen — a scan and a name off the
+    /// check-in list — so neither can forget the merch read.
+    private func showParticipant(_ guest: Participant) {
+        participant = guest
+        merch = nil
+        merchUnavailable = false
+        screen = .participant
+        Task { await loadMerch(for: guest) }
+    }
+
+    private func loadMerch(for guest: Participant) async {
+        isLoadingMerch = true
+        defer { isLoadingMerch = false }
+        do {
+            let order = try await repository.merchOrder(for: guest)
+            // The operator may have moved on while this was in flight. Writing
+            // somebody else's t-shirt size under the name now on screen would
+            // be worse than showing nothing.
+            guard participant?.id == guest.id else { return }
+            merch = order
+            merchUnavailable = false
+        } catch {
+            Self.log.error("merch load failed: \(error.localizedDescription, privacy: .public)")
+            guard participant?.id == guest.id else { return }
+            // A line on the screen, not an alert. A t-shirt must not interrupt
+            // a check-in — but silence here reads as "ordered nothing", and
+            // that is how an undeployed ruleset went unnoticed once already.
+            merchUnavailable = true
+        }
+    }
+
+    /// Hand the merch over, or take that back.
+    func setMerchCollected(_ collected: Bool) async {
+        guard let guest = participant, merch?.hasSomethingToCollect == true else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let updated = try await repository.setMerchCollected(collected, for: guest)
+            guard participant?.id == guest.id else { return }
+            merch = updated
+            ScanFeedback.shared.success()
+        } catch {
+            errorMessage = error.localizedDescription
+            ScanFeedback.shared.problem()
+        }
+    }
+
     // MARK: - Reception: check in
 
     /// What the participant screen's primary button should do right now.
@@ -457,6 +530,8 @@ final class AppModel {
     func goToCheckInSearch() {
         bracelet = nil
         participant = nil
+        merch = nil
+        merchUnavailable = false
         search = ""
         screen = .assign
     }
@@ -470,8 +545,7 @@ final class AppModel {
     /// Now the tap only shows who was chosen, and the pairing needs a second,
     /// deliberate action on a screen showing the name in 32pt.
     func select(candidate guest: Participant) {
-        participant = guest
-        screen = .participant
+        showParticipant(guest)
     }
 
     /// Back out of the participant screen to wherever it was reached from.
@@ -481,6 +555,8 @@ final class AppModel {
         // reached by scanning their chip, and the way out of that is home.
         if participant?.isAwaitingCheckIn == true {
             participant = nil
+            merch = nil
+            merchUnavailable = false
             screen = .assign
         } else {
             goHome()
@@ -565,6 +641,8 @@ final class AppModel {
     /// put it on. The evening is chosen afterwards, on `AssignEveningTicketView`.
     func beginEveningTicketSale() {
         participant = nil
+        merch = nil
+        merchUnavailable = false
         bracelet = nil
         beginScan(for: .eveningTicket)
     }
@@ -702,6 +780,8 @@ final class AppModel {
         screen = role?.homeScreen ?? .signIn
         bracelet = nil
         participant = nil
+        merch = nil
+        merchUnavailable = false
         receipt = nil
         paymentDecision = nil
         search = ""
@@ -723,6 +803,8 @@ final class AppModel {
         screen = .barMenu
         bracelet = nil
         participant = nil
+        merch = nil
+        merchUnavailable = false
         paymentDecision = nil
     }
 

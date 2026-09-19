@@ -141,8 +141,17 @@ actor FirebaseTerminalRepository: TerminalRepository {
             try? auth.signOut()
             throw TerminalError.noRoleAssigned
         }
+        signedInRole = role
         return role
     }
+
+    /// The role this terminal signed in with.
+    ///
+    /// Kept so a refused read can be told apart from a misconfigured one: the
+    /// rules refuse the bar a merch read *by design*, and refuse reception one
+    /// only when something is wrong. Those two deserve opposite treatment and
+    /// are the same `PERMISSION_DENIED` on the wire.
+    private var signedInRole: StaffRole?
 
     func signOut() async {
         connectivity?.remove()
@@ -276,6 +285,66 @@ actor FirebaseTerminalRepository: TerminalRepository {
         }
         let document = try await participantDocument(ParticipantID(participantId)).getDocument()
         return Participant(document: document)
+    }
+
+    // MARK: - Merch
+
+    /// A point read at a known path: no query, no index, and it resolves from
+    /// the offline cache like the bracelet lookup does.
+    ///
+    /// A denial is swallowed into nil **only for the bar**, where the rules
+    /// refuse it on purpose and a merch section would be meaningless anyway.
+    ///
+    /// Reception being refused is a misconfiguration — undeployed rules, or a
+    /// stale token — and it is thrown so somebody finds out. Swallowing both
+    /// made an undeployed ruleset look exactly like "nobody ordered anything",
+    /// which is precisely how this was first met in production: the data was
+    /// there, the app said nothing, and there was no way to tell from the
+    /// screen which of the two it was.
+    func merchOrder(for participant: Participant) async throws -> MerchOrder? {
+        do {
+            let document = try await merchDocument(participant.id).getDocument()
+            guard document.exists else { return nil }
+            return MerchOrder(document: document)
+        } catch {
+            let nsError = error as NSError
+            guard nsError.domain == FirestoreErrorDomain,
+                  nsError.code == FirestoreErrorCode.permissionDenied.rawValue,
+                  signedInRole != .reception
+            else {
+                Self.log.error("merch read refused for a reception terminal — are the rules deployed?")
+                throw error
+            }
+            return nil
+        }
+    }
+
+    func setMerchCollected(_ collected: Bool, for participant: Participant) async throws -> MerchOrder {
+        let uid = try requireStaffUid()
+        let document = merchDocument(participant.id)
+
+        // The rules pin `collectedAt` to the server clock and `collectedBy` to
+        // the caller, so both are sent exactly as written here or the write is
+        // refused. Clearing sets both to null, which the same rule allows.
+        let payload: [String: Any] = collected
+            ? [
+                Fire.Merch.collectedAt: FieldValue.serverTimestamp(),
+                Fire.Merch.collectedBy: uid,
+            ]
+            : [
+                Fire.Merch.collectedAt: NSNull(),
+                Fire.Merch.collectedBy: NSNull(),
+            ]
+
+        // `updateData`, not `setData(merge:)`: an order that is not there is a
+        // bug worth surfacing rather than a document to invent. The Sheet owns
+        // what was ordered.
+        try await document.updateData(payload)
+
+        guard let updated = MerchOrder(document: try await document.getDocument()) else {
+            throw TerminalError.noMerchOrdered
+        }
+        return updated
     }
 
     func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant {
@@ -512,6 +581,12 @@ actor FirebaseTerminalRepository: TerminalRepository {
 
     private func braceletDocument(_ bracelet: BraceletID) -> DocumentReference {
         db.collection(Fire.Collection.bracelets).document(bracelet.rawValue)
+    }
+
+    private func merchDocument(_ id: ParticipantID) -> DocumentReference {
+        participantDocument(id)
+            .collection(Fire.Collection.merch)
+            .document(Fire.Merch.documentId)
     }
 
     /// Read back what the server actually stored.

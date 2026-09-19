@@ -104,6 +104,25 @@ enum SampleData {
     /// Everything in Firestore: the imported roster plus door sales.
     static var roster: [Participant] { checkedIn + awaitingCheckIn + eveningTickets }
 
+    /// Preordered merch, keyed by participant. Only a minority of the roster
+    /// ordered anything — 28 of 105 on the real Sheet — so most of these people
+    /// deliberately have no entry, which is the case the screen has to get
+    /// right without looking broken.
+    static let merchOrders: [ParticipantID: MerchOrder] = [
+        // Awaiting check-in: the common case, collected at the desk on arrival.
+        ParticipantID("tkt-10434"): MerchOrder(item: .shirt, size: "M", colour: "Sky Blue"),
+        ParticipantID("tkt-10435"): MerchOrder(item: .shirtAndTote, size: "S", colour: "Natural"),
+        // A tote has no size or colour, which is the summary's awkward case.
+        ParticipantID("tkt-10436"): MerchOrder(item: .tote, size: nil, colour: nil),
+        // Already checked in, and already handed over.
+        ParticipantID("tkt-10001"): MerchOrder(
+            item: .shirt, size: "L", colour: "French Navy",
+            collectedAt: earlier(3), collectedBy: "fixture-staff"
+        ),
+        // A form option the importer did not recognise.
+        ParticipantID("tkt-10437"): MerchOrder(item: .unknown, size: nil, colour: nil),
+    ]
+
     /// Convenience for previews and launch overrides.
     static func participant(withBracelet bracelet: BraceletID) -> Participant? {
         roster.first { $0.braceletId == bracelet }

@@ -21,6 +21,23 @@ enum Fire {
         static let transactions = "transactions"
         static let bracelets = "bracelets"
         static let drinks = "drinks"
+        /// A subcollection of a participant, holding exactly one document. See
+        /// `Merch.documentId` and `docs/merch.md`.
+        static let merch = "merch"
+    }
+
+    enum Merch {
+        /// One order per person, at a fixed path. A known path means a point
+        /// read rather than a query, which resolves from the offline cache and
+        /// needs no index.
+        static let documentId = "order"
+
+        static let item = "item"
+        static let size = "size"
+        static let colour = "colour"
+        static let collectedAt = "collectedAt"
+        static let collectedBy = "collectedBy"
+        static let orderHash = "orderHash"
     }
 
     enum Participant {
@@ -138,6 +155,25 @@ extension Drink {
               let priceCents = data[Fire.Drink.price] as? Int
         else { return nil }
         self.init(id: document.documentID, name: name, price: Money(cents: priceCents))
+    }
+}
+
+extension MerchOrder {
+    /// Build from `participants/{id}/merch/order`.
+    ///
+    /// Returns nil only when the document does not exist. An order whose `item`
+    /// the importer never heard of still builds, as `.unknown`, because the
+    /// desk being told "something was ordered, check the Sheet" is better than
+    /// a guest being told they ordered nothing.
+    init?(document: DocumentSnapshot) {
+        guard let data = document.data() else { return nil }
+        self.init(
+            item: Item(wire: data[Fire.Merch.item] as? String),
+            size: data[Fire.Merch.size] as? String,
+            colour: data[Fire.Merch.colour] as? String,
+            collectedAt: (data[Fire.Merch.collectedAt] as? Timestamp)?.dateValue(),
+            collectedBy: data[Fire.Merch.collectedBy] as? String
+        )
     }
 }
 

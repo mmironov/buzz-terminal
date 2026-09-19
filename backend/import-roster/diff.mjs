@@ -9,10 +9,13 @@ import {
   COLUMNS,
   IDENTITY_COLUMN,
   IMPORT_OWNED_FIELDS,
+  MERCH_IMPORT_OWNED_FIELDS,
   initialFestivalState,
+  initialMerchState,
   isImportableStatus,
   normaliseStatus,
   toDocumentId,
+  toMerchOrder,
   toRosterFields,
 } from './mapping.mjs';
 
@@ -208,6 +211,85 @@ export function buildPlan(rows, existing) {
   }
 
   return { creates, updates, unchanged };
+}
+
+/**
+ * Build the merch write plan: one document per person who ordered something.
+ *
+ * Kept separate from `buildPlan` because merch lives in a subcollection with
+ * its own security rules — the bar can read a participant and cannot read their
+ * merch — and because it has its own piece of festival state to protect.
+ *
+ * @param rows            output of validateIdentity().usable, paid rows only
+ * @param existingMerch   Map of participantId → current merch document data
+ * @returns { writes, retires, unchanged }
+ */
+export function buildMerchPlan(rows, existingMerch) {
+  const writes = [];
+  const retires = [];
+  const unchanged = [];
+
+  for (const row of rows) {
+    const id = row.__id;
+    const order = toMerchOrder(row);
+    const current = existingMerch.get(id);
+
+    if (!order) {
+      // Nothing ordered. Only interesting if we previously recorded an order —
+      // somebody changed their mind in the Sheet. Retired rather than deleted,
+      // because deleting would also delete the record that it was handed over.
+      if (current && current.item && current.item !== 'none') {
+        const data = { item: 'none', size: null, colour: null };
+        retires.push({ id, sheetRow: row.__sheetRow, data: { ...data, orderHash: rosterHash(data) } });
+      }
+      continue;
+    }
+
+    const hash = rosterHash(order);
+    if (current?.orderHash === hash) {
+      unchanged.push({ id, sheetRow: row.__sheetRow });
+      continue;
+    }
+
+    const data = { ...order, orderHash: hash };
+    assertTouchesOnlyMerchImportFields(data);
+
+    writes.push({
+      id,
+      sheetRow: row.__sheetRow,
+      isNew: !current,
+      data,
+      // Only on a create. On an update these are absent from the payload, so a
+      // merge leaves a collection that already happened exactly where it was.
+      initial: current ? null : initialMerchState(),
+      changes: describeMerchChanges(current, order),
+    });
+  }
+
+  return { writes, retires, unchanged };
+}
+
+/**
+ * The merch twin of `assertTouchesOnlyImportOwnedFields`, and the reason it
+ * exists: an import that wrote `collectedAt` would un-collect every shirt
+ * handed out so far, silently, and the first anybody would know is a queue of
+ * people being given a second t-shirt.
+ */
+export function assertTouchesOnlyMerchImportFields(data) {
+  const offending = Object.keys(data).filter((k) => !MERCH_IMPORT_OWNED_FIELDS.includes(k));
+  if (offending.length) {
+    throw new Error(
+      `Refusing to build a merch update touching non-import fields: ${offending.join(', ')}. ` +
+        `collectedAt and collectedBy belong to the terminals.`
+    );
+  }
+}
+
+function describeMerchChanges(current, order) {
+  if (!current) return [];
+  return ['item', 'size', 'colour']
+    .filter((k) => (current[k] ?? null) !== (order[k] ?? null))
+    .map((k) => `${k}: ${JSON.stringify(current[k] ?? null)} → ${JSON.stringify(order[k] ?? null)}`);
 }
 
 /**

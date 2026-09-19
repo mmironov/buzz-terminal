@@ -16,13 +16,18 @@ actor InMemoryTerminalRepository: TerminalRepository {
     private let menu: [Drink]
     private let latency: Duration
 
+    /// Standing in for `participants/{id}/merch/order`.
+    private var merch: [ParticipantID: MerchOrder]
+
     init(
         roster: [Participant] = SampleData.roster,
         menu: [Drink] = SampleData.drinks,
+        merch: [ParticipantID: MerchOrder] = SampleData.merchOrders,
         latency: Duration = .milliseconds(180)
     ) {
         self.roster = Dictionary(uniqueKeysWithValues: roster.map { ($0.id, $0) })
         self.menu = menu
+        self.merch = merch
         self.latency = latency
     }
 
@@ -112,6 +117,24 @@ actor InMemoryTerminalRepository: TerminalRepository {
         updated.checkedInAt = .now
         roster[updated.id] = updated
         return updated
+    }
+
+    // MARK: Merch
+
+    func merchOrder(for participant: Participant) async throws -> MerchOrder? {
+        await simulateNetwork()
+        return merch[participant.id]
+    }
+
+    func setMerchCollected(_ collected: Bool, for participant: Participant) async throws -> MerchOrder {
+        await simulateNetwork()
+        guard var order = merch[participant.id], order.hasSomethingToCollect else {
+            throw TerminalError.noMerchOrdered
+        }
+        order.collectedAt = collected ? .now : nil
+        order.collectedBy = collected ? "fixture-staff" : nil
+        merch[participant.id] = order
+        return order
     }
 
     func topUp(bracelet: BraceletID, amount: Money) async throws -> Participant {

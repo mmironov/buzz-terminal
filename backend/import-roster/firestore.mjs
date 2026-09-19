@@ -52,6 +52,53 @@ export async function applyPlan(db, plan, { batchSize = 400 } = {}) {
   return written;
 }
 
+/**
+ * Every existing merch order, keyed by participant id.
+ *
+ * A collection-group read rather than one get per participant: 105 point reads
+ * to find 28 documents is a slow dry run for no reason. The parent's id is the
+ * key, which is why the document is always called `order` — one merch order per
+ * person, at a known path, readable offline from cache on a terminal.
+ */
+export async function fetchMerchOrders(db) {
+  const snapshot = await db.collectionGroup('merch').get();
+  const existing = new Map();
+  snapshot.forEach((doc) => {
+    const participantId = doc.ref.parent.parent?.id;
+    if (participantId) existing.set(participantId, doc.data());
+  });
+  return existing;
+}
+
+/**
+ * Apply a merch plan from diff.mjs.
+ *
+ * Always `set(..., { merge: true })`, never `create`: the payload deliberately
+ * omits `collectedAt`, so a merge leaves a handed-over shirt handed over. On a
+ * first write the initial state is included so the fields exist rather than
+ * being absent, which keeps the security rules' shape check simple.
+ */
+export async function applyMerchPlan(db, plan, { batchSize = 400 } = {}) {
+  const { FieldValue } = admin.firestore;
+  const operations = [
+    ...plan.writes.map((w) => ({ ...w, data: { ...(w.initial ?? {}), ...w.data } })),
+    ...plan.retires,
+  ];
+
+  let written = 0;
+  for (let i = 0; i < operations.length; i += batchSize) {
+    const batch = db.batch();
+    for (const op of operations.slice(i, i + batchSize)) {
+      const ref = db.collection('participants').doc(op.id).collection('merch').doc('order');
+      batch.set(ref, { ...op.data, importedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+    await batch.commit();
+    written += Math.min(batchSize, operations.length - i);
+    process.stdout.write(`    committed ${written}/${operations.length} merch\n`);
+  }
+  return written;
+}
+
 /** The three roles `firestore.rules` knows about. Nothing else is a role. */
 export const ROLES = ['reception', 'bar', 'admin'];
 

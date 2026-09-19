@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 import {
+  buildMerchPlan,
   buildPlan,
   findOrphans,
   findRevoked,
@@ -174,7 +175,8 @@ async function cmdImport() {
   requireProject();
 
   requireKeyFile();
-  const { readSheet, initAdmin, fetchParticipants, applyPlan } = await cloud();
+  const { readSheet, initAdmin, fetchParticipants, applyPlan, fetchMerchOrders, applyMerchPlan } =
+    await cloud();
   const { header, rows: cells } = await readSheet(config);
   const resolved = resolveColumns(header);
 
@@ -217,9 +219,12 @@ async function cmdImport() {
   const app = initAdmin(config);
   const db = app.firestore();
   const existing = await fetchParticipants(db);
-  console.log(`Firestore:  ${existing.size} participants already present\n`);
+  const existingMerch = await fetchMerchOrders(db);
+  console.log(`Firestore:  ${existing.size} participants already present`);
+  console.log(`            ${existingMerch.size} merch order(s) already recorded\n`);
 
   const plan = buildPlan(importable, existing);
+  const merch = buildMerchPlan(importable, existingMerch);
   const orphans = findOrphans(importable, existing);
   const revoked = findRevoked(excluded, existing);
 
@@ -244,6 +249,21 @@ async function cmdImport() {
   console.log(`  update     ${plan.updates.length}   (roster fields only)`);
   console.log(`  unchanged  ${plan.unchanged.length}`);
   console.log(`  in Firestore but not in the Sheet: ${orphans.length}\n`);
+
+  const merchNew = merch.writes.filter((w) => w.isNew).length;
+  console.log(`  merch      ${merchNew} new, ${merch.writes.length - merchNew} changed, ` +
+              `${merch.retires.length} cancelled, ${merch.unchanged.length} unchanged`);
+  console.log(`             what was collected is never rewritten\n`);
+
+  for (const w of merch.writes.slice(0, 10)) {
+    const detail = [w.data.size, w.data.colour].filter(Boolean).join(' · ');
+    const marker = w.isNew ? '+' : '~';
+    console.log(`  ${marker} ${w.id.padEnd(24)} ${w.data.item}${detail ? '  ' + detail : ''}`);
+  }
+  if (merch.writes.length > 10) console.log(`    … and ${merch.writes.length - 10} more`);
+  for (const r of merch.retires) {
+    console.log(`  - ${r.id.padEnd(24)} order withdrawn in the Sheet`);
+  }
 
   for (const c of plan.creates.slice(0, 20)) {
     console.log(`  + ${c.id.padEnd(24)} ${c.data.name}  (${c.data.ticketType})`);
@@ -276,7 +296,8 @@ async function cmdImport() {
     console.log(`    admin panel, not here — some of these people may have money on a bracelet.`);
   }
 
-  if (!plan.creates.length && !plan.updates.length) {
+  const merchPending = merch.writes.length + merch.retires.length;
+  if (!plan.creates.length && !plan.updates.length && !merchPending) {
     console.log(`\n✔ Nothing to do.\n`);
     return;
   }
@@ -288,7 +309,9 @@ async function cmdImport() {
 
   console.log(`\nApplying…`);
   const written = await applyPlan(db, plan);
-  console.log(`\n✔ ${written} document(s) written. Balances and check-in state untouched.\n`);
+  const merchWritten = await applyMerchPlan(db, merch);
+  console.log(`\n✔ ${written} participant document(s) and ${merchWritten} merch order(s) written.`);
+  console.log(`  Balances, check-in state and merch collections untouched.\n`);
 }
 
 async function cmdSetRole() {

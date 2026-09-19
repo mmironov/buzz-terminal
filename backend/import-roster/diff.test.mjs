@@ -35,11 +35,18 @@ import {
 const HEADER = [
   'Id', 'Клеймо за време', ' Full Name', 'Email', 'Phone Number', 'Role',
   'PASS TYPE', 'Level', 'Which country are you coming from?', 'Comments', 'Status',
+  'Festival T-Shirt and tote bag. Choose your Swing Buzz attire.',
+  'T-Shirt Size', 'T-Shirt Color',
 ];
 
-const row = ({ id, name, pass = 'Full pass', country = 'Bulgaria', status = 'Paid' }) =>
+const NO_ATTIRE = 'No Swing Buzz attire';
+
+const row = ({
+  id, name, pass = 'Full pass', country = 'Bulgaria', status = 'Paid',
+  attire = NO_ATTIRE, size = NO_ATTIRE, colour = NO_ATTIRE,
+}) =>
   [id, '2026-07-01 10:00:00', name, `${id}@example.com`, '+359000000', 'Follower',
-   pass, 'Intermediate', country, '', status];
+   pass, 'Intermediate', country, '', status, attire, size, colour];
 
 const SHEET = [
   row({ id: '1041', name: 'Amélie Roux', country: 'France' }),
@@ -110,10 +117,14 @@ test('first import creates everyone with zero balance and no bracelet', () => {
   assert.equal(amelie.data.isBlocked, false);
 });
 
-test('personal data in the Sheet does not reach Firestore', () => {
+test('personal data in the Sheet does not reach the participant document', () => {
+  // `/shirt/i` still belongs here, and means more than it used to. The merch
+  // columns ARE imported now — into `participants/{id}/merch/order`, which the
+  // rules keep away from the bar. What must never happen is one of them landing
+  // on the participant itself, where every terminal can read it.
   const { creates } = buildPlan(rowsFrom(SHEET), new Map());
   const fields = Object.keys(creates[0].data);
-  for (const forbidden of [/email/i, /phone/i, /comment/i, /level/i, /shirt/i]) {
+  for (const forbidden of [/email/i, /phone/i, /comment/i, /level/i, /shirt/i, /merch/i]) {
     assert.ok(!fields.some((f) => forbidden.test(f)), `${forbidden} leaked into ${fields.join(',')}`);
   }
   // `Role` in this Sheet is the DANCE role. It must never land in a field called
