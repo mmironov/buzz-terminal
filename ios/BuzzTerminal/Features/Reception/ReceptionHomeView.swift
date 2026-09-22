@@ -51,7 +51,7 @@ struct ReceptionHomeView: View {
     private var actions: some View {
         VStack(spacing: 10) {
             VStack(spacing: 5) {
-                Button("Check in new participant") { model.goToCheckInSearch() }
+                Button("Check in participant") { model.goToCheckInSearch() }
                     .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 15))
                 Text("Search the roster, then pair a bracelet")
                     .font(.sbBody(10.5))

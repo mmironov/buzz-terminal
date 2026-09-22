@@ -50,7 +50,7 @@ struct UnassignedBraceletView: View {
                 // Plain, not markdown-bold: Archivo is loaded at fixed weights
                 // and the `**` emphasis parsed but rendered identically, which
                 // is dead markup pretending to be emphasis.
-                Text("To give it to somebody, go back and choose “Check in new participant”, or “Sell evening ticket” for a door sale.")
+                Text("To give it to somebody, go back and choose “Check in participant”, or “Sell evening ticket” for a door sale.")
                     .font(.sbBody(12))
                     .foregroundStyle(.sbInk(0.55))
                     .sbLineHeight(1.5, size: 12)
