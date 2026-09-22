@@ -45,6 +45,28 @@ test('a reset returns exactly the four fields the terminals own', () => {
   }
 });
 
+test('THE GAP: a reset clears what the desk did with the merch, not what the Sheet said', () => {
+  // Found by running a reset against real data: three people had been handed a
+  // shirt during testing, and the reset put everything else back to a known
+  // state and left them marked collected. At the festival that is somebody being
+  // refused the t-shirt they paid for.
+  const { merchResetFields } = planReset({ participants: [] });
+
+  assert.deepEqual(merchResetFields.order, { collectedAt: null, collectedBy: null });
+  // The preorder itself is the Sheet's, exactly like a name.
+  for (const owned of ['item', 'size', 'colour', 'orderHash', 'importedAt']) {
+    assert.equal(owned in merchResetFields.order, false, `${owned} belongs to the importer`);
+  }
+
+  // A free shirt differs in one way, and it is the reason this is two lists: the
+  // Sheet says WHO is owed one, the desk says WHICH one. So the size and the
+  // colour are festival state here and are cleared.
+  assert.deepEqual(merchResetFields.freeShirt, {
+    size: null, colour: null, collectedAt: null, collectedBy: null,
+  });
+  assert.equal('entitled' in merchResetFields.freeShirt, false);
+});
+
 test('an unknown scope is refused rather than guessed at', () => {
   assert.throws(() => planReset({ participants: [], scope: 'everything' }), /Unknown scope/);
 });

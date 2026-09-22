@@ -68,6 +68,22 @@ export function planReset({ participants = [], braceletIds = [], ledgerCount = 0
       balance: 0,
       lastTxId: null,
     },
+    // The same idea one level down. A kept participant's merch documents carry
+    // two kinds of field: what the Sheet said they ordered or are owed, which a
+    // reset must not touch, and what the desk did about it, which is festival
+    // state exactly like a balance.
+    //
+    // **This was missed until a reset was run against real data.** Three people
+    // had been handed a shirt during testing; the reset returned everything else
+    // to a known state and left them marked as collected, which at the real
+    // festival is somebody being refused the t-shirt they paid for.
+    merchResetFields: {
+      // `item`, `size`, `colour` and `orderHash` belong to the importer here.
+      order: { collectedAt: null, collectedBy: null },
+      // `entitled` belongs to the importer; the size and the colour do not —
+      // nobody chose a free shirt in advance, the desk picks one off the pile.
+      freeShirt: { size: null, colour: null, collectedAt: null, collectedBy: null },
+    },
   };
 }
 
@@ -128,7 +144,13 @@ export function summariseLedger(transactions) {
  * participant with the same id.
  */
 export async function executeReset(db, plan, { deleteDrinks = false } = {}) {
-  const counts = { participantsDeleted: 0, participantsReset: 0, braceletsDeleted: 0, drinksDeleted: 0 };
+  const counts = {
+    participantsDeleted: 0,
+    participantsReset: 0,
+    braceletsDeleted: 0,
+    drinksDeleted: 0,
+    merchCleared: 0,
+  };
 
   for (const id of plan.deleteParticipants) {
     await db.recursiveDelete(db.collection('participants').doc(id));
@@ -139,6 +161,25 @@ export async function executeReset(db, plan, { deleteDrinks = false } = {}) {
   // so the subcollection has to be cleared on its own.
   for (const id of plan.resetParticipants) {
     await db.recursiveDelete(db.collection('participants').doc(id).collection('transactions'));
+    // Likewise the extra class somebody bought at the desk. It is a sale, not a
+    // fact about them, and a kept participant must not start the festival
+    // already holding one.
+    await db.recursiveDelete(db.collection('participants').doc(id).collection('sessions'));
+  }
+
+  // What the desk did about the merch, without touching what the Sheet said.
+  // `update` rather than `set`, so a participant with no merch document does not
+  // gain an empty one — and it is skipped when the document is not there.
+  for (const id of plan.resetParticipants) {
+    for (const [documentId, fields] of Object.entries(plan.merchResetFields)) {
+      const ref = db.collection('participants').doc(id).collection('merch').doc(documentId);
+      const snapshot = await ref.get();
+      if (!snapshot.exists) continue;
+      const stale = Object.keys(fields).some((key) => snapshot.get(key) != null);
+      if (!stale) continue;
+      await ref.update(fields);
+      counts.merchCleared += 1;
+    }
   }
 
   await inBatches(db, plan.resetParticipants, (batch, id) => {
