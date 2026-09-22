@@ -201,10 +201,27 @@ enum Fire {
         static let quantity = "quantity"
     }
 
+    enum Settings {
+        /// One document, holding what is neither a price list nor a person.
+        static let collection = "settings"
+        static let braceletsDocumentId = "bracelets"
+        static let replacementFee = "replacementFee"
+    }
+
     enum Bracelet {
         static let participantId = "participantId"
         static let staffUid = "staffUid"
         static let pairedAt = "pairedAt"
+        /// Set when a wristband is replaced: the chip stops resolving for good,
+        /// and this is the record of who had it, until when, and why it ended.
+        static let invalidatedAt = "invalidatedAt"
+        static let invalidatedBy = "invalidatedBy"
+        static let reason = "reason"
+        /// What the desk took for the wristband that replaced it, on the new
+        /// chip. Absent when the fee was waived — and absent on everybody's
+        /// first wristband, which is part of a ticket they already paid for.
+        static let replacementFee = "replacementFee"
+        static let replacementMethod = "replacementMethod"
     }
 
     enum Drink {

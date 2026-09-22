@@ -125,6 +125,10 @@ final class AppModel {
             /// onto a fresh chip, for the buyer already named on screen. A chip
             /// that already belongs to somebody is refused.
             case doorSale
+            /// A replacement: this fresh chip takes over from the one the guest
+            /// on screen has lost, which is invalidated in the same write. A
+            /// chip that already belongs to somebody is refused.
+            case replaceBracelet
             case payment
         }
         var purpose: Purpose
@@ -173,6 +177,28 @@ final class AppModel {
     private(set) var doorPassesUnavailable = false
     /// Which pass is being sold right now.
     var selectedPass: DoorPass?
+
+    // MARK: Replacing a wristband
+
+    /// Everybody who has a wristband: the list to pick from when one is lost.
+    ///
+    /// The other list — `awaitingCheckIn` — is everybody who has none, so the
+    /// two are complements and neither is a search over the whole roster.
+    private(set) var checkedIn: [Participant] = []
+    private(set) var isLoadingCheckedIn = false
+
+    /// The check-in list's search box filters this one too, so one field serves
+    /// both flows and neither screen has to own a second piece of state.
+    var replacementCandidates: [Participant] {
+        checkedIn.filter { $0.matches(query: search) }
+    }
+
+    /// The reason, the fee and how it is being paid, while the desk fills it in.
+    var replacement = BraceletReplacement()
+
+    /// What the festival charges, as an organiser set it in the panel. Nil when
+    /// nobody has set one — the desk then has no fee to offer at all.
+    private(set) var replacementFee: Money?
 
     /// The extra classes on sale, as organisers priced them.
     ///
@@ -374,6 +400,7 @@ final class AppModel {
         sessionChoice = nil
         sessionMethod = nil
         specialSessions = []
+        participantActionOverride = nil
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -442,6 +469,9 @@ final class AppModel {
             let amount = pass.price(on: pass.kind == .evening ? eveningSelection : nil)
             let price = amount.isPositive ? " · take \(amount)" : ""
             return "Hold a fresh bracelet to the top of the phone to sell \(who)\(price)."
+        case .replaceBracelet:
+            guard let guest = participant else { return nil }
+            return "Hold a fresh bracelet to the top of the phone to replace \(guest.name)'s. The old one stops working."
         case .identify, .payment:
             return nil
         }
@@ -497,6 +527,8 @@ final class AppModel {
                 statuses[chip] = found.isBlocked
                     ? "\(found.name) · blocked"
                     : "\(found.name) · \(found.balance)"
+            } catch TerminalError.braceletInvalidated {
+                statuses[chip] = "replaced · no longer valid"
             } catch {
                 // A chip whose status could not be read is left unlabelled rather
                 // than guessed at — the whole point of this panel is that it stops
@@ -547,6 +579,13 @@ final class AppModel {
                 await completeDoorSale(scanned, existingHolder: found)
                 return
             }
+            // And a replacement, for the same reason again: the guest whose
+            // wristband is being replaced is on screen, and the chip in hand is
+            // meant to belong to nobody yet.
+            if case .replaceBracelet = purpose {
+                await completeReplacement(scanned, existingHolder: found)
+                return
+            }
 
             bracelet = scanned
             participant = found
@@ -560,7 +599,7 @@ final class AppModel {
                 // Handled above, before `participant` was replaced.
                 break
 
-            case .doorSale:
+            case .doorSale, .replaceBracelet:
                 // Handled above, before `participant` was replaced.
                 break
 
@@ -596,6 +635,15 @@ final class AppModel {
                     ScanFeedback.shared.problem()
                 }
             }
+        } catch TerminalError.braceletInvalidated {
+            // Not a failure: a wristband that was replaced is a thing people
+            // find on the floor, and the answer is a screen rather than an alert
+            // titled "Something went wrong" in front of a guest.
+            bracelet = scanned
+            participant = nil
+            scan = nil
+            screen = .replacedBracelet
+            ScanFeedback.shared.problem()
         } catch {
             scan = nil
             errorMessage = error.localizedDescription
@@ -653,6 +701,7 @@ final class AppModel {
         sessionChoice = nil
         sessionMethod = nil
         specialSessions = []
+        participantActionOverride = nil
         merchUnavailable = false
         screen = .participant
         Task { await loadMerch(for: guest) }
@@ -831,16 +880,118 @@ final class AppModel {
     // MARK: - Reception: check in
 
     /// What the participant screen's primary button should do right now.
-    /// The rule itself is pure and lives on `CheckInAction`.
+    ///
+    /// Decided from the participant, except on the one route where the flow
+    /// knows better: somebody reached from the replacement list already has a
+    /// wristband, so the rule would offer a top-up, and what the desk wants is
+    /// to read the chip that takes over from the lost one.
     var participantAction: CheckInAction? {
-        participant.map(CheckInAction.decide(for:))
+        if let override = participantActionOverride { return override }
+        return participant.map(CheckInAction.decide(for:))
     }
 
-    /// Enter check-in from the home screen, with no chip read yet.
-    ///
-    /// The other way in is still a scan: an unpaired chip lands on the same list
-    /// with `bracelet` already set. The list does not care which happened; the
-    /// participant screen does, and asks `CheckInAction`.
+    /// Set only by the replacement flow, and cleared with the participant.
+    private(set) var participantActionOverride: CheckInAction?
+
+    /// Somebody has lost a wristband. Start from the people who have one.
+    func beginBraceletReplacement() {
+        bracelet = nil
+        participant = nil
+        merch = nil
+        freeShirt = nil
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
+        specialSessions = []
+        participantActionOverride = nil
+        merchUnavailable = false
+        search = ""
+        replacement = BraceletReplacement()
+        screen = .replaceSearch
+        Task { await refreshCheckedIn() }
+        Task { await refreshReplacementFee() }
+    }
+
+    /// The list is read when the flow starts rather than at sign-in: somebody
+    /// checked in five minutes ago must be on it, and a terminal that has been
+    /// awake since Thursday would otherwise be showing Thursday's roster.
+    func refreshCheckedIn() async {
+        isLoadingCheckedIn = true
+        defer { isLoadingCheckedIn = false }
+        do {
+            checkedIn = try await repository.checkedIn()
+        } catch {
+            Self.log.error("checked-in list failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshReplacementFee() async {
+        do {
+            replacementFee = try await repository.replacementFee()
+        } catch {
+            // A fee that cannot be read is no fee: the desk replaces the
+            // wristband for nothing rather than guessing at a number to charge.
+            Self.log.error("replacement fee failed: \(error.localizedDescription, privacy: .public)")
+            replacementFee = nil
+        }
+    }
+
+    /// Open somebody from the replacement list. Same screen a check-in uses, in
+    /// the one mode that reads a chip for a person who already has one.
+    func select(forReplacement guest: Participant) {
+        replacement = BraceletReplacement()
+        bracelet = guest.braceletId
+        showParticipant(guest)
+        participantActionOverride = .scanAndReplace
+    }
+
+    /// Read the fresh chip. Nothing is written until it is read, so a change of
+    /// mind costs a tap rather than a wristband.
+    func scanForReplacement() {
+        guard participant != nil, replacement.isComplete else { return }
+        beginScan(for: .replaceBracelet)
+    }
+
+    /// Mint the replacement onto the chip that has just been read.
+    private func completeReplacement(_ scanned: BraceletID, existingHolder: Participant?) async {
+        guard let guest = participant else {
+            scan = nil
+            return
+        }
+        if let existingHolder {
+            // Nothing is lost: the reason and the fee are still on screen, so
+            // the next chip out of the box finishes the same replacement.
+            scan = nil
+            ScanFeedback.shared.problem()
+            errorMessage = "This bracelet already belongs to \(existingHolder.name). Use a fresh one."
+            return
+        }
+
+        scan = nil
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let fee = replacement.fee(from: replacementFee)
+            let updated = try await repository.replaceBracelet(
+                scanned,
+                for: guest,
+                reason: replacement.trimmedReason,
+                fee: fee,
+                method: fee == nil ? nil : replacement.method
+            )
+            bracelet = scanned
+            replacement = BraceletReplacement()
+            participantActionOverride = nil
+            showParticipant(updated)
+            ScanFeedback.shared.success()
+        } catch {
+            errorMessage = error.localizedDescription
+            ScanFeedback.shared.problem()
+        }
+    }
+
     func goToCheckInSearch() {
         bracelet = nil
         participant = nil
@@ -850,6 +1001,7 @@ final class AppModel {
         sessionChoice = nil
         sessionMethod = nil
         specialSessions = []
+        participantActionOverride = nil
         merchUnavailable = false
         search = ""
         screen = .assign
@@ -982,6 +1134,7 @@ final class AppModel {
         sessionChoice = nil
         sessionMethod = nil
         specialSessions = []
+        participantActionOverride = nil
         merchUnavailable = false
         bracelet = nil
         selectedPass = nil
@@ -1040,6 +1193,7 @@ final class AppModel {
         sessionChoice = nil
         sessionMethod = nil
         specialSessions = []
+        participantActionOverride = nil
         merchUnavailable = false
         isPendingDoorSale = true
         screen = .participant
@@ -1241,6 +1395,7 @@ final class AppModel {
         sessionChoice = nil
         sessionMethod = nil
         specialSessions = []
+        participantActionOverride = nil
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -1270,6 +1425,7 @@ final class AppModel {
         sessionChoice = nil
         sessionMethod = nil
         specialSessions = []
+        participantActionOverride = nil
         merchUnavailable = false
         paymentDecision = nil
     }

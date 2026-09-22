@@ -423,14 +423,43 @@ service cloud.firestore {
       // "This bracelet is permanently paired with …" — the design means it.
       // Pairing is reception-only, one-way, and must agree with the reverse
       // lookup document written in the same transaction.
+      // Two legal moves, and deliberately different shapes.
+      //
+      //   · **null → chip**: an ordinary check-in, or a door sale. The chip's
+      //     own document is created in the same write, pointing back here.
+      //   · **chip → chip**: a replacement, when a wristband is lost or broken.
+      //     The old one is invalidated in the same write, so it stops resolving
+      //     for good, and the new one is minted fresh.
+      //
+      // What stays impossible is the dangerous move: pairing to a chip that
+      // already belongs to somebody. `create` on the new chip fails if the
+      // document exists, so a chip can never change owner — the property the
+      // money model rests on, since a balance follows the person and the chip
+      // is only how you find them.
       function pairingIsLegal(pid) {
         return !changed('braceletId')
-          || (
-            isReception()
-            && resource.data.get('braceletId', null) == null
-            && request.resource.data.braceletId is string
-            && getAfter(braceletRef(request.resource.data.braceletId)).data.participantId == pid
-          );
+          || (isReception() && isFirstPairing(pid))
+          || (isReception() && isReplacement(pid));
+      }
+
+      function isFirstPairing(pid) {
+        return resource.data.get('braceletId', null) == null
+          && request.resource.data.braceletId is string
+          && getAfter(braceletRef(request.resource.data.braceletId)).data.participantId == pid;
+      }
+
+      function isReplacement(pid) {
+        let old = resource.data.get('braceletId', null);
+        let fresh = request.resource.data.get('braceletId', null);
+        return old is string
+          && fresh is string
+          && fresh != old
+          // The new one is minted here, for this person…
+          && getAfter(braceletRef(fresh)).data.participantId == pid
+          // …and the old one dies here, in the same write. Neither half can
+          // happen alone: a chip that stopped being somebody's while still
+          // resolving is a wristband a finder could spend from.
+          && getAfter(braceletRef(old)).data.invalidatedAt == request.time;
       }
 
       // The invariant that matters. Either the balance did not move, or it moved
@@ -725,14 +754,87 @@ service cloud.firestore {
       allow read: if canRead();
 
       allow create: if isReception()
-        && request.resource.data.keys().hasOnly(['participantId', 'staffUid', 'pairedAt'])
+        && request.resource.data.keys()
+             .hasOnly(['participantId', 'staffUid', 'pairedAt',
+                       'replacementFee', 'replacementMethod'])
         && request.resource.data.staffUid == request.auth.uid
         && request.resource.data.pairedAt == request.time
-        && getAfter(participantRef(request.resource.data.participantId)).data.braceletId == chipUid;
+        && getAfter(participantRef(request.resource.data.participantId)).data.braceletId == chipUid
+        && replacementFeeIsSane();
 
-      // Permanent pairing. Re-assigning a chip to a different guest would
-      // silently transfer their balance; a fresh bracelet is the answer.
-      allow update, delete: if false;
+      // A chip never changes owner — re-assigning one to a different guest would
+      // silently transfer their balance. What it can do is stop being valid: a
+      // lost or broken wristband is invalidated, the guest is given a fresh one,
+      // and this document stays as the record of who had it and until when.
+      // Nothing is deleted, so a chip that turns up later cannot be quietly
+      // re-issued to somebody else.
+      allow update: if isReception() && isInvalidation();
+      allow delete: if false;
+
+      // What the desk took for a replacement wristband, on the wristband it
+      // issued. **Not on the balance and not in the ledger**: the guest pays for
+      // it at the desk in cash or on the card machine, exactly like a pass sold
+      // at the door, and the ledger stays what is *on a bracelet*.
+      //
+      // Optional, because a snapped clasp is the festival's fault and the desk
+      // waives it — a waived fee is the absence of these fields rather than a
+      // zero, so the totals cannot be read as "somebody paid nothing".
+      function replacementFeeIsSane() {
+        let d = request.resource.data;
+        let charged = 'replacementFee' in d;
+        return (!charged && !('replacementMethod' in d))
+          || (
+            charged
+            && d.replacementMethod in ['cash', 'card']
+            // Cents, with the same typo ceiling every other price has.
+            && d.replacementFee is int
+            && d.replacementFee > 0
+            && d.replacementFee <= 200000
+            // Only ever charged for a replacement. A first wristband is part of
+            // a ticket somebody already paid for.
+            && get(participantRef(d.participantId)).data.get('braceletId', null) != null
+          );
+      }
+
+      function isInvalidation() {
+        let after = request.resource.data;
+        return after.diff(resource.data).affectedKeys()
+                 .hasOnly(['invalidatedAt', 'invalidatedBy', 'reason'])
+          // Once. A chip that could be invalidated twice could have its reason
+          // rewritten afterwards by anybody standing at a desk.
+          && resource.data.get('invalidatedAt', null) == null
+          && after.invalidatedAt == request.time
+          && after.invalidatedBy == request.auth.uid
+          // Why it was replaced, in the operator's words. Required, because
+          // "there is a new wristband and nobody wrote down why" is the state
+          // this exists to prevent.
+          && after.reason is string
+          && after.reason.size() > 0
+          && after.reason.size() <= 200
+          // Never on its own. The person has to be moved onto a new wristband in
+          // the same write — partly so nobody is left holding a dead chip with a
+          // balance behind it, and partly because the replacement branch of
+          // `pairingIsLegal` requires this invalidation to be *this* write: a
+          // chip killed on its own could never be replaced afterwards, and the
+          // participant would be stuck for the rest of the festival.
+          && getAfter(participantRef(resource.data.participantId))
+               .data.get('braceletId', null) != chipUid;
+      }
+    }
+
+    // ── Festival settings ──────────────────────────────────────────────────
+    //
+    // One document, holding the numbers that are neither a price list nor a
+    // person: at the moment, what a replacement wristband costs.
+    match /settings/{settingId} {
+      allow read: if canRead();
+      allow create, update: if isAdmin()
+        && settingId == 'bracelets'
+        && request.resource.data.keys().hasOnly(['replacementFee'])
+        && request.resource.data.replacementFee is int
+        && request.resource.data.replacementFee >= 0
+        && request.resource.data.replacementFee <= 200000;
+      allow delete: if false;
     }
 
     // ── Drinks menu ────────────────────────────────────────────────────────

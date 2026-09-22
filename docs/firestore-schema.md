@@ -417,10 +417,36 @@ bracelets/04:B4:2F:11
   participantId: "tkt-10432"
   staffUid:      "<uid of whoever paired it>"
   pairedAt:      <server timestamp>
+
+  // …and once it has been replaced:
+  invalidatedAt: <server timestamp>   // it stops resolving, for everybody
+  invalidatedBy: "<uid>"
+  reason:        "Lost it on the dance floor"
+  // on the chip that took over, when the guest was charged for it:
+  replacementFee:    100              // cents, absent when waived
+  replacementMethod: "cash" | "card"  // never a balance — see below
 ```
 
-Create-only. Re-pointing a chip at a different guest would silently transfer
-their balance; the design's answer is a fresh bracelet, and the rules enforce it.
+**A chip never changes owner.** `participantId` is write-once and the document
+is never deleted, because re-pointing a chip would silently transfer somebody's
+balance. What a chip can do is stop being valid: a lost or broken wristband is
+invalidated and a fresh one minted, both in one write, and the retired document
+stays as the record of who had it and until when.
+
+The replacement fee is recorded here rather than on the balance: it is taken at
+the desk in cash or on the card machine, and the ledger stays the record of what
+somebody has spent at the bar. See `docs/lost-bracelets.md`.
+
+## `settings/bracelets`
+
+One document, for the numbers that are neither a price list nor a person:
+
+```
+settings/bracelets
+  replacementFee: 100    // cents. Absent or zero means the desk offers no fee.
+```
+
+Organisers write it in the panel's Bracelets tab; the terminals read it.
 
 ## `drinks/{drinkId}`
 

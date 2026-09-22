@@ -7,12 +7,21 @@ import {
   COLLECTIONS,
   EVENING_LABELS,
   MAX_COLOUR_NAME,
+  MAX_PASS_PRICE,
+  PAYMENT_METHOD_LABELS,
+  SETTINGS,
   WRISTBANDS,
+  euros,
+  parseEuros,
   parseHexColour,
+  shortTime,
+  toBracelet,
   toBraceletColour,
   toParticipant,
   wristbandFor,
+  type Bracelet,
   type BraceletColour,
+  type Participant,
   type Wristband,
 } from './schema';
 
@@ -184,6 +193,7 @@ export function Bracelets() {
 
       <Strays strays={strays} />
       <Leftovers leftovers={leftovers} onError={setError} />
+      <Replacements onError={setError} />
 
       <p className="note">
         One row per pile of wristbands, and nothing else. Paste a hex into the box
@@ -296,6 +306,199 @@ function Leftovers({
         can be what somebody is shown even though no row above claims it. Clearing
         them is safe once the rows above say what they should.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Wristbands that were replaced, and what the desk took for them.
+ *
+ * Reads the whole `bracelets` collection — one document per wristband ever
+ * issued, a few hundred at most — because the two halves of a replacement live
+ * on two different chips: the reason is on the one that died, the fee is on the
+ * one that took over. Joined here by participant.
+ *
+ * The fee an organiser sets lives at the top of this block, because this is the
+ * tab about wristbands and it is the only number the replacement flow needs.
+ */
+function Replacements({ onError }: { onError: (message: string) => void }) {
+  const [bracelets, setBracelets] = useState<Bracelet[] | null>(null);
+  const [people, setPeople] = useState<Map<string, Participant>>(new Map());
+  const [fee, setFee] = useState<number | null>(null);
+  const [feeInput, setFeeInput] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, COLLECTIONS.bracelets),
+      (snapshot) => setBracelets(snapshot.docs.flatMap((entry) => toBracelet(entry) ?? [])),
+      (cause) => onError(cause.message)
+    );
+  }, [onError]);
+
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, COLLECTIONS.participants),
+      (snapshot) => {
+        const byId = new Map<string, Participant>();
+        for (const entry of snapshot.docs) {
+          const person = toParticipant(entry);
+          if (person) byId.set(person.id, person);
+        }
+        setPeople(byId);
+      },
+      (cause) => onError(cause.message)
+    );
+  }, [onError]);
+
+  useEffect(() => {
+    return onSnapshot(
+      doc(db, COLLECTIONS.settings, SETTINGS.braceletsDocumentId),
+      (snapshot) => {
+        const cents = snapshot.data()?.[SETTINGS.replacementFee];
+        setFee(typeof cents === 'number' ? Math.trunc(cents) : null);
+      },
+      (cause) => onError(cause.message)
+    );
+  }, [onError]);
+
+  // What the box shows: whatever is being typed, else what is configured, else
+  // nothing — a blank field for a festival that has not set a fee.
+  const shown = feeInput ?? (fee === null ? '' : (fee / 100).toFixed(2));
+  const parsed = parseEuros(shown);
+  const feeValid = parsed !== null && parsed <= MAX_PASS_PRICE;
+  const feeDirty = parsed !== fee;
+
+  const replaced = (bracelets ?? [])
+    .filter((chip) => chip.invalidatedAt !== null)
+    .sort((a, b) => (b.invalidatedAt?.getTime() ?? 0) - (a.invalidatedAt?.getTime() ?? 0));
+
+  // The fee is on the wristband that took over, so it is found by owner: the
+  // one chip of theirs that is still live and carries a fee.
+  const feeFor = (participantId: string) =>
+    (bracelets ?? []).find(
+      (chip) => chip.participantId === participantId && chip.replacementFee !== null
+    ) ?? null;
+
+  const takings = (bracelets ?? []).reduce(
+    (sum, chip) => {
+      if (chip.replacementFee === null || chip.replacementMethod === null) return sum;
+      return { ...sum, [chip.replacementMethod]: sum[chip.replacementMethod] + chip.replacementFee };
+    },
+    { cash: 0, card: 0 }
+  );
+
+  return (
+    <div className="stack">
+      <h2 className="card__title">Replacing a lost wristband</h2>
+
+      <div className="drink-form">
+        <label className="field">
+          <span>What a replacement costs</span>
+          <input
+            value={shown}
+            inputMode="decimal"
+            placeholder="1.00"
+            onChange={(event) => setFeeInput(event.target.value)}
+          />
+        </label>
+        <div />
+        <button
+          className="btn btn--primary"
+          type="button"
+          disabled={busy || !feeValid || !feeDirty}
+          onClick={async () => {
+            if (parsed === null) return;
+            setBusy(true);
+            try {
+              await setDoc(doc(db, COLLECTIONS.settings, SETTINGS.braceletsDocumentId), {
+                [SETTINGS.replacementFee]: parsed,
+              });
+              setFeeInput(null);
+            } catch (cause) {
+              onError(cause instanceof Error ? cause.message : String(cause));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Save the fee
+        </button>
+      </div>
+
+      <p className="note">
+        Reception can charge this when it replaces a wristband, or waive it — a
+        snapped clasp is the festival's fault. It is taken at the desk in cash or
+        on the card machine and <strong>does not touch the balance</strong>: the
+        ledger stays the record of what somebody has spent at the bar. Set it to
+        nothing and the desk is offered no fee at all.
+      </p>
+
+      {replaced.length === 0 ? null : (
+        <>
+          <table className="table">
+            <colgroup>
+              <col />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '120px' }} />
+              <col style={{ width: '140px' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Guest &amp; reason</th>
+                <th>Old bracelet</th>
+                <th>Replaced</th>
+                <th className="num">Fee</th>
+              </tr>
+            </thead>
+            <tbody>
+              {replaced.map((chip) => {
+                const person = people.get(chip.participantId);
+                const paid = feeFor(chip.participantId);
+                return (
+                  <tr key={chip.id}>
+                    <td>
+                      {person?.name ?? chip.participantId}
+                      <div className="sub">{chip.reason || '—'}</div>
+                    </td>
+                    <td className="mono sub">{chip.id}</td>
+                    <td className="mono sub">{shortTime(chip.invalidatedAt)}</td>
+                    <td className="num">
+                      {paid?.replacementFee == null ? (
+                        <span className="tag tag--quiet">Waived</span>
+                      ) : (
+                        <>
+                          {euros(paid.replacementFee)}
+                          <div className="sub">
+                            {paid.replacementMethod
+                              ? PAYMENT_METHOD_LABELS[paid.replacementMethod]
+                              : ''}
+                          </div>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td className="name">
+                  {replaced.length} replaced
+                </td>
+                <td />
+                <td className="name num">{PAYMENT_METHOD_LABELS.cash} {euros(takings.cash)}</td>
+                <td className="name num">{PAYMENT_METHOD_LABELS.card} {euros(takings.card)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p className="note">
+            Every wristband ever issued keeps its own row in the database, so this
+            is the history rather than a list that forgets: a guest who has lost
+            two appears twice, and the chip that was handed in still says whose it
+            was. None of them resolve any more — a found wristband buys nothing.
+          </p>
+        </>
+      )}
     </div>
   );
 }

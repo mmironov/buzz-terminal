@@ -84,9 +84,17 @@ struct ParticipantView: View {
 
             // Nothing is sold to somebody who does not exist yet: a door sale's
             // confirmation screen is this same view, and its participant has no
-            // document to hang a class off.
-            if !model.isPendingDoorSale, !model.specialSessions.isEmpty {
+            // document to hang a class off. Nor on a replacement, where the
+            // screen has one job and the button below says what it is — a class
+            // sold here would be a second thing taking money on a screen about
+            // a wristband.
+            if !model.isPendingDoorSale, !action.isReplacement, !model.specialSessions.isEmpty {
                 sessionsSection
+                    .padding(.top, SBSpace.x4)
+            }
+
+            if action.isReplacement {
+                replacementSection
                     .padding(.top, SBSpace.x4)
             }
 
@@ -119,9 +127,13 @@ struct ParticipantView: View {
                     .padding(.top, 10)
             }
 
-            Button(action.label) { perform(action) }
+            // On a replacement the button says what is still missing rather
+            // than sitting there greyed out — the same rule the keypad and the
+            // buyer form follow.
+            let blocker = action.isReplacement ? model.replacement.blocker : nil
+            Button(blocker ?? action.label) { perform(action) }
                 .buttonStyle(.sbBlock(.primary, minHeight: 48, fontSize: 15))
-                .disabled(model.isWorking)
+                .disabled(model.isWorking || blocker != nil)
                 .padding(.top, 20)
         }
         .padding(.horizontal, 18)
@@ -213,6 +225,81 @@ struct ParticipantView: View {
             .buttonStyle(.sbBlock(.secondary, minHeight: 44, fontSize: 14))
             .disabled(model.isWorking || (!shirt.isCollected && !shirt.canBeHandedOver))
             .padding(.top, 12)
+        }
+    }
+
+    /// Why the wristband is being replaced, and whether the guest is paying for
+    /// it.
+    ///
+    /// Above the button that reads the chip, because both are answered before
+    /// the irreversible part — the same order the door sale follows. The fee is
+    /// taken at the desk in cash or on the card machine; it is **not** taken off
+    /// the balance, which is the record of what somebody has spent at the bar
+    /// and has no business carrying a festival charge.
+    private var replacementSection: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 0) {
+            SBDivider(weight: SBRule.hairline)
+
+            SBKicker(text: "Why it is being replaced")
+                .padding(.top, 12)
+                .padding(.bottom, SBSpace.x2)
+
+            SBTextField(
+                label: "",
+                placeholder: "Lost it in the venue",
+                text: $model.replacement.reason,
+                autocapitalization: .sentences
+            )
+
+            if let fee = model.replacementFee, fee.isPositive {
+                Button {
+                    model.replacement.chargesFee.toggle()
+                } label: {
+                    HStack(spacing: SBSpace.x2) {
+                        Rectangle()
+                            .stroke(
+                                model.replacement.chargesFee ? Color.sbAccent : Color.sbInk(0.45),
+                                lineWidth: SBRule.hairline
+                            )
+                            .frame(width: 18, height: 18)
+                            .overlay {
+                                if model.replacement.chargesFee {
+                                    Rectangle().fill(Color.sbAccent).frame(width: 10, height: 10)
+                                }
+                            }
+                        Text("Charge the \(fee) fee")
+                            .font(.sbHeading(15, weight: .extrabold))
+                            .foregroundStyle(.sbInk)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, SBSpace.x3)
+
+                // Only once there is something to pay. A snapped clasp is the
+                // festival's fault and the box stays unticked.
+                if model.replacement.chargesFee {
+                    HStack(spacing: SBSpace.x2) {
+                        ForEach(PaymentMethod.allCases) { method in
+                            SBChoiceBox(
+                                title: method.label,
+                                isSelected: model.replacement.method == method,
+                                select: { model.replacement.method = method }
+                            )
+                        }
+                    }
+                    .padding(.top, SBSpace.x2)
+
+                    Text("Taken at the desk, like a pass sold at the door. It does not come off the balance.")
+                        .font(.sbBody(11))
+                        .foregroundStyle(.sbInk(0.5))
+                        .sbLineHeight(1.5, size: 11)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, SBSpace.x2)
+                }
+            }
         }
     }
 
@@ -320,6 +407,8 @@ struct ParticipantView: View {
             } else {
                 model.scanToAssignBracelet()
             }
+        case .scanAndReplace:
+            model.scanForReplacement()
         }
     }
 
@@ -332,6 +421,8 @@ struct ParticipantView: View {
             return "Nothing has been sold yet. Take the money, then hold a fresh bracelet to the phone — that is what records the sale, and the pairing is permanent."
         case .scanAndAssign:
             return "Check the name, then hold a fresh bracelet to the phone. The pairing is permanent, so the wrong wristband cannot be taken back."
+        case .scanAndReplace:
+            return "\(name)'s old bracelet stops working the moment the new one is read. Nothing else changes: the balance stays where it is."
         }
     }
 

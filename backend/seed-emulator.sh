@@ -98,4 +98,7 @@ echo "door passes:"
 echo "sessions:";     session lindy-sakarias-elice "Lindy Hop with Sakarias & Elice" 2500 0
                       session jazz-patrik "Jazz with Patrik" 2500 1
                       echo "  2 special sessions"
+# What a replacement wristband costs, as the panel would set it.
+echo "settings:";     curl -s -X PATCH "$FS/settings/bracelets" "${OWNER[@]}" -d '{"fields":{"replacementFee":{"integerValue":"100"}}}' >/dev/null
+                      echo "  replacement fee 1.00 EUR"
 echo "done."

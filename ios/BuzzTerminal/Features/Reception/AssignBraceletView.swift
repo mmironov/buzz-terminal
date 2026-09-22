@@ -92,7 +92,9 @@ struct AssignBraceletView: View {
 }
 
 /// A tappable list row: no chrome, a hairline underneath, and a wash on press.
-private struct RowStyle: ButtonStyle {
+/// Shared with the replacement list, which is the same list of a different half
+/// of the roster.
+struct RowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.sbInk)

@@ -26,6 +26,10 @@ actor InMemoryTerminalRepository: TerminalRepository {
     /// somebody has bought.
     private var sessions: [ParticipantID: SessionSale] = [:]
 
+    /// Chips that have been replaced. They keep pointing at their owner in the
+    /// roster's history; what they no longer do is resolve.
+    private var invalidated: Set<BraceletID> = []
+
     init(
         roster: [Participant] = SampleData.roster,
         menu: [Drink] = SampleData.drinks,
@@ -94,10 +98,20 @@ actor InMemoryTerminalRepository: TerminalRepository {
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
+    func checkedIn() async throws -> [Participant] {
+        await simulateNetwork()
+        return roster.values
+            .filter { !$0.isAwaitingCheckIn }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+
     // MARK: Bracelets
 
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant? {
         await simulateNetwork()
+        // A replaced wristband stops resolving, exactly as it does on the real
+        // backend — so the "no longer valid" screen is reachable from fixtures.
+        if invalidated.contains(bracelet) { throw TerminalError.braceletInvalidated }
         return participant(pairedTo: bracelet)
     }
 
@@ -150,6 +164,32 @@ actor InMemoryTerminalRepository: TerminalRepository {
         // fixture keeps people, not subcollections, and half a store is worse
         // than none.
         return buyer
+    }
+
+    func replaceBracelet(
+        _ fresh: BraceletID,
+        for participant: Participant,
+        reason: String,
+        fee: Money?,
+        method: PaymentMethod?
+    ) async throws -> Participant {
+        await simulateNetwork()
+        guard var updated = roster[participant.id] else { throw TerminalError.unknownAccount }
+        guard let old = updated.braceletId else { throw TerminalError.braceletNotAssigned }
+        guard self.participant(pairedTo: fresh) == nil else { throw TerminalError.braceletAlreadyPaired }
+
+        invalidated.insert(old)
+        updated.braceletId = fresh
+        roster[updated.id] = updated
+        return updated
+    }
+
+    /// The fixtures charge a euro, which is what the festival settled on. A
+    /// number here rather than nil so the waive path is not the only one the
+    /// previews and the simulator can reach.
+    func replacementFee() async throws -> Money? {
+        await simulateNetwork()
+        return Money(euros: 1)
     }
 
     func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant {

@@ -62,12 +62,17 @@ enum Screen: Hashable, Sendable {
     /// "whose is this?", and the answer "nobody's" ends there. Pairing one is
     /// its own flow, started deliberately from the home screen.
     case unassignedBracelet
+    /// A chip that was replaced. Also a dead end, and an ordinary one — it is
+    /// what somebody holding a found wristband gets, at either terminal.
+    case replacedBracelet
     /// Which pass is being sold, on a bracelet that has just been scanned.
     case doorPass
     /// Who is buying it: name, dance role, level, email.
     case doorBuyer
     /// Selling an evening ticket: which night, and who for.
     case assignEvening
+    /// Who has lost a wristband: the list of people who have one.
+    case replaceSearch
     case participant
     case blocked
     case topUp

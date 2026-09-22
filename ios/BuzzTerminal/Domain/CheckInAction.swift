@@ -24,6 +24,12 @@ enum CheckInAction: Equatable {
     /// Not checked in: the operator has to read a chip.
     case scanAndAssign
 
+    /// Checked in, and their wristband is lost or broken: read a fresh chip,
+    /// which invalidates the old one. Chosen by the flow rather than by the
+    /// participant's state — the same person offers `topUp` on every other
+    /// route to this screen — so it is set, not decided.
+    case scanAndReplace
+
     /// The one rule.
     static func decide(for participant: Participant) -> CheckInAction {
         participant.isAwaitingCheckIn ? .scanAndAssign : .topUp
@@ -34,9 +40,13 @@ enum CheckInAction: Equatable {
         switch self {
         case .topUp: "Add money"
         case .scanAndAssign: "Scan and assign bracelet"
+        case .scanAndReplace: "Scan and replace"
         }
     }
 
     /// Whether this action pairs a chip — i.e. whether it is the irreversible one.
     var isCheckIn: Bool { self == .scanAndAssign }
+
+    /// Whether this screen is about replacing a wristband somebody already has.
+    var isReplacement: Bool { self == .scanAndReplace }
 }

@@ -19,6 +19,7 @@ export const COLLECTIONS = {
   /** The extra classes on sale. Not passes: see `docs/special-sessions.md`. */
   specialSessions: 'specialSessions',
   transactions: 'transactions',
+  /** Chip → participant, and the record of the ones that were replaced. */
   bracelets: 'bracelets',
   drinks: 'drinks',
   /** Which colour wristband each pass type gets. One document per pass type. */
@@ -27,6 +28,8 @@ export const COLLECTIONS = {
   doorPasses: 'doorPasses',
   /** A door buyer's email. Reception and this panel only — never the bar. */
   contact: 'contact',
+  /** Numbers that are neither a price list nor a person. One document. */
+  settings: 'settings',
 } as const;
 
 export const PARTICIPANT_FIELDS = {
@@ -76,6 +79,25 @@ export const SPECIAL_SESSION_FIELDS = {
   price: 'price',
   sortOrder: 'sortOrder',
   isActive: 'isActive',
+} as const;
+
+export const BRACELET_FIELDS = {
+  participantId: 'participantId',
+  staffUid: 'staffUid',
+  pairedAt: 'pairedAt',
+  /** Set when the wristband was replaced. It stops resolving from then on. */
+  invalidatedAt: 'invalidatedAt',
+  invalidatedBy: 'invalidatedBy',
+  reason: 'reason',
+  /** What the desk took for the wristband that replaced it. Absent = waived. */
+  replacementFee: 'replacementFee',
+  replacementMethod: 'replacementMethod',
+} as const;
+
+export const SETTINGS = {
+  /** The one settings document, and the one thing in it so far. */
+  braceletsDocumentId: 'bracelets',
+  replacementFee: 'replacementFee',
 } as const;
 
 export const CONTACT_FIELDS = {
@@ -361,6 +383,43 @@ export function toSpecialSession(doc: Doc): SpecialSession | null {
     price,
     sortOrder: int(data[SPECIAL_SESSION_FIELDS.sortOrder]) ?? 0,
     isActive: data[SPECIAL_SESSION_FIELDS.isActive] !== false,
+  };
+}
+
+/**
+ * One wristband, and what became of it.
+ *
+ * A chip never changes owner, so this is also the history: a guest who lost two
+ * has three documents, two of them invalidated, all pointing at them.
+ */
+export interface Bracelet {
+  /** The chip UID, which is the document id. */
+  id: string;
+  participantId: string;
+  pairedAt: Date | null;
+  /** Set once it has been replaced. Null while it is the live one. */
+  invalidatedAt: Date | null;
+  /** Why, in the operator's words. Empty while it is live. */
+  reason: string;
+  /** Cents the desk took for THIS wristband, when it replaced another. Null
+   *  when it was waived, and null on everybody's first. */
+  replacementFee: number | null;
+  replacementMethod: PaymentMethod | null;
+}
+
+export function toBracelet(doc: Doc): Bracelet | null {
+  const data = doc.data();
+  const participantId = data[BRACELET_FIELDS.participantId];
+  if (typeof participantId !== 'string' || !participantId) return null;
+
+  return {
+    id: doc.id,
+    participantId,
+    pairedAt: date(data[BRACELET_FIELDS.pairedAt]),
+    invalidatedAt: date(data[BRACELET_FIELDS.invalidatedAt]),
+    reason: str(data[BRACELET_FIELDS.reason]),
+    replacementFee: int(data[BRACELET_FIELDS.replacementFee]),
+    replacementMethod: toPaymentMethod(data[BRACELET_FIELDS.replacementMethod]),
   };
 }
 

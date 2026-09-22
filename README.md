@@ -396,7 +396,9 @@ who is already here, from their own screen, one each. Add, rename, reprice or
 withdraw them here; what the desk took for them is totalled underneath.
 `docs/special-sessions.md`.
 
-**Bracelets.** Which colour wristband each pile gets: ten written-down rows —
+**Bracelets.** What a replacement wristband costs, every one that has been
+replaced — guest, reason, and what was taken for the new one — and which colour
+wristband each pile gets: ten written-down rows —
 Full Pass INT, ADV and PRO, Gold, the two Party Passes, the Jazz track and the
 three evenings, which are matched on the night rather than the pass type. A colour
 matching no row is listed underneath to be cleared, and people matching no row are

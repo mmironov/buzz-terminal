@@ -65,6 +65,17 @@ struct ReceptionHomeView: View {
                     .font(.sbBody(10.5))
                     .foregroundStyle(.sbInk(0.5))
             }
+
+            // Last of the three, and the rarest. It is here rather than behind a
+            // scan because the wristband is the thing that is missing: the only
+            // way to the guest is by name.
+            VStack(spacing: 5) {
+                Button("Replace a bracelet") { model.beginBraceletReplacement() }
+                    .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 15))
+                Text("Lost or broken · the old one stops working")
+                    .font(.sbBody(10.5))
+                    .foregroundStyle(.sbInk(0.5))
+            }
         }
         .frame(maxWidth: 270)
         // The scan target's outermost ring is drawn with a -26 negative padding,

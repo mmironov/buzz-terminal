@@ -58,6 +58,7 @@ struct ScanOverlayView: View {
         switch state.purpose {
         case .assignToSelected: "Pair a bracelet"
         case .doorSale: "Fresh bracelet"
+        case .replaceBracelet: "Replacement bracelet"
         case .identify, .payment: "Hold the bracelet"
         }
     }
@@ -67,6 +68,9 @@ struct ScanOverlayView: View {
         case .assignToSelected:
             guard let guest = model.participant else { return Self.genericSubtitle }
             return "This bracelet becomes \(guest.name)’s for the whole festival"
+        case .replaceBracelet:
+            guard let guest = model.participant else { return Self.genericSubtitle }
+            return "This takes over from \(guest.name)’s old one, which stops working"
         case .doorSale:
             guard let pass = model.selectedPass else { return Self.genericSubtitle }
             // Everything is decided by now, so this can name it — and naming it

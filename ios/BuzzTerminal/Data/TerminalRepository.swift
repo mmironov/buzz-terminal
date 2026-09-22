@@ -51,6 +51,11 @@ protocol TerminalRepository: Sendable {
     /// `braceletId == nil`. The check-in list.
     func awaitingCheckIn() async throws -> [Participant]
 
+    /// Everybody who has one. The complement of `awaitingCheckIn`, and the list
+    /// to pick from when a wristband has been lost — there is no other way to
+    /// find somebody whose chip is gone.
+    func checkedIn() async throws -> [Participant]
+
     /// Which colour of wristband each pass type gets, as organisers set it.
     ///
     /// Loaded with the catalogue rather than per participant: it is a handful
@@ -106,6 +111,30 @@ protocol TerminalRepository: Sendable {
     /// Permanent: re-pointing a chip at a different guest would silently
     /// transfer their balance, so the security rules forbid it outright.
     func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant
+
+    /// Swap a lost or broken wristband for a fresh one, in one write.
+    ///
+    /// The old chip is invalidated — it stops resolving for good, and keeps the
+    /// record of who had it and why it ended — and the new one is minted. The
+    /// balance is not touched: it lives on the person, so a lost wristband loses
+    /// nobody any money and this writes no ledger entry.
+    ///
+    /// `fee` is what the desk took for the new wristband, in cash or on the card
+    /// machine, and nil when it was waived. It is recorded on the new chip, not
+    /// on the balance: a festival charge has no business in the record of what
+    /// somebody spent at the bar.
+    func replaceBracelet(
+        _ fresh: BraceletID,
+        for participant: Participant,
+        reason: String,
+        fee: Money?,
+        method: PaymentMethod?
+    ) async throws -> Participant
+
+    /// What the festival charges for a replacement, as an organiser set it.
+    /// Nil when nobody has set one, which is a real state: the desk then has no
+    /// fee to offer and replaces wristbands for nothing.
+    func replacementFee() async throws -> Money?
 
     // MARK: Merch
 
@@ -192,6 +221,7 @@ enum TerminalError: Error, Equatable, LocalizedError {
     case tooManyAttempts
     case braceletNotAssigned
     case braceletAlreadyPaired
+    case braceletInvalidated
     case eveningSequenceExhausted
     case doorSequenceExhausted
     case braceletBlocked
@@ -220,6 +250,8 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "This bracelet is not paired to anybody yet."
         case .braceletAlreadyPaired:
             "This bracelet is already paired to somebody. Use a fresh one."
+        case .braceletInvalidated:
+            "This bracelet is no longer valid. It was replaced — see reception."
         case .eveningSequenceExhausted:
             "Could not allocate an evening ticket number. Try again."
         case .doorSequenceExhausted:

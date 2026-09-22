@@ -336,6 +336,17 @@ actor FirebaseTerminalRepository: TerminalRepository {
         return snapshot.documents.compactMap(Participant.init(document:))
     }
 
+    func checkedIn() async throws -> [Participant] {
+        // The complement of the list above, and the same shape of query: one
+        // field, no index to create, and it resolves from the offline cache.
+        let snapshot = try await db.collection(Fire.Collection.participants)
+            .whereField(Fire.Participant.braceletId, isNotEqualTo: NSNull())
+            .getDocuments()
+        return snapshot.documents
+            .compactMap(Participant.init(document:))
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+
     /// No ordering and no index: a handful of documents, sorted by nobody,
     /// looked up by pass type once they are in memory.
     func braceletColours() async throws -> [BraceletColour] {
@@ -364,6 +375,14 @@ actor FirebaseTerminalRepository: TerminalRepository {
         let lookup = try await braceletDocument(bracelet).getDocument()
         guard let participantId = lookup.data()?[Fire.Bracelet.participantId] as? String else {
             return nil
+        }
+        // A wristband that was replaced stops resolving here, whoever is holding
+        // it. This is the half of "lost" that matters: the document stays, so
+        // the record of who had it survives, but the chip buys nothing and opens
+        // nobody's screen. Thrown rather than returned as nil, because "nobody's"
+        // and "somebody's, and dead" are different answers at a desk.
+        if lookup.data()?[Fire.Bracelet.invalidatedAt] != nil {
+            throw TerminalError.braceletInvalidated
         }
         let document = try await participantDocument(ParticipantID(participantId)).getDocument()
         return Participant(document: document)
@@ -584,6 +603,69 @@ actor FirebaseTerminalRepository: TerminalRepository {
         // screen shows the guest checked in, which is what actually happened at the
         // desk.
         return try await reload(participant.id)
+    }
+
+    func replaceBracelet(
+        _ fresh: BraceletID,
+        for participant: Participant,
+        reason: String,
+        fee: Money?,
+        method: PaymentMethod?
+    ) async throws -> Participant {
+        let uid = try requireStaffUid()
+        guard let old = participant.braceletId else { throw TerminalError.braceletNotAssigned }
+
+        let batch = db.batch()
+
+        // All three in one write, because the rules check them against each
+        // other: the person moves onto the new chip only if the old one is
+        // invalidated here and the new one is minted here.
+        batch.updateData([
+            Fire.Participant.braceletId: fresh.rawValue,
+            Fire.Participant.updatedAt: FieldValue.serverTimestamp(),
+        ], forDocument: participantDocument(participant.id))
+
+        batch.updateData([
+            Fire.Bracelet.invalidatedAt: FieldValue.serverTimestamp(),
+            Fire.Bracelet.invalidatedBy: uid,
+            Fire.Bracelet.reason: reason,
+        ], forDocument: braceletDocument(old))
+
+        var minted: [String: Any] = [
+            Fire.Bracelet.participantId: participant.id.rawValue,
+            Fire.Bracelet.staffUid: uid,
+            Fire.Bracelet.pairedAt: FieldValue.serverTimestamp(),
+        ]
+        // A waived fee is the absence of these, not a zero — the takings must
+        // not be readable as "somebody paid nothing".
+        if let fee, let method {
+            minted[Fire.Bracelet.replacementFee] = fee.cents
+            minted[Fire.Bracelet.replacementMethod] = method.wire
+        }
+        batch.setData(minted, forDocument: braceletDocument(fresh))
+
+        do {
+            try await batch.commit()
+        } catch {
+            // Same reasoning as `assignBracelet`: the likeliest denial is a chip
+            // that already belongs to somebody, and saying so is more use at a
+            // desk than the rules' own answer. Confirmed with a read rather than
+            // inferred, because a denial can also be a stale role claim.
+            if let existing = try? await braceletDocument(fresh).getDocument(), existing.exists {
+                throw TerminalError.braceletAlreadyPaired
+            }
+            throw error
+        }
+        return try await reload(participant.id)
+    }
+
+    func replacementFee() async throws -> Money? {
+        let document = try await db
+            .collection(Fire.Settings.collection)
+            .document(Fire.Settings.braceletsDocumentId)
+            .getDocument()
+        guard let cents = document.data()?[Fire.Settings.replacementFee] as? Int else { return nil }
+        return Money(cents: cents)
     }
 
     // MARK: - Door sales

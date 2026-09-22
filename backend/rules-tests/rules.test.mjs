@@ -331,6 +331,204 @@ describe('pairing a bracelet', () => {
   });
 });
 
+// ───────────────────────────────────────────────────────────────────────────
+//  Replacing a lost or broken wristband
+//
+//  The one way a participant's `braceletId` may move from one chip to another.
+//  Both halves happen in one write: the old chip is invalidated so it stops
+//  resolving for good, and a fresh one is minted. A chip still never changes
+//  owner, and the balance — which lives on the person — is not touched at all.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('replacing a bracelet', () => {
+  const NEW_CHIP = '04:F1:2E:88';
+
+  /** The batch reception sends: invalidate the old chip, mint the new one. */
+  function replace(
+    db,
+    {
+      chip = NEW_CHIP,
+      uid = RECEPTION_UID,
+      reason = 'Lost in the venue',
+      fee = null,
+      method = null,
+      invalidateOld = true,
+      mintNew = true,
+      movePerson = true,
+    } = {}
+  ) {
+    const batch = writeBatch(db);
+    if (movePerson) {
+      batch.update(doc(db, 'participants', PARTICIPANT), { braceletId: chip });
+    }
+    if (invalidateOld) {
+      batch.update(doc(db, 'bracelets', CHIP), {
+        invalidatedAt: serverTimestamp(),
+        invalidatedBy: uid,
+        reason,
+      });
+    }
+    if (mintNew) {
+      batch.set(doc(db, 'bracelets', chip), {
+        participantId: PARTICIPANT,
+        staffUid: uid,
+        pairedAt: serverTimestamp(),
+        ...(fee === null ? {} : { replacementFee: fee, replacementMethod: method }),
+      });
+    }
+    return batch.commit();
+  }
+
+  beforeEach(async () => {
+    await seedCheckedIn(2350);
+  });
+
+  it('THE ONE THAT MATTERS: reception can replace a lost wristband', async () => {
+    await assertSucceeds(replace(reception()));
+  });
+
+  it('refuses to let the bar replace one', async () => {
+    await assertFails(replace(bar(), { uid: BAR_UID }));
+  });
+
+  it('refuses a replacement that leaves the old chip still working', async () => {
+    // The dangerous half. A wristband that stopped being somebody's while still
+    // resolving is one a finder could walk to the bar with.
+    await assertFails(replace(reception(), { invalidateOld: false }));
+  });
+
+  it('refuses invalidating a chip without issuing a new one', async () => {
+    // The other half alone would leave the guest with no wristband and a
+    // balance they cannot reach.
+    await assertFails(replace(reception(), { mintNew: false, movePerson: false }));
+  });
+
+  it('refuses a replacement with no reason written down', async () => {
+    await assertFails(replace(reception(), { reason: '' }));
+    await assertFails(replace(reception(), { reason: 'x'.repeat(201) }));
+  });
+
+  it('refuses moving to a chip that already belongs to somebody', async () => {
+    // The property the money model rests on: a chip never changes owner. The
+    // `create` on an existing document is what refuses it.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'bracelets', NEW_CHIP), {
+        participantId: 'tkt-10002',
+        staffUid: RECEPTION_UID,
+        pairedAt: new Date(),
+      });
+    });
+    await assertFails(replace(reception()));
+  });
+
+  it('refuses invalidating the same chip twice', async () => {
+    await assertSucceeds(replace(reception()));
+    await assertFails(
+      updateDoc(doc(reception(), 'bracelets', CHIP), {
+        invalidatedAt: serverTimestamp(),
+        invalidatedBy: RECEPTION_UID,
+        reason: 'Changed my mind about why',
+      })
+    );
+  });
+
+  it('refuses reviving an invalidated chip', async () => {
+    // Once dead, dead. Reception cannot clear the invalidation, and nobody can
+    // delete the document and start again.
+    await assertSucceeds(replace(reception()));
+    await assertFails(
+      updateDoc(doc(reception(), 'bracelets', CHIP), { invalidatedAt: null })
+    );
+    await assertFails(deleteDoc(doc(reception(), 'bracelets', CHIP)));
+    await assertFails(deleteDoc(doc(admin(), 'bracelets', CHIP)));
+  });
+
+  it('leaves the balance exactly where it was', async () => {
+    // The fee is taken at the desk in cash or on the card machine. It is not on
+    // the wristband, so it writes no ledger entry and moves no balance — the
+    // ledger stays what is *on a bracelet*.
+    await assertFails(
+      (() => {
+        const db = reception();
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'participants', PARTICIPANT), {
+          braceletId: NEW_CHIP,
+          balance: 2250,
+        });
+        batch.update(doc(db, 'bracelets', CHIP), {
+          invalidatedAt: serverTimestamp(), invalidatedBy: RECEPTION_UID, reason: 'Lost',
+        });
+        batch.set(doc(db, 'bracelets', NEW_CHIP), {
+          participantId: PARTICIPANT, staffUid: RECEPTION_UID, pairedAt: serverTimestamp(),
+        });
+        return batch.commit();
+      })()
+    );
+  });
+
+  // ── What the desk took for it ────────────────────────────────────────────
+
+  it('records the fee on the wristband it issued', async () => {
+    await assertSucceeds(replace(reception(), { fee: 100, method: 'cash' }));
+  });
+
+  it('accepts a replacement with no fee, which is how one is waived', async () => {
+    // A snapped clasp is the festival's fault. A waived fee is the absence of
+    // the fields rather than a zero, so the totals cannot be read as "somebody
+    // paid nothing".
+    await assertSucceeds(replace(reception(), { fee: null }));
+  });
+
+  it('refuses a fee that does not say how it was paid', async () => {
+    await assertFails(replace(reception(), { fee: 100, method: null }));
+    await assertFails(replace(reception(), { fee: 100, method: 'invoice' }));
+    await assertFails(replace(reception(), { fee: 0, method: 'cash' }));
+    await assertFails(replace(reception(), { fee: 200001, method: 'cash' }));
+    await assertFails(replace(reception(), { fee: '1.00', method: 'cash' }));
+  });
+
+  it('refuses a fee on somebody\u2019s first wristband', async () => {
+    // A first wristband is part of a ticket they already paid for. Only a
+    // replacement can carry a fee.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'participants', PARTICIPANT), rosterDoc());
+    });
+    const db = reception();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'participants', PARTICIPANT), {
+      braceletId: CHIP,
+      checkedInAt: serverTimestamp(),
+    });
+    batch.set(doc(db, 'bracelets', CHIP), {
+      participantId: PARTICIPANT,
+      staffUid: RECEPTION_UID,
+      pairedAt: serverTimestamp(),
+      replacementFee: 100,
+      replacementMethod: 'cash',
+    });
+    await assertFails(batch.commit());
+  });
+});
+
+describe('what a replacement costs', () => {
+  const ref = (db) => doc(db, 'settings', 'bracelets');
+
+  it('is set by an organiser and read by the terminals', async () => {
+    await assertSucceeds(setDoc(ref(admin()), { replacementFee: 100 }));
+    await assertSucceeds(getDoc(ref(reception())));
+    await assertSucceeds(getDoc(ref(bar())));
+    await assertFails(setDoc(ref(reception()), { replacementFee: 100 }));
+  });
+
+  it('refuses nonsense, and anything but the one document', async () => {
+    await assertFails(setDoc(ref(admin()), { replacementFee: -1 }));
+    await assertFails(setDoc(ref(admin()), { replacementFee: '1.00' }));
+    await assertFails(setDoc(ref(admin()), { replacementFee: 200001 }));
+    await assertFails(setDoc(ref(admin()), { replacementFee: 100, currency: 'EUR' }));
+    await assertFails(setDoc(doc(admin(), 'settings', 'anything-else'), { replacementFee: 100 }));
+  });
+});
+
 describe('money moves only with a ledger entry behind it', () => {
   beforeEach(async () => {
     await seedCheckedIn(2350);
