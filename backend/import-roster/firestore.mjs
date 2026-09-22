@@ -253,4 +253,9 @@ export const DEFAULT_DOOR_PASSES = [
   { id: 'full-pass', name: 'Full Pass', price: 20500 },
   { id: 'full-pass-gold', name: 'Full Pass Gold', price: 25900 },
   { id: 'jazz-performance-track', name: 'Jazz Performance Track', price: 18500 },
+  // The extra classes. Same catalogue, different behaviour: `kind: 'session'`
+  // is sold from a participant's screen to somebody already here, never at the
+  // door, and `firestore.rules` refuses a door sale pointing at one.
+  { id: 'lindy-sakarias-elice', name: 'Lindy Hop with Sakarias & Elice', price: 2500, kind: 'session' },
+  { id: 'jazz-patrik', name: 'Jazz with Patrik', price: 2500, kind: 'session' },
 ];

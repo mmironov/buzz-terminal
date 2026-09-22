@@ -22,6 +22,10 @@ actor InMemoryTerminalRepository: TerminalRepository {
     /// Standing in for `participants/{id}/merch/freeShirt`.
     private var freeShirts: [ParticipantID: FreeShirt]
 
+    /// Standing in for `participants/{id}/sessions/{sessionId}` — the extra
+    /// classes somebody has bought, keyed by catalogue id.
+    private var sessions: [ParticipantID: [String: SessionSale]] = [:]
+
     init(
         roster: [Participant] = SampleData.roster,
         menu: [Drink] = SampleData.drinks,
@@ -197,6 +201,34 @@ actor InMemoryTerminalRepository: TerminalRepository {
         shirt.collectedBy = handedOver ? "fixture-staff" : nil
         freeShirts[participant.id] = shirt
         return shirt
+    }
+
+    func sessionSales(for participant: Participant) async throws -> [String: SessionSale] {
+        await simulateNetwork()
+        return sessions[participant.id] ?? [:]
+    }
+
+    func sellSession(
+        _ session: DoorPass,
+        method: PaymentMethod,
+        to participant: Participant
+    ) async throws -> SessionSale {
+        await simulateNetwork()
+        // The rules refuse a second write to the same document, and so does the
+        // fixture: selling the same class twice is the mistake worth reproducing.
+        guard sessions[participant.id]?[session.id] == nil else {
+            throw TerminalError.sessionNotSold
+        }
+        let sale = SessionSale(
+            sessionId: session.id,
+            name: session.name,
+            price: session.price,
+            method: method,
+            soldAt: .now,
+            soldBy: "fixture-staff"
+        )
+        sessions[participant.id, default: [:]][session.id] = sale
+        return sale
     }
 
     func setMerchCollected(_ collected: Bool, for participant: Participant) async throws -> MerchOrder {

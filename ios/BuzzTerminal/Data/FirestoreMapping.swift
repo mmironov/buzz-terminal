@@ -31,6 +31,24 @@ enum Fire {
         /// A subcollection of a participant holding one document: the buyer's
         /// email. Reception and the organiser panel only — see `docs/door-sales.md`.
         static let contact = "contact"
+        /// A subcollection of a participant: one document per extra class they
+        /// bought at the desk, keyed by the catalogue id. Reception and the
+        /// panel only, like merch — what somebody bought, and what they paid.
+        static let sessions = "sessions"
+    }
+
+    enum SessionSale {
+        /// The catalogue id, repeated in the document so a collection-group read
+        /// says which class it was without parsing a path.
+        static let sessionId = "sessionId"
+        /// The class's name and price as the catalogue held them at the moment
+        /// of sale. Snapshots, like a ledger line's `unitPrice`.
+        static let name = "name"
+        static let price = "price"
+        /// `cash` or `card`, the same two strings everywhere else money moves.
+        static let method = "method"
+        static let soldAt = "soldAt"
+        static let soldBy = "soldBy"
     }
 
     enum BraceletColour {
@@ -59,6 +77,8 @@ enum Fire {
 
         static let kindPass = "pass"
         static let kindEvening = "evening"
+        /// An extra class, sold from a participant's screen and never at the door.
+        static let kindSession = "session"
     }
 
     enum Contact {
@@ -259,7 +279,10 @@ extension DoorPass {
             // Anything unrecognised is an ordinary pass. Refusing to sell
             // something because of a `kind` this build has not heard of would be
             // a worse failure than asking for a name that was not needed.
-            kind: data[Fire.DoorPass.kind] as? String == Fire.DoorPass.kindEvening ? .evening : .pass
+            // Anything unrecognised is an ordinary pass: a terminal that met a
+            // `kind` it did not know and refused to sell would be worse than one
+            // that asks for a name it did not strictly need.
+            kind: DoorPass.Kind(wire: data[Fire.DoorPass.kind] as? String)
         )
     }
 }
@@ -271,6 +294,47 @@ extension Drink {
               let priceCents = data[Fire.Drink.price] as? Int
         else { return nil }
         self.init(id: document.documentID, name: name, price: Money(cents: priceCents))
+    }
+}
+
+extension SessionSale {
+    /// Build from `participants/{id}/sessions/{sessionId}`.
+    ///
+    /// A document with no readable method or price is dropped rather than shown
+    /// as a sale with a blank beside it: the desk asking "did they pay?" of a
+    /// row that cannot say is worse than the row not being there.
+    init?(document: DocumentSnapshot) {
+        guard let data = document.data(),
+              let name = data[Fire.SessionSale.name] as? String,
+              let cents = data[Fire.SessionSale.price] as? Int,
+              let method = (data[Fire.SessionSale.method] as? String)
+                  .flatMap(PaymentMethod.init(rawValue:))
+        else { return nil }
+
+        self.init(
+            sessionId: data[Fire.SessionSale.sessionId] as? String ?? document.documentID,
+            name: name,
+            price: Money(cents: cents),
+            method: method,
+            soldAt: (data[Fire.SessionSale.soldAt] as? Timestamp)?.dateValue(),
+            soldBy: data[Fire.SessionSale.soldBy] as? String ?? ""
+        )
+    }
+
+    /// The document a sale writes. Written once and never updated.
+    static func document(
+        _ session: DoorPass,
+        method: PaymentMethod,
+        soldBy staffUid: String
+    ) -> [String: Any] {
+        [
+            Fire.SessionSale.sessionId: session.id,
+            Fire.SessionSale.name: session.name,
+            Fire.SessionSale.price: session.price.cents,
+            Fire.SessionSale.method: method.wire,
+            Fire.SessionSale.soldAt: FieldValue.serverTimestamp(),
+            Fire.SessionSale.soldBy: staffUid,
+        ]
     }
 }
 

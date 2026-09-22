@@ -86,5 +86,9 @@ echo "door passes:"
                       doorpass full-pass "Full Pass" 20500 3
                       doorpass full-pass-gold "Full Pass Gold" 25900 4
                       doorpass jazz-performance-track "Jazz Performance Track" 18500 5
-                      echo "  6 passes"
+                      # The two extra classes: same catalogue, sold from a
+                      # participant's screen rather than at the door.
+                      doorpass lindy-sakarias-elice "Lindy Hop with Sakarias & Elice" 2500 6 session
+                      doorpass jazz-patrik "Jazz with Patrik" 2500 7 session
+                      echo "  6 passes and 2 special sessions"
 echo "done."

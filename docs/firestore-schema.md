@@ -91,6 +91,30 @@ Notes on specific fields:
   ask about afterwards — and the rules pin `blockedAt` to `request.time`, so it is
   the server's clock.
 
+## `participants/{participantId}/sessions/{sessionId}`
+
+An extra class somebody bought at the desk. One document per class, keyed by the
+catalogue id, and the document existing **is** the sale.
+
+```
+participants/tkt-10432/sessions/jazz-patrik
+  sessionId: "jazz-patrik"       // the catalogue id, repeated for group reads
+  name:      "Jazz with Patrik"  // the catalogue's name at the moment of sale
+  price:     2500                // cents, likewise a snapshot
+  method:    "cash" | "card"     // mandatory
+  soldAt:    <server timestamp>
+  soldBy:    "<uid>"
+```
+
+Reception-only, like merch: every participant document is readable by every
+terminal, and what somebody bought with a price on it is not the bar's business.
+Written once — `update` and `delete` are both refused — because a sale that can
+be rewritten is one nobody can count a cash box against.
+
+The catalogue rows live in `doorPasses` with `kind: "session"`; the door flow
+filters them out and the rules refuse a door sale pointing at one. See
+`docs/special-sessions.md`.
+
 ## `braceletColours/{passTypeSlug}`
 
 Which colour of wristband each pass type gets. Set by organisers in the panel's

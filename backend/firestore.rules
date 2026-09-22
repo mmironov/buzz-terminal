@@ -223,6 +223,11 @@ service cloud.firestore {
           && d.passId is string
           && exists(passRef(d.passId))
           && get(passRef(d.passId)).data.name == d.ticketType
+          // …and it must be something the door actually sells. A special
+          // session is in the same catalogue but is an extra class bought by
+          // somebody who is already here; selling one as a pass would mint a
+          // participant called "Jazz with Patrik".
+          && get(passRef(d.passId)).data.get('kind', 'pass') != 'session'
           // A real name. Bounded and nothing more.
           //
           // This said `d.nameLower == d.name.lower()` for about an hour, which
@@ -257,6 +262,55 @@ service cloud.firestore {
           && d.checkedInAt == request.time
           && d.braceletId is string
           && getAfter(braceletRef(d.braceletId)).data.participantId == pid;
+      }
+
+      // ── Special sessions ─────────────────────────────────────────────────
+      //
+      // An extra class somebody adds at the desk. One document per class bought,
+      // keyed by the catalogue id, and the document existing IS the sale — there
+      // is no "not bought" state, exactly as somebody who ordered no t-shirt has
+      // no order document.
+      //
+      // Reception-only, like merch and for the same reason: what somebody bought
+      // and what they paid is not the bar's business, and every participant
+      // document is readable by every terminal.
+      match /sessions/{sessionId} {
+        allow read: if isReception();
+
+        // Written once and never again. No update, because a sale that can be
+        // rewritten is a sale nobody can count a cash box against — a second tap
+        // on a class somebody already bought fails here rather than quietly
+        // replacing the method the first one recorded. No delete either: a
+        // refund is a conversation with an organiser, not a tap at the desk.
+        allow create: if isReception() && isWellFormedSessionSale(sessionId);
+        allow update, delete: if false;
+
+        function isWellFormedSessionSale(sid) {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['sessionId', 'name', 'price', 'method', 'soldAt', 'soldBy'])
+            && d.keys().hasAll(['sessionId', 'name', 'price', 'method', 'soldAt', 'soldBy'])
+            // The id is the catalogue's, repeated in the document so a
+            // collection-group read says which class it was without parsing a
+            // path. The two must agree or neither can be trusted.
+            && d.sessionId == sid
+            // Only a class an organiser has actually put up for sale, and only
+            // under the name they gave it — the same check a door pass gets, and
+            // the reason reception cannot invent a 200 € private lesson.
+            && exists(passRef(sid))
+            && get(passRef(sid)).data.name == d.name
+            && get(passRef(sid)).data.get('kind', 'pass') == 'session'
+            // A snapshot of the price, bounded like every other. Deliberately
+            // not pinned to the catalogue's current value: a phone holding a
+            // five-minute-old price would otherwise have the sale refused with
+            // somebody's money already on the desk.
+            && d.price is int && d.price >= 0 && d.price <= 200000
+            // Cash or card, mandatory, exactly as on a top-up and a door sale.
+            && d.method in ['cash', 'card']
+            // Server clock and the operator's own uid, so "who sold this and
+            // when" is answerable afterwards.
+            && d.soldAt == request.time
+            && d.soldBy == request.auth.uid;
+        }
       }
 
       // What the desk took for the pass, and how — on both shapes.
@@ -748,7 +802,10 @@ service cloud.firestore {
           // night — instead of the full buyer form. It is a behaviour, not a
           // label, which is why it is a field the rules know about rather than
           // a name match.
-          && d.kind in ['pass', 'evening']
+          // `session` is an extra class, sold from a participant's screen
+          // rather than at the door: it creates nobody, and the door-sale rule
+          // below refuses a pass pointing at one.
+          && d.kind in ['pass', 'evening', 'session']
           && pricesPerNightAreSane(d);
       }
 
@@ -776,6 +833,21 @@ service cloud.firestore {
         return !(night in prices)
           || (prices[night] is int && prices[night] >= 0 && prices[night] <= 200000);
       }
+    }
+
+    // ── Special sessions, across everybody ───────────────────────────────
+    //
+    // The admin panel totals what the desk has taken for extra classes, which
+    // means reading every participant's `sessions` subcollection at once. A
+    // nested `match` does NOT authorise a collection-group query — Firestore
+    // requires a rule written against the collection group itself — so this
+    // block exists purely so the panel can add the money up.
+    //
+    // Same audience as the per-participant rule: reception and the organiser,
+    // never the bar. Read-only; a sale is still written through the rule above,
+    // under the person who bought it.
+    match /{path=**}/sessions/{sessionId} {
+      allow read: if isReception();
     }
 
     // ── Bracelet colours ─────────────────────────────────────────────────

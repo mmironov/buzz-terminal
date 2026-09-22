@@ -174,6 +174,15 @@ final class AppModel {
     /// Which pass is being sold right now.
     var selectedPass: DoorPass?
 
+    /// What the door flow may actually sell.
+    ///
+    /// The catalogue also holds the extra classes, which are sold from a
+    /// participant's screen and create nobody — offering one here would mint a
+    /// participant called "Jazz with Patrik", which `firestore.rules` refuses
+    /// anyway. Filtered rather than fetched separately: one read, one list,
+    /// two audiences.
+    var passesForTheDoor: [DoorPass] { doorPasses.filter { !$0.isSession } }
+
     /// True while the participant screen is showing a door sale that has not
     /// happened yet.
     ///
@@ -364,6 +373,8 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
+        sessionSales = [:]
+        sessionMethod = [:]
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -617,6 +628,24 @@ final class AppModel {
     /// everybody — five people on a roster of a hundred and ten.
     private(set) var freeShirt: FreeShirt?
 
+    /// The extra classes this person has already bought, keyed by catalogue id.
+    /// Empty until the read lands, and empty for almost everybody after it.
+    private(set) var sessionSales: [String: SessionSale] = [:]
+
+    /// The method chosen for a class that has not been sold yet, per class.
+    ///
+    /// Held here rather than written: picking cash is not a sale, and a desk
+    /// that changes its mind should not have written twice. Cleared with the
+    /// participant, so the next guest starts from nothing.
+    private(set) var sessionMethod: [String: PaymentMethod] = [:]
+
+    /// The extra classes on sale, in the order organisers arranged them.
+    ///
+    /// Out of the same catalogue the door sells from — `kind: session` — so the
+    /// price and the wording are an organiser's to change, and this list is
+    /// empty until they have added one.
+    var specialSessions: [DoorPass] { doorPasses.filter(\.isSession) }
+
     /// Show a participant, and start loading what they are owed.
     ///
     /// One funnel for both routes to the screen — a scan and a name off the
@@ -626,10 +655,61 @@ final class AppModel {
         participant = guest
         merch = nil
         freeShirt = nil
+        sessionSales = [:]
+        sessionMethod = [:]
         merchUnavailable = false
         screen = .participant
         Task { await loadMerch(for: guest) }
         Task { await loadFreeShirt(for: guest) }
+        Task { await loadSessions(for: guest) }
+    }
+
+    private func loadSessions(for guest: Participant) async {
+        do {
+            let sales = try await repository.sessionSales(for: guest)
+            // The operator may have moved on while this was in flight.
+            guard participant?.id == guest.id else { return }
+            sessionSales = sales
+        } catch {
+            // Folded into the same warning the merch read raises: both are
+            // reception-only subcollections behind the same kind of rule, and
+            // two sentences saying "something did not load" is one nobody reads.
+            Self.log.error("session load failed: \(error.localizedDescription, privacy: .public)")
+            guard participant?.id == guest.id else { return }
+            merchUnavailable = true
+        }
+    }
+
+    /// Choose how a class is being paid for, before it is sold.
+    func chooseSessionMethod(_ method: PaymentMethod, for session: DoorPass) {
+        sessionMethod[session.id] = method
+    }
+
+    /// Sell an extra class to the person on screen, and take the money for it.
+    ///
+    /// Written once and never rewritten: the rules refuse a second write to the
+    /// same document, so a double tap on a class somebody already has fails
+    /// loudly rather than quietly recording a second payment method.
+    func sellSession(_ session: DoorPass) async {
+        guard let guest = participant, !isPendingDoorSale else { return }
+        guard sessionSales[session.id] == nil else { return }
+        // The rules refuse a sale with no method; this is the same rule on the
+        // near side of the network, where it is a disabled button rather than a
+        // red banner in front of somebody holding out a card.
+        guard let method = sessionMethod[session.id] else { return }
+
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let sale = try await repository.sellSession(session, method: method, to: guest)
+            guard participant?.id == guest.id else { return }
+            sessionSales[sale.sessionId] = sale
+            sessionMethod[session.id] = nil
+            ScanFeedback.shared.success()
+        } catch {
+            errorMessage = error.localizedDescription
+            ScanFeedback.shared.problem()
+        }
     }
 
     private func loadFreeShirt(for guest: Participant) async {
@@ -742,6 +822,8 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
+        sessionSales = [:]
+        sessionMethod = [:]
         merchUnavailable = false
         search = ""
         screen = .assign
@@ -870,6 +952,8 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
+        sessionSales = [:]
+        sessionMethod = [:]
         merchUnavailable = false
         bracelet = nil
         selectedPass = nil
@@ -924,6 +1008,8 @@ final class AppModel {
         )
         merch = nil
         freeShirt = nil
+        sessionSales = [:]
+        sessionMethod = [:]
         merchUnavailable = false
         isPendingDoorSale = true
         screen = .participant
@@ -1121,6 +1207,8 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
+        sessionSales = [:]
+        sessionMethod = [:]
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -1146,6 +1234,8 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
+        sessionSales = [:]
+        sessionMethod = [:]
         merchUnavailable = false
         paymentDecision = nil
     }

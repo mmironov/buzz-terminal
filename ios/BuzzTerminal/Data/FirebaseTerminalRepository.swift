@@ -423,6 +423,49 @@ actor FirebaseTerminalRepository: TerminalRepository {
         }
     }
 
+    func sessionSales(for participant: Participant) async throws -> [String: SessionSale] {
+        do {
+            let snapshot = try await participantDocument(participant.id)
+                .collection(Fire.Collection.sessions)
+                .getDocuments()
+            let sales = snapshot.documents.compactMap(SessionSale.init(document:))
+            return Dictionary(sales.map { ($0.sessionId, $0) }, uniquingKeysWith: { _, later in later })
+        } catch {
+            // Same treatment as the merch and free-shirt reads: the bar is
+            // refused by design, reception only when something is wrong.
+            let nsError = error as NSError
+            guard nsError.domain == FirestoreErrorDomain,
+                  nsError.code == FirestoreErrorCode.permissionDenied.rawValue,
+                  signedInRole != .reception
+            else {
+                Self.log.error("session read refused for a reception terminal — are the rules deployed?")
+                throw error
+            }
+            return [:]
+        }
+    }
+
+    func sellSession(
+        _ session: DoorPass,
+        method: PaymentMethod,
+        to participant: Participant
+    ) async throws -> SessionSale {
+        let uid = try requireStaffUid()
+        let document = participantDocument(participant.id)
+            .collection(Fire.Collection.sessions)
+            .document(session.id)
+
+        // `setData` on a document that may already exist would be an update, and
+        // the rules refuse one — so a second tap on a class somebody already
+        // bought fails rather than quietly rewriting the first sale's method.
+        try await document.setData(SessionSale.document(session, method: method, soldBy: uid))
+
+        guard let sale = SessionSale(document: try await document.getDocument()) else {
+            throw TerminalError.sessionNotSold
+        }
+        return sale
+    }
+
     func setFreeShirt(
         size: String?,
         colour: String?,

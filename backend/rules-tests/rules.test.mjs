@@ -24,6 +24,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   collection,
+  collectionGroup,
   getDocs,
   orderBy,
   query,
@@ -152,6 +153,11 @@ beforeEach(async () => {
     });
     await setDoc(doc(db, 'doorPasses', 'party-pass'), {
       name: 'Party Pass', price: 12000, sortOrder: 0, isActive: true, kind: 'pass',
+    });
+    // An extra class. Same catalogue, different behaviour: it is sold from a
+    // participant's screen and creates nobody.
+    await setDoc(doc(db, 'doorPasses', 'jazz-patrik'), {
+      name: 'Jazz with Patrik', price: 2500, sortOrder: 9, isActive: true, kind: 'session',
     });
   });
 });
@@ -1135,6 +1141,22 @@ describe('selling a pass at the door', () => {
     );
   });
 
+  it('THE CHANGE: refuses selling a special session as a pass', async () => {
+    // The extra classes live in the same catalogue. Selling one here would mint
+    // a participant called "Jazz with Patrik" holding a 25 € "pass" — so the
+    // rule checks the kind as well as the name.
+    await assertFails(
+      sellPass(reception(), {
+        passId: 'jazz-patrik',
+        overrides: {
+          passId: 'jazz-patrik',
+          ticketType: 'Jazz with Patrik',
+          pricePaid: 2500,
+        },
+      })
+    );
+  });
+
   it('refuses a pass type that disagrees with the catalogue entry', async () => {
     // `passId` says party-pass, the document claims Full Pass. Otherwise the
     // 120 € entry could be sold as a 205 € pass, or the other way round.
@@ -1651,6 +1673,124 @@ describe('the free shirt', () => {
     await assertFails(
       updateDoc(doc(reception(), 'participants', PARTICIPANT, 'merch', 'order'), { size: 'L' })
     );
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Special sessions
+//
+//  An extra class bought at the desk by somebody who is already here. The
+//  document existing IS the sale, it is written once, and it says what was paid
+//  — so it is a takings record as much as a fact about a person.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('special sessions', () => {
+  const ref = (db, sid = 'jazz-patrik') =>
+    doc(db, 'participants', PARTICIPANT, 'sessions', sid);
+
+  const sale = (overrides = {}) => ({
+    sessionId: 'jazz-patrik',
+    name: 'Jazz with Patrik',
+    price: 2500,
+    method: 'cash',
+    soldAt: serverTimestamp(),
+    soldBy: RECEPTION_UID,
+    ...overrides,
+  });
+
+  async function seedSale(overrides = {}) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(ref(context.firestore()), {
+        ...sale(overrides),
+        soldAt: new Date(),
+      });
+    });
+  }
+
+  it('lets reception sell one', async () => {
+    await assertSucceeds(setDoc(ref(reception()), sale()));
+  });
+
+  it('lets an organiser sell one too, since admin counts as reception', async () => {
+    await assertSucceeds(setDoc(ref(admin()), sale({ soldBy: ADMIN_UID })));
+  });
+
+  it('THE ONE THAT MATTERS: the bar can neither read nor sell one', async () => {
+    // What somebody bought and what they paid is not the bar's business — the
+    // same line merch holds, and the reason this is a subcollection at all.
+    await seedSale();
+    await assertFails(getDoc(ref(bar())));
+    await assertSucceeds(getDoc(ref(reception())));
+    await assertFails(setDoc(ref(bar(), 'lindy-hop'), sale({ sessionId: 'lindy-hop' })));
+  });
+
+  it('refuses a class the organisers never put on sale', async () => {
+    // The same protection a door pass gets: reception sells what the festival
+    // sells, at the price list's own names, and cannot invent a private lesson.
+    await assertFails(
+      setDoc(ref(reception(), 'private-lesson'), sale({ sessionId: 'private-lesson', name: 'Private lesson' }))
+    );
+  });
+
+  it('refuses a name that disagrees with the catalogue', async () => {
+    await assertFails(setDoc(ref(reception()), sale({ name: 'Jazz with somebody else' })));
+  });
+
+  it('refuses selling an ordinary pass as a session', async () => {
+    // `full-pass` is in the same collection but is not a class. Selling one
+    // here would record a 205 € pass as an add-on and put nobody on the roster.
+    await assertFails(
+      setDoc(ref(reception(), 'full-pass'), sale({ sessionId: 'full-pass', name: 'Full Pass', price: 20500 }))
+    );
+  });
+
+  it('refuses a sale that does not say how it was paid', async () => {
+    await assertFails(setDoc(ref(reception()), sale({ method: null })));
+    await assertFails(setDoc(ref(reception()), sale({ method: 'invoice' })));
+    await assertFails(setDoc(ref(reception()), sale({ method: 'Cash' })));
+  });
+
+  it('refuses nonsense in the price, and takes what the terminal reports', async () => {
+    await assertFails(setDoc(ref(reception()), sale({ price: '25.00' })));
+    await assertFails(setDoc(ref(reception()), sale({ price: -1 })));
+    await assertFails(setDoc(ref(reception()), sale({ price: 200001 })));
+    // Deliberately not pinned to the catalogue: a phone holding a five-minute-old
+    // price must not have the sale refused with money already on the desk.
+    await assertSucceeds(setDoc(ref(reception()), sale({ price: 2000 })));
+  });
+
+  it('refuses a document id that disagrees with its contents', async () => {
+    await assertFails(setDoc(ref(reception(), 'jazz-patrik'), sale({ sessionId: 'lindy-hop' })));
+  });
+
+  it('pins who sold it and when to the server, not to the client', async () => {
+    await assertFails(setDoc(ref(reception()), sale({ soldBy: ADMIN_UID })));
+    await assertFails(setDoc(ref(reception()), sale({ soldAt: new Date() })));
+  });
+
+  it('refuses extra fields', async () => {
+    await assertFails(setDoc(ref(reception()), { ...sale(), refunded: true }));
+  });
+
+  it('THE PANEL: the totals are a collection-group read, which needs its own rule', async () => {
+    // A nested `match` does not authorise a collection-group query, and the
+    // admin panel adds these up across everybody. Asserted because the failure
+    // is silent: the table simply never appears.
+    await seedSale();
+    await assertSucceeds(getDocs(collectionGroup(reception(), 'sessions')));
+    await assertSucceeds(getDocs(collectionGroup(admin(), 'sessions')));
+    await assertFails(getDocs(collectionGroup(bar(), 'sessions')));
+  });
+
+  it('THE OTHER ONE: a sale is written once and never rewritten', async () => {
+    // A second tap on a class somebody already bought must fail rather than
+    // quietly replace the method the first sale recorded — a sale that can be
+    // rewritten is one nobody can count a cash box against.
+    await seedSale();
+    await assertFails(updateDoc(ref(reception()), { method: 'card' }));
+    await assertFails(setDoc(ref(reception()), sale({ method: 'card' })));
+    await assertFails(deleteDoc(ref(reception())));
+    await assertFails(deleteDoc(ref(admin())));
   });
 });
 

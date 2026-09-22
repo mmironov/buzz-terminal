@@ -31,7 +31,7 @@ struct DoorPassPickerView: View {
             SBDivider()
                 .padding(.vertical, 14)
 
-            if model.doorPasses.isEmpty {
+            if model.passesForTheDoor.isEmpty {
                 if model.isLoadingDoorPasses {
                     Text("Reading the price list…")
                         .font(.sbBody(13))
@@ -48,7 +48,7 @@ struct DoorPassPickerView: View {
 
                 ScrollView {
                     VStack(spacing: SBSpace.x2) {
-                        ForEach(model.doorPasses) { pass in
+                        ForEach(model.passesForTheDoor) { pass in
                             Button { model.select(pass: pass) } label: {
                                 PassLabel(pass: pass)
                             }

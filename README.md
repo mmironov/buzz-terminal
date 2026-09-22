@@ -386,13 +386,19 @@ ran out; deleting is for something entered by mistake.
 **Door passes.** What reception may sell at the desk and for how much — Party Pass
 120 €, Full Pass 205 €, and the rest. The terminals sell from this list and can
 sell nothing that is not on it: the rules check the pass against this collection as
-the sale is written. The price is read out at the desk and charged by nothing; see
-`docs/door-sales.md`.
+the sale is written. The price is read out at the desk and charged by nothing, but
+how it was paid **is** recorded on the sale, and the tab totals cash against card
+underneath the catalogue; see `docs/door-sales.md`.
 
-**Bracelets.** Which colour wristband each pass type gets. The pass types are read
-off the roster rather than kept in a list here, so one the Sheet invents appears by
-itself — and a pass type nobody has coloured simply shows no colour on a phone.
-`docs/bracelet-colours.md`.
+The same tab holds the **special sessions** — the extra classes, `kind: session`,
+sold from a participant's screen rather than at the door and totalled separately.
+`docs/special-sessions.md`.
+
+**Bracelets.** Which colour wristband each pile gets: ten written-down rows —
+Full Pass INT, ADV and PRO, Gold, the two Party Passes, the Jazz track and the
+three evenings, which are matched on the night rather than the pass type. A colour
+matching no row is listed underneath to be cleared, and people matching no row are
+counted, so nothing is stranded either way. `docs/bracelet-colours.md`.
 
 Blocking a bracelet is the panel's only write to a person. It cannot edit the roster
 or touch history, and it cannot adjust a balance silently — a balance moves only

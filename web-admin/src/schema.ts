@@ -14,6 +14,8 @@
 
 export const COLLECTIONS = {
   participants: 'participants',
+  /** A participant's extra classes: one document per class bought. */
+  sessions: 'sessions',
   transactions: 'transactions',
   bracelets: 'bracelets',
   drinks: 'drinks',
@@ -254,9 +256,10 @@ export interface DoorPass {
   isActive: boolean;
   /**
    * `'evening'` routes the terminal to the anonymous numbered flow — no name, no
-   * email, pick a night. `'pass'` asks for the buyer's details.
+   * email, pick a night. `'pass'` asks for the buyer's details. `'session'` is
+   * an extra class, sold from a participant's screen and never at the door.
    */
-  kind: 'pass' | 'evening';
+  kind: 'pass' | 'evening' | 'session';
 }
 
 export interface Drink {
@@ -322,6 +325,38 @@ export interface Transaction {
 }
 
 export type PaymentMethod = 'cash' | 'card';
+
+/** One extra class somebody bought at the desk, and what they paid for it. */
+export interface SessionSale {
+  /** The catalogue id, which is also the document id. */
+  sessionId: string;
+  /** The class's name and price as the catalogue held them when it was sold. */
+  name: string;
+  /** Cents. */
+  price: number;
+  method: PaymentMethod;
+  soldAt: Date | null;
+  soldBy: string;
+}
+
+export function toSessionSale(doc: Doc): SessionSale | null {
+  const data = doc.data();
+  const name = data['name'];
+  const price = int(data['price']);
+  const method = toPaymentMethod(data['method']);
+  // A sale that cannot say what it was or what was paid is dropped rather than
+  // counted: a blank in a takings total is worse than a row that is not there.
+  if (typeof name !== 'string' || price === null || method === null) return null;
+
+  return {
+    sessionId: str(data['sessionId'], doc.id),
+    name,
+    price,
+    method,
+    soldAt: date(data['soldAt']),
+    soldBy: str(data['soldBy']),
+  };
+}
 
 /** The two spellings `firestore.rules` accepts, and nothing else. */
 const toPaymentMethod = (value: unknown): PaymentMethod | null =>
@@ -424,7 +459,12 @@ export function toDoorPass(doc: Doc): DoorPass | null {
     // Anything unrecognised is an ordinary pass. A terminal that met a `kind` it
     // did not know and refused to sell would be worse than one that asks for a
     // name it did not strictly need.
-    kind: data[DOOR_PASS_FIELDS.kind] === 'evening' ? 'evening' : 'pass',
+    kind:
+      data[DOOR_PASS_FIELDS.kind] === 'evening'
+        ? 'evening'
+        : data[DOOR_PASS_FIELDS.kind] === 'session'
+          ? 'session'
+          : 'pass',
   };
 }
 

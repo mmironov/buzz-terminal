@@ -1,5 +1,6 @@
 import {
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
@@ -25,9 +26,11 @@ import {
   slugify,
   toDoorPass,
   toParticipant,
+  toSessionSale,
   type DoorPass,
   type EveningName,
   type PaymentMethod,
+  type SessionSale,
 } from './schema';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -130,6 +133,7 @@ export function Passes() {
       )}
 
       <Takings onError={setError} />
+      <SessionTakings onError={setError} />
 
       <p className="note">
         Reception sells from this list in this order, and can sell nothing that is
@@ -262,6 +266,97 @@ function Takings({ onError }: { onError: (message: string) => void }) {
   );
 }
 
+/**
+ * The extra classes, counted the same way.
+ *
+ * A collection-group read, because a class bought lives under the person who
+ * bought it — `participants/{id}/sessions/{sessionId}` — and there is no other
+ * place it could sensibly live: it is as much a fact about them as their merch.
+ * The panel reads across all of them to total the money.
+ */
+function SessionTakings({ onError }: { onError: (message: string) => void }) {
+  const [sales, setSales] = useState<SessionSale[] | null>(null);
+
+  useEffect(() => {
+    return onSnapshot(
+      collectionGroup(db, COLLECTIONS.sessions),
+      (snapshot) => setSales(snapshot.docs.flatMap((entry) => toSessionSale(entry) ?? [])),
+      (cause) => onError(cause.message)
+    );
+  }, [onError]);
+
+  if (!sales || sales.length === 0) return null;
+
+  const byClass = new Map<string, { count: number; cash: number; card: number }>();
+  for (const sale of sales) {
+    const row = byClass.get(sale.name) ?? { count: 0, cash: 0, card: 0 };
+    row.count += 1;
+    row[sale.method] += sale.price;
+    byClass.set(sale.name, row);
+  }
+  const rows = [...byClass.entries()].sort((a, b) => b[1].count - a[1].count);
+  const total = rows.reduce(
+    (sum, [, row]) => ({
+      count: sum.count + row.count,
+      cash: sum.cash + row.cash,
+      card: sum.card + row.card,
+    }),
+    { count: 0, cash: 0, card: 0 }
+  );
+
+  return (
+    <div className="stack">
+      <h2 className="card__title">Special sessions sold</h2>
+      <table className="table">
+        <colgroup>
+          <col />
+          <col style={{ width: '80px' }} />
+          <col style={{ width: '120px' }} />
+          <col style={{ width: '120px' }} />
+          <col style={{ width: '120px' }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Class</th>
+            <th className="num">Sold</th>
+            <th className="num">{PAYMENT_METHOD_LABELS.cash}</th>
+            <th className="num">{PAYMENT_METHOD_LABELS.card}</th>
+            <th className="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([name, row]) => (
+            <tr key={name}>
+              {/* The name each sale recorded, not the catalogue's current one:
+                  renaming a class does not rewrite what was sold under the old
+                  name, so a rename shows up here as two rows rather than as
+                  history quietly changing. */}
+              <td>{name}</td>
+              <td className="num">{row.count}</td>
+              <td className="num">{euros(row.cash)}</td>
+              <td className="num">{euros(row.card)}</td>
+              <td className="num">{euros(row.cash + row.card)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td className="name">All classes</td>
+            <td className="num name">{total.count}</td>
+            <td className="num name">{euros(total.cash)}</td>
+            <td className="num name">{euros(total.card)}</td>
+            <td className="num name">{euros(total.cash + total.card)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="note">
+        Sold from a participant's screen, to somebody who is already here — never
+        at the door, which is why these are counted separately from the passes
+        above. Each sale is written once and cannot be edited: the rules refuse an
+        update, so what is here is what the desk recorded at the time.
+      </p>
+    </div>
+  );
+}
+
 function PassRow({
   pass,
   isFirst,
@@ -336,6 +431,7 @@ function PassRow({
         <div className="sub mono">
           {pass.id}
           {isEvening ? ' · priced per night' : ''}
+          {pass.kind === 'session' ? ' · extra class' : ''}
         </div>
       </td>
       <td className="num">

@@ -137,6 +137,23 @@ protocol TerminalRepository: Sendable {
         for participant: Participant
     ) async throws -> FreeShirt
 
+    /// The extra classes this person has already bought, keyed by catalogue id.
+    ///
+    /// Empty for almost everybody. Same read rule as merch — reception and the
+    /// panel, not the bar — so a bar terminal gets nothing rather than an error.
+    func sessionSales(for participant: Participant) async throws -> [String: SessionSale]
+
+    /// Sell one, and take the money for it at the desk.
+    ///
+    /// Written once: the document existing is the sale, and the rules refuse an
+    /// update or a delete. The name and price are snapshotted from the catalogue
+    /// entry passed in, so renaming a class later cannot rewrite what was sold.
+    func sellSession(
+        _ session: DoorPass,
+        method: PaymentMethod,
+        to participant: Participant
+    ) async throws -> SessionSale
+
     /// Record that the merch was handed over, or undo that.
     ///
     /// Reversible, unlike a bracelet pairing: the cost of a mis-tap is a guest
@@ -171,6 +188,7 @@ enum TerminalError: Error, Equatable, LocalizedError {
     case braceletBlocked
     case noMerchOrdered
     case noFreeShirt
+    case sessionNotSold
     case insufficientFunds(balance: Money, required: Money)
     case tooManyDrinksInOneRound(limit: Int)
     case offline
@@ -201,6 +219,8 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "This bracelet is blocked. An organiser must lift the block."
         case .noMerchOrdered:
             "There is no merch order for this participant."
+        case .sessionNotSold:
+            "The class was not recorded as sold. Check with an organiser before taking the money."
         case .noFreeShirt:
             "This participant is not on the free-shirt list."
         case .insufficientFunds(let balance, let required):
