@@ -257,6 +257,17 @@ struct Participant: Identifiable, Hashable, Sendable {
     /// Which catalogue entry was sold, for a door pass. Only ever a key.
     var passId: String?
 
+    /// How a sale at the door was paid for, and for how much. Both nil for
+    /// everybody from the Sheet, who paid a registration system months ago.
+    ///
+    /// **The price is a snapshot, not a lookup.** It is what the desk collected
+    /// at the moment of sale; re-pricing a Full Pass next week must not rewrite
+    /// what was taken tonight — the same rule the ledger follows for a round of
+    /// drinks. It is deliberately not `balance`: nothing was loaded onto the
+    /// wristband, the money went into the box.
+    var paymentMethod: PaymentMethod?
+    var pricePaid: Money?
+
     // ── Festival state: owned by the terminals ──
     /// `nil` until reception pairs a chip. Permanent once set.
     var braceletId: BraceletID?
@@ -296,6 +307,17 @@ struct Participant: Identifiable, Hashable, Sendable {
     /// Sold at the desk rather than imported: an evening ticket or a door pass.
     var isDoorSale: Bool { source == .evening || source == .door }
 
+    /// `"259.00 € · Card"` — what was taken for this pass and how.
+    ///
+    /// Nil for everybody from the Sheet, who paid a registration system months
+    /// ago, and nil for a door sale written before this was recorded: the desk
+    /// reading "no method" on an old sale is honest, and better than a made-up
+    /// one on the screen somebody reconciles against.
+    var doorSaleSummary: String? {
+        guard let pricePaid, let paymentMethod else { return nil }
+        return "\(pricePaid) · \(paymentMethod.label)"
+    }
+
     /// `"Follower"`, or nil for somebody the Sheet never asked.
     var danceRoleForDisplay: String? {
         DanceRole(rawValue: danceRole)?.label
@@ -333,21 +355,26 @@ extension Participant {
     /// two reception desks selling at the same moment collide on `ev-friday-14`
     /// and the loser retries with 15. No counter document, no coordination.
     static func eveningTicket(
+        _ pass: DoorPass,
         evening: Evening,
         number: Int,
-        name: String,
+        draft: DoorSaleDraft,
         bracelet: BraceletID,
         checkedInAt: Date = .now
     ) -> Participant {
         Participant(
             id: ParticipantID("ev-\(evening.rawValue)-\(number)"),
             ticketRef: "EV-\(evening.rawValue.uppercased())-\(number)",
-            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            name: draft.trimmedName,
             ticketType: TicketType.eveningTicket,
             country: "",
             source: .evening,
             evening: evening,
             eveningNumber: number,
+            // What this night costs, as the catalogue said at the moment of
+            // sale. Friday and Sunday can differ, so the night decides it.
+            paymentMethod: draft.method,
+            pricePaid: pass.price(on: evening),
             braceletId: bracelet,
             checkedInAt: checkedInAt,
             balance: .zero
@@ -380,6 +407,8 @@ extension Participant {
             source: .door,
             doorNumber: number,
             passId: pass.id,
+            paymentMethod: draft.method,
+            pricePaid: pass.price,
             braceletId: bracelet,
             checkedInAt: checkedInAt,
             balance: .zero

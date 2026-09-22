@@ -15,6 +15,7 @@ import { db } from './firebase';
 import {
   COLLECTIONS,
   DOOR_PASS_FIELDS,
+  PAYMENT_METHOD_LABELS,
   EVENINGS,
   EVENING_LABELS,
   MAX_PASS_NAME,
@@ -23,8 +24,10 @@ import {
   parseEuros,
   slugify,
   toDoorPass,
+  toParticipant,
   type DoorPass,
   type EveningName,
+  type PaymentMethod,
 } from './schema';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -126,12 +129,134 @@ export function Passes() {
         </table>
       )}
 
+      <Takings onError={setError} />
+
       <p className="note">
         Reception sells from this list in this order, and can sell nothing that is
         not on it — <code>firestore.rules</code> checks the pass against this
         collection as the sale is written, so a withdrawn or misspelt pass is
-        refused rather than quietly minted. The price is displayed to whoever is
-        selling; the money itself is taken at the desk and is not recorded here.
+        refused rather than quietly minted. The price here is what the desk quotes;
+        what it actually collected is recorded on each sale and totalled above.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * What the desk has taken, by pass type and by method.
+ *
+ * Here rather than on the Participants tab because it is a question about the
+ * festival's sales, not about a person — and this is the tab that already says
+ * what the desk may sell and for how much.
+ *
+ * The figures are the prices recorded **on each sale**, not this catalogue's
+ * current ones: a pass re-priced halfway through Saturday must not rewrite what
+ * was taken on Friday. Nothing here is the ledger — a door sale puts money in
+ * the box, not on a wristband.
+ */
+function Takings({ onError }: { onError: (message: string) => void }) {
+  const [sales, setSales] = useState<
+    { ticketType: string; pricePaid: number | null; paymentMethod: PaymentMethod | null }[] | null
+  >(null);
+
+  useEffect(() => {
+    // The whole roster, filtered here: the Participants tab already loads it,
+    // and a `where` on source would need an index for a collection this small.
+    return onSnapshot(
+      collection(db, COLLECTIONS.participants),
+      (snapshot) => {
+        setSales(
+          snapshot.docs.flatMap((entry) => {
+            const person = toParticipant(entry);
+            if (!person || (person.source !== 'door' && person.source !== 'evening')) return [];
+            return [
+              {
+                ticketType: person.ticketType || '(no pass type)',
+                pricePaid: person.pricePaid,
+                paymentMethod: person.paymentMethod,
+              },
+            ];
+          })
+        );
+      },
+      (cause) => onError(cause.message)
+    );
+  }, [onError]);
+
+  if (!sales || sales.length === 0) return null;
+
+  const byType = new Map<string, { count: number; cash: number; card: number; unrecorded: number }>();
+  for (const sale of sales) {
+    const row = byType.get(sale.ticketType) ?? { count: 0, cash: 0, card: 0, unrecorded: 0 };
+    row.count += 1;
+    // A sale from before this was recorded counts as a sale and not as money:
+    // adding it to either column would make both columns wrong.
+    if (sale.paymentMethod && sale.pricePaid !== null) row[sale.paymentMethod] += sale.pricePaid;
+    else row.unrecorded += 1;
+    byType.set(sale.ticketType, row);
+  }
+
+  const rows = [...byType.entries()].sort((a, b) => b[1].count - a[1].count);
+  const total = rows.reduce(
+    (sum, [, row]) => ({
+      count: sum.count + row.count,
+      cash: sum.cash + row.cash,
+      card: sum.card + row.card,
+      unrecorded: sum.unrecorded + row.unrecorded,
+    }),
+    { count: 0, cash: 0, card: 0, unrecorded: 0 }
+  );
+
+  return (
+    <div className="stack">
+      <h2 className="card__title">Taken at the door</h2>
+      <table className="table">
+        <colgroup>
+          <col />
+          <col style={{ width: '80px' }} />
+          <col style={{ width: '120px' }} />
+          <col style={{ width: '120px' }} />
+          <col style={{ width: '120px' }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Pass</th>
+            <th className="num">Sold</th>
+            <th className="num">{PAYMENT_METHOD_LABELS.cash}</th>
+            <th className="num">{PAYMENT_METHOD_LABELS.card}</th>
+            <th className="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([ticketType, row]) => (
+            <tr key={ticketType}>
+              <td>
+                {ticketType}
+                {row.unrecorded > 0 ? (
+                  <div className="sub">{row.unrecorded} with no method recorded</div>
+                ) : null}
+              </td>
+              <td className="num">{row.count}</td>
+              <td className="num">{euros(row.cash)}</td>
+              <td className="num">{euros(row.card)}</td>
+              <td className="num">{euros(row.cash + row.card)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td className="name">All door sales</td>
+            <td className="num name">{total.count}</td>
+            <td className="num name">{euros(total.cash)}</td>
+            <td className="num name">{euros(total.card)}</td>
+            <td className="num name">{euros(total.cash + total.card)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="note">
+        What the desk recorded taking, at the price each sale was made at. The cash
+        column is what should be in the box; the card column is what the reader's
+        own report should say. A sale sold before the terminals asked the question
+        is counted as a sale and left out of both columns, because guessing which
+        one it belonged to would make both wrong.
       </p>
     </div>
   );

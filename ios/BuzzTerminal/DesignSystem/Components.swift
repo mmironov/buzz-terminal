@@ -265,6 +265,79 @@ struct SBDetailRow: View {
     }
 }
 
+// MARK: - Choices
+
+/// One option in a small mutually exclusive set: a dance role, a level, cash or
+/// card.
+///
+/// A radio button drawn square rather than round, because "do not round a corner
+/// anywhere" is the design system's first don't and a circle here would be the
+/// only one on the screen. It still reads as a radio: two or three exclusive
+/// options, one marker, filled when chosen.
+///
+/// The selected state is carried by the fill and the marker together, not by
+/// colour alone — the accent is the only strong colour in this design, and a
+/// terminal at a dim reception desk is exactly where a colour-only difference
+/// fails.
+struct SBChoiceBox: View {
+    let title: String
+    let isSelected: Bool
+    /// A word under the title saying why this one cannot be chosen.
+    var note: String? = nil
+    var isEnabled: Bool = true
+    let select: () -> Void
+
+    var body: some View {
+        Button(action: select) {
+            HStack(spacing: SBSpace.x2) {
+                Rectangle()
+                    .stroke(marker, lineWidth: SBRule.hairline)
+                    .frame(width: 16, height: 16)
+                    .overlay {
+                        if isSelected {
+                            Rectangle().fill(Color.sbAccent).frame(width: 8, height: 8)
+                        }
+                    }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.sbHeading(14, weight: .extrabold))
+                        .foregroundStyle(.sbInk(isEnabled ? 1 : 0.4))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if let note {
+                        Text(note)
+                            .font(.sbBody(10.5))
+                            .foregroundStyle(.sbInk(0.4))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, SBSpace.x3)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(isSelected ? Color.sbAccent.opacity(0.12) : .clear)
+            .overlay {
+                Rectangle().stroke(
+                    isSelected ? Color.sbAccent : Color.sbDivider,
+                    lineWidth: isSelected ? SBRule.strong : SBRule.hairline
+                )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityLabel(note.map { "\(title), \($0)" } ?? title)
+    }
+
+    /// The marker fades with the label, so a full class does not read as an
+    /// empty checkbox somebody has not got round to ticking.
+    private var marker: Color {
+        if isSelected { return .sbAccent }
+        return .sbInk(isEnabled ? 0.45 : 0.2)
+    }
+}
+
 #Preview("Components") {
     ScrollView {
         VStack(alignment: .leading, spacing: SBSpace.x4) {
@@ -284,6 +357,11 @@ struct SBDetailRow: View {
             SBBand(text: "Payment approved")
             SBBand(text: "Bracelet blocked", tone: .alert, glyph: .blocked)
             SBDetailRow(key: "Participant", value: "Marta Lindqvist")
+            HStack(spacing: SBSpace.x2) {
+                SBChoiceBox(title: "Cash", isSelected: true) {}
+                SBChoiceBox(title: "Card", isSelected: false) {}
+            }
+            SBChoiceBox(title: "Advanced", isSelected: false, note: "Sold out", isEnabled: false) {}
         }
         .padding(SBSpace.x4)
     }

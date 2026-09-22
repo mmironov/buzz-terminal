@@ -78,9 +78,13 @@ protocol TerminalRepository: Sendable {
     ///
     /// `name` is the guest's, and it is the only thing asked of them. The number
     /// the night is reconciled by is still in the id and in `ticketRef`.
+    /// Takes the catalogue entry as well as the night, because the sale records
+    /// what it cost and only the pass knows that — and what that night costs can
+    /// differ from what Friday costs.
     func createEveningTicket(
+        _ pass: DoorPass,
         evening: Evening,
-        name: String,
+        draft: DoorSaleDraft,
         bracelet: BraceletID
     ) async throws -> Participant
 

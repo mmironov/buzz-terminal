@@ -324,10 +324,9 @@ A guest returning on a second evening buys a **new ticket on a new bracelet**, s
 "a bracelet is permanently paired" stays true and the pairing rules are untouched.
 Any balance left on the first evening's bracelet stays there.
 
-> Not recorded: the cash taken for the ticket itself. The price now exists in
-> `doorPasses` so the desk can read it out, but no sale writes it anywhere. See
-> *"The price is shown, never charged"* in `docs/door-sales.md` for why, and what
-> it would take to change.
+> The money is recorded on the sale, not on the bracelet: `paymentMethod` and
+> `pricePaid` say what the desk took and how, and `balance` stays 0. Nothing is
+> charged — see *"The price is shown, never charged"* in `docs/door-sales.md`.
 
 ## Door passes
 
@@ -343,8 +342,10 @@ participants/door-7
   ticketRef:   "DOOR-7"
   name:        "Jana Novak"
   danceRole:   "leader" | "follower"
-  level:       "Advanced" | ""      // Full Pass and Full Pass Gold only
+  level:       "Intermediate" | ""  // Full Pass and Full Pass Gold only
   country:     ""
+  paymentMethod: "cash" | "card"    // mandatory, like a top-up's `method`
+  pricePaid:     25900              // cents, snapshotted at the moment of sale
   braceletId, checkedInAt, balance: 0, createdBy
 
 participants/door-7/contact/details  // reception and the panel only

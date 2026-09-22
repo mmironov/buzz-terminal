@@ -138,21 +138,53 @@ flow, which asks for a name and a night; anything else asks for the full buyer
 details. Matching on the name instead would
 break the moment somebody renamed a row.
 
-### The price is shown, never charged
+### The price is shown, never charged — but it is now recorded
 
 Nothing in this system takes the money for a pass. The desk does — in cash, or on
-the card machine — and the number on screen is what they ask for.
+the card machine — and the number on screen is what they ask for. What changed is
+that the sale now says **how it was paid and how much**, on the document the sale
+already is:
 
-That is deliberate and it is the same line the evening ticket has always held. The
-ledger is what is **on a bracelet**: top-ups in, rounds at the bar out, every entry
-balanced against a balance the rules verify. A pass is not on a bracelet. Writing
-a 205 € "sale" into that ledger would make the reconciliation footer in the admin
-panel — the one that says whether the entries add up to the balance — permanently
-wrong by exactly the price of every pass sold.
+```
+paymentMethod: "cash" | "card"     // mandatory, refused without it
+pricePaid:     25900               // cents, snapshotted at the moment of sale
+balance:       0                   // unchanged: nothing is on the wristband
+```
 
-So door takings are counted the way they were always going to be: by counting them.
-If that ever needs to live in the app, it is a new thing to build, with its own
-collection, not a number to smuggle into this one.
+**Not in the ledger, and that has not moved an inch.** The ledger is what is *on a
+bracelet*: top-ups in, rounds at the bar out, every entry balanced against a
+balance the rules verify. A pass is not on a bracelet. Writing a 205 € "sale"
+into it would make the admin panel's reconciliation footer — the one that says
+whether the entries add up to the balance — permanently wrong by the price of
+every pass sold. A zero-value entry was considered and refused for the same
+reason: the money invariant is the most safety-critical thing in the repo, and it
+should not be bent to carry a reporting need.
+
+Two fields on the sale rather than a `doorSales` collection, because the sale
+already *is* a document: one atomic write, no state where a pass exists and its
+takings row does not, and a mis-tap an organiser could in principle correct
+rather than reverse. The cost is that every terminal can read it, the bar
+included — acceptable for "paid by card" in a way it was not for an email
+address.
+
+**Mandatory in the rules**, exactly like `method` on a top-up. A takings record
+that some sales carry and some do not cannot be counted against a cash box, and
+the only moment anybody knows the answer is the moment of sale. The desk's
+Continue button says *Choose cash or card* until one is picked, so the refusal
+never has to reach the guest.
+
+**The price is a snapshot, and the rules deliberately do not check it against the
+catalogue.** A phone holding a catalogue five minutes out of date would otherwise
+have its sale refused in front of a queue, and the number wanted here is what was
+collected — not what the price list says by the time anybody reads it. The same
+rule the ledger follows for a round of drinks. What the rules do enforce is the
+shape and the catalogue's own typo ceiling.
+
+The admin panel totals it under the door catalogue — per pass type, cash against
+card, with a grand total. The cash column is what should be in the box; the card
+column is what the reader's own report should say. A sale from before this
+existed counts as a sale and is left out of both columns, because guessing which
+one it belonged to would make both wrong.
 
 ## What a sale writes
 
@@ -170,6 +202,8 @@ participants/door-7
   danceRole:   "leader" | "follower"
   level:       "Intermediate" | ""   // Full Pass and Full Pass Gold only
   country:     ""
+  paymentMethod: "cash" | "card"     // what the desk took, and how
+  pricePaid:     25900               // cents, at the moment of sale
   braceletId, checkedInAt, balance: 0, isBlocked: false, createdBy
 
 participants/door-7/contact/details

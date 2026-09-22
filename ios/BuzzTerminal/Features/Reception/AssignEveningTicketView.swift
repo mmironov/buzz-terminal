@@ -65,6 +65,23 @@ struct AssignEveningTicketView: View {
                 }
             }
 
+            SBKicker(text: "Paid by")
+                .padding(.top, SBSpace.x4)
+                .padding(.bottom, SBSpace.x2)
+
+            // The same control and the same rule as the buyer form and the
+            // top-up screen: nothing pre-selected, and the sale does not go
+            // through without an answer. The cash box is counted against these.
+            HStack(spacing: SBSpace.x2) {
+                ForEach(PaymentMethod.allCases) { method in
+                    SBChoiceBox(
+                        title: method.label,
+                        isSelected: model.doorSale.method == method,
+                        select: { model.doorSale.method = method }
+                    )
+                }
+            }
+
             Text("Only the name is recorded — no level, no email. The ticket is valid for the evening above; an organiser freezes it afterwards from the admin panel.")
                 .font(.sbBody(11.5))
                 .foregroundStyle(.sbInk(0.55))

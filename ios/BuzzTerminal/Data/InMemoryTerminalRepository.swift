@@ -98,8 +98,9 @@ actor InMemoryTerminalRepository: TerminalRepository {
     }
 
     func createEveningTicket(
+        _ pass: DoorPass,
         evening: Evening,
-        name: String,
+        draft: DoorSaleDraft,
         bracelet: BraceletID
     ) async throws -> Participant {
         await simulateNetwork()
@@ -113,9 +114,10 @@ actor InMemoryTerminalRepository: TerminalRepository {
             .max() ?? 0
 
         let ticket = Participant.eveningTicket(
+            pass,
             evening: evening,
             number: highest + 1,
-            name: name,
+            draft: draft,
             bracelet: bracelet
         )
         guard roster[ticket.id] == nil else { throw TerminalError.eveningSequenceExhausted }

@@ -58,7 +58,7 @@ struct DoorBuyerView: View {
 
                 HStack(spacing: SBSpace.x2) {
                     ForEach(DanceRole.allCases) { role in
-                        ChoiceBox(
+                        SBChoiceBox(
                             title: role.label,
                             isSelected: model.doorSale.danceRole == role,
                             select: { model.doorSale.danceRole = role }
@@ -79,7 +79,7 @@ struct DoorBuyerView: View {
                         ForEach(Array(stride(from: 0, to: levels.count, by: 2)), id: \.self) { start in
                             HStack(spacing: SBSpace.x2) {
                                 ForEach(levels[start..<min(start + 2, levels.count)], id: \.self) { level in
-                                    ChoiceBox(
+                                    SBChoiceBox(
                                         title: level,
                                         isSelected: model.doorSale.level == level,
                                         // Shown, not hidden: a full class that
@@ -118,6 +118,8 @@ struct DoorBuyerView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, SBSpace.x2)
 
+                methodPicker
+
                 if let pass {
                     confirm(pass)
                 }
@@ -127,6 +129,29 @@ struct DoorBuyerView: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// Cash or card, nothing pre-selected — the same control and the same rule
+    /// as the top-up screen, because it is the same question about the same cash
+    /// box. Last on the form, because it is the last thing to happen: the pass is
+    /// agreed, then the money is handed over.
+    private var methodPicker: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: SBSpace.x2) {
+            SBKicker(text: "Paid by")
+            HStack(spacing: SBSpace.x2) {
+                ForEach(PaymentMethod.allCases) { method in
+                    SBChoiceBox(
+                        title: method.label,
+                        isSelected: model.doorSale.method == method,
+                        // No un-picking by tapping again: one of the two is
+                        // true, and a double tap must not quietly clear it.
+                        select: { model.doorSale.method = method }
+                    )
+                }
+            }
+        }
+        .padding(.top, SBSpace.x4)
     }
 
     /// The button says what is missing rather than sitting there greyed out —
@@ -146,70 +171,6 @@ struct DoorBuyerView: View {
             .disabled(blocker != nil || model.isWorking)
             .padding(.top, 10)
         }
-    }
-}
-
-/// One option in a small mutually exclusive set: dance role, level.
-///
-/// The same square marker as the top-up screen's payment method, for the same
-/// reason — nothing in this design system has a rounded corner, and the selected
-/// state is carried by fill and marker together rather than by colour alone.
-private struct ChoiceBox: View {
-    let title: String
-    let isSelected: Bool
-    /// A word under the title saying why this one cannot be chosen.
-    var note: String? = nil
-    var isEnabled: Bool = true
-    let select: () -> Void
-
-    var body: some View {
-        Button(action: select) {
-            HStack(spacing: SBSpace.x2) {
-                Rectangle()
-                    .stroke(marker, lineWidth: SBRule.hairline)
-                    .frame(width: 16, height: 16)
-                    .overlay {
-                        if isSelected {
-                            Rectangle().fill(Color.sbAccent).frame(width: 8, height: 8)
-                        }
-                    }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.sbHeading(14, weight: .extrabold))
-                        .foregroundStyle(.sbInk(isEnabled ? 1 : 0.4))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    if let note {
-                        Text(note)
-                            .font(.sbBody(10.5))
-                            .foregroundStyle(.sbInk(0.4))
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, SBSpace.x3)
-            .frame(maxWidth: .infinity, minHeight: 46)
-            .background(isSelected ? Color.sbAccent.opacity(0.12) : .clear)
-            .overlay {
-                Rectangle().stroke(
-                    isSelected ? Color.sbAccent : Color.sbDivider,
-                    lineWidth: isSelected ? SBRule.strong : SBRule.hairline
-                )
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityLabel(note.map { "\(title), \($0)" } ?? title)
-    }
-
-    /// The marker fades with the label, so a full class does not read as an
-    /// empty checkbox somebody has not got round to ticking.
-    private var marker: Color {
-        if isSelected { return .sbAccent }
-        return .sbInk(isEnabled ? 0.45 : 0.2)
     }
 }
 

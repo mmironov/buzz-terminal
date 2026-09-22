@@ -28,9 +28,10 @@ struct DoorSaleTests {
         name: String = "Jana Novak",
         role: DanceRole? = .follower,
         level: String = "Intermediate",
-        email: String = ""
+        email: String = "",
+        method: PaymentMethod? = .card
     ) -> DoorSaleDraft {
-        DoorSaleDraft(name: name, danceRole: role, level: level, email: email)
+        DoorSaleDraft(name: name, danceRole: role, level: level, email: email, method: method)
     }
 
     // MARK: What the desk must fill in
@@ -46,6 +47,7 @@ struct DoorSaleTests {
         #expect(draft(role: nil).blocker(for: fullPass) == "Choose leader or follower")
         #expect(draft(level: "").blocker(for: fullPass) == "Choose a level")
         #expect(draft(email: "not an address").blocker(for: fullPass) == "Check the email address")
+        #expect(draft(method: nil).blocker(for: fullPass) == "Choose cash or card")
         #expect(draft().blocker(for: fullPass) == nil)
     }
 
@@ -77,9 +79,12 @@ struct DoorSaleTests {
     func startsOnTheOpenLevel() {
         #expect(DoorSaleDraft().level == "Intermediate")
         #expect(DoorSaleDraft.isSoldOut("Intermediate") == false)
-        // A name and a role away from being sellable, with nothing to tap for
-        // the level — which is the point of starting it there.
-        #expect(DoorSaleDraft(name: "Jana Novak", danceRole: .leader).isComplete(for: fullPass))
+        // A name, a role and the money away from being sellable, with nothing to
+        // tap for the level — which is the point of starting it there.
+        #expect(
+            DoorSaleDraft(name: "Jana Novak", danceRole: .leader, method: .cash)
+                .isComplete(for: fullPass)
+        )
     }
 
     @Test("Advanced and Pro are sold out, and a sale carrying one is refused")
@@ -101,7 +106,7 @@ struct DoorSaleTests {
         // The draft keeps whatever was typed when the operator changes pass, so
         // a Party Pass must not inherit a blocker about a class it has none of.
         #expect(draft(level: "Pro").isComplete(for: partyPass))
-        #expect(DoorSaleDraft(name: "Ana").isComplete(for: evening))
+        #expect(DoorSaleDraft(name: "Ana", method: .cash).isComplete(for: evening))
     }
 
     @Test("A level typed under one pass does not follow the buyer to another")
@@ -125,9 +130,12 @@ struct DoorSaleTests {
         // It used to ask for nothing at all. Now the name is the one required
         // field — no dance role, no level, and the email is not even on screen.
         #expect(DoorSaleDraft().blocker(for: evening) == "Enter the guest’s name")
-        #expect(DoorSaleDraft(name: "Petar Dimitrov").isComplete(for: evening))
-        // …while the same empty draft fails a Full Pass for three more reasons.
-        #expect(DoorSaleDraft(name: "Petar Dimitrov").isComplete(for: fullPass) == false)
+        #expect(DoorSaleDraft(name: "Petar Dimitrov", method: .cash).isComplete(for: evening))
+        // …while the same draft fails a Full Pass for two more reasons.
+        #expect(DoorSaleDraft(name: "Petar Dimitrov", method: .cash).isComplete(for: fullPass) == false)
+        // The one thing it is asked besides the name: a night at a door still
+        // takes money, and it goes in the same box as a 259 € Full Pass.
+        #expect(DoorSaleDraft(name: "Petar Dimitrov").blocker(for: evening) == "Choose cash or card")
     }
 
     @Test("An evening ticket records the name and drops the rest")
@@ -192,6 +200,65 @@ struct DoorSaleTests {
         #expect(buyer.country == "")
         #expect(buyer.balance == .zero)
         #expect(buyer.source == .door)
+    }
+
+    @Test("THE CHANGE: the sale records what was taken, and it is not a balance")
+    func takings() {
+        let buyer = Participant.doorPass(
+            fullPass, number: 7, draft: draft(method: .cash), bracelet: SampleData.braceletA
+        )
+        #expect(buyer.paymentMethod == .cash)
+        // The price the catalogue held at the moment of sale, snapshotted: a
+        // re-priced Full Pass next week must not rewrite what was taken tonight.
+        #expect(buyer.pricePaid == Money(euros: 205))
+        // And emphatically not on the wristband. The money went into the box;
+        // `firestore.rules` refuses a door sale that starts with a balance.
+        #expect(buyer.balance == .zero)
+        #expect(buyer.doorSaleSummary == "205.00 € · Cash")
+    }
+
+    @Test("An evening ticket records the night's price, not the flat one")
+    func eveningTakings() {
+        let priced = DoorPass(
+            id: "evening-ticket",
+            name: TicketType.eveningTicket,
+            price: Money(euros: 45),
+            prices: [.saturday: Money(euros: 50)],
+            kind: .evening
+        )
+        let saturday = Participant.eveningTicket(
+            priced,
+            evening: .saturday,
+            number: 14,
+            draft: DoorSaleDraft(name: "Petar Dimitrov", method: .card),
+            bracelet: SampleData.braceletA
+        )
+        #expect(saturday.pricePaid == Money(euros: 50))
+        #expect(saturday.paymentMethod == .card)
+
+        // Friday has no price of its own here, so it falls back to the flat one
+        // — the same fallback the screen quotes.
+        let friday = Participant.eveningTicket(
+            priced,
+            evening: .friday,
+            number: 15,
+            draft: DoorSaleDraft(name: "Ana Ivanova", method: .cash),
+            bracelet: SampleData.braceletA
+        )
+        #expect(friday.pricePaid == Money(euros: 45))
+    }
+
+    @Test("Nobody from the Sheet has takings on them")
+    func rosterHasNoTakings() {
+        // They paid a registration system months ago. The desk reading "no
+        // method" there is the honest answer, and the screen shows nothing.
+        let imported = Participant(
+            id: ParticipantID("tkt-1"), ticketRef: "TKT-1", name: "Amélie Roux",
+            ticketType: TicketType.fullPass, country: "France"
+        )
+        #expect(imported.paymentMethod == nil)
+        #expect(imported.pricePaid == nil)
+        #expect(imported.doorSaleSummary == nil)
     }
 
     @Test("The id, the ticket reference and the number agree")

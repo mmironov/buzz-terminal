@@ -133,14 +133,16 @@ service cloud.firestore {
         return d.keys().hasOnly([
                  'source', 'ticketType', 'evening', 'eveningNumber', 'ticketRef',
                  'name', 'nameLower', 'searchTokens', 'country',
+                 'paymentMethod', 'pricePaid',
                  'braceletId', 'checkedInAt', 'balance', 'lastTxId',
                  'isBlocked', 'blockReason', 'createdBy'
                ])
           && d.keys().hasAll([
                'source', 'ticketType', 'evening', 'eveningNumber', 'ticketRef',
-               'name', 'country', 'braceletId', 'checkedInAt', 'balance',
-               'isBlocked', 'createdBy'
+               'name', 'country', 'paymentMethod', 'pricePaid',
+               'braceletId', 'checkedInAt', 'balance', 'isBlocked', 'createdBy'
              ])
+          && isWellFormedTakings(d)
           // It is an evening ticket, and it says so in every field that matters.
           && d.source == 'evening'
           && d.ticketType == 'Evening Ticket'
@@ -196,14 +198,16 @@ service cloud.firestore {
         return d.keys().hasOnly([
                  'source', 'passId', 'ticketType', 'doorNumber', 'ticketRef',
                  'name', 'nameLower', 'searchTokens', 'country', 'level',
-                 'danceRole', 'braceletId', 'checkedInAt', 'balance', 'lastTxId',
+                 'danceRole', 'paymentMethod', 'pricePaid',
+                 'braceletId', 'checkedInAt', 'balance', 'lastTxId',
                  'isBlocked', 'blockReason', 'createdBy'
                ])
           && d.keys().hasAll([
                'source', 'passId', 'ticketType', 'doorNumber', 'ticketRef',
-               'name', 'country', 'danceRole', 'braceletId', 'checkedInAt',
-               'balance', 'isBlocked', 'createdBy'
+               'name', 'country', 'danceRole', 'paymentMethod', 'pricePaid',
+               'braceletId', 'checkedInAt', 'balance', 'isBlocked', 'createdBy'
              ])
+          && isWellFormedTakings(d)
           && d.source == 'door'
           // The id IS the sequence number, so two desks selling at the same
           // moment collide on `door-7` and the loser retries with 8. Same
@@ -253,6 +257,31 @@ service cloud.firestore {
           && d.checkedInAt == request.time
           && d.braceletId is string
           && getAfter(braceletRef(d.braceletId)).data.participantId == pid;
+      }
+
+      // What the desk took for the pass, and how — on both shapes.
+      //
+      // **Mandatory, like `method` on a top-up, and for the same reason.** The
+      // cash box is counted against these numbers afterwards, and a takings
+      // record that some sales carry and some do not cannot be counted against
+      // anything. The only moment anybody knows the answer is the moment of
+      // sale, with the money in their hand.
+      //
+      // The price is deliberately NOT checked against `doorPasses`. A phone
+      // holding a catalogue five minutes out of date would have its sale refused
+      // in front of a queue, and the number wanted here is what was collected
+      // rather than what the price list says by the time anybody reads it — the
+      // same snapshot rule the ledger follows for a round of drinks. What is
+      // enforced is the shape and the same typo ceiling the catalogue has.
+      //
+      // It is not the balance, and must never be confused with it: nothing was
+      // loaded onto the wristband, the money went into the box. `balance == 0`
+      // is asserted separately on both shapes.
+      function isWellFormedTakings(d) {
+        return d.paymentMethod in ['cash', 'card']
+          && d.pricePaid is int
+          && d.pricePaid >= 0
+          && d.pricePaid <= 200000;
       }
 
       // ── Contact details ──────────────────────────────────────────────────

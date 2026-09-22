@@ -916,7 +916,11 @@ final class AppModel {
             level: doorSale.level(for: pass),
             danceRole: doorSale.danceRole?.wire ?? "",
             source: pass.kind == .evening ? .evening : .door,
-            evening: pass.kind == .evening ? eveningSelection : nil
+            evening: pass.kind == .evening ? eveningSelection : nil,
+            // What the desk is about to collect, and how — on the last screen
+            // before the money changes hands, which is the point of it.
+            paymentMethod: doorSale.method,
+            pricePaid: pass.kind == .evening ? pass.price(on: eveningSelection) : pass.price
         )
         merch = nil
         freeShirt = nil
@@ -986,8 +990,9 @@ final class AppModel {
             let buyer: Participant
             if pass.kind == .evening {
                 buyer = try await repository.createEveningTicket(
+                    pass,
                     evening: eveningSelection,
-                    name: doorSale.trimmedName,
+                    draft: doorSale,
                     bracelet: scanned
                 )
             } else {

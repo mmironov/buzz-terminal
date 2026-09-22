@@ -58,7 +58,7 @@ struct DoorPassPickerView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
 
-                Text("Prices come from the admin panel. Take the money at the desk — the app records the pass, not the payment.")
+                Text("Prices come from the admin panel. Take the money at the desk — the app records the pass and how it was paid, and puts nothing on the wristband.")
                     .font(.sbBody(11.5))
                     .foregroundStyle(.sbInk(0.55))
                     .sbLineHeight(1.5, size: 11.5)

@@ -54,6 +54,16 @@ struct ParticipantView: View {
                         .foregroundStyle(.sbInk(0.6))
                         .padding(.top, 4)
                 }
+
+                // What was taken for this pass, and how. On the confirmation
+                // screen it is what the desk is about to collect; afterwards it
+                // is the record somebody reconciles the cash box against.
+                if let takings = model.participant?.doorSaleSummary {
+                    Text(takings)
+                        .font(.sbHeading(15))
+                        .foregroundStyle(.sbInk(0.6))
+                        .padding(.top, 4)
+                }
             } else {
                 SBKicker(text: "Balance")
                 Text((model.participant?.balance ?? .zero).description)

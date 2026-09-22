@@ -16,6 +16,7 @@ import {
   COLLECTIONS,
   MAX_BLOCK_REASON,
   PARTICIPANT_FIELDS,
+  PAYMENT_METHOD_LABELS,
   euros,
   shortTime,
   toParticipant,
@@ -194,6 +195,16 @@ function Row({
         <td>
           {person.ticketType || '—'}
           {person.country ? <div className="sub">{person.country}</div> : null}
+          {/* What the desk took for it, for somebody sold at the door. Nobody
+              from the Sheet has this: they paid a registration system months
+              ago. A door sale written before the panel recorded it shows the
+              price alone rather than inventing a method. */}
+          {person.pricePaid !== null ? (
+            <div className="sub">
+              {euros(person.pricePaid)}
+              {person.paymentMethod ? ` · ${PAYMENT_METHOD_LABELS[person.paymentMethod]}` : ''}
+            </div>
+          ) : null}
         </td>
         <td className="mono">
           {person.braceletId ?? <span className="tag tag--quiet">Not paired</span>}

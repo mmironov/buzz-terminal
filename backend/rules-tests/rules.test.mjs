@@ -831,7 +831,8 @@ describe('the admin panel', () => {
     batch.set(doc(db, 'participants', 'ev-friday-14'), {
       source: 'evening', ticketType: 'Evening Ticket', evening: 'friday', eveningNumber: 14,
       ticketRef: 'EV-FRIDAY-14', name: 'Petar Dimitrov', nameLower: 'petar dimitrov',
-      searchTokens: [], country: '', braceletId: '04:E7:3A:2C',
+      searchTokens: [], country: '', paymentMethod: 'cash', pricePaid: 4500,
+      braceletId: '04:E7:3A:2C',
       checkedInAt: serverTimestamp(), balance: 0, lastTxId: null,
       isBlocked: false, blockReason: null, createdBy: ADMIN_UID,
     });
@@ -913,6 +914,8 @@ describe('selling an evening ticket at the door', () => {
       nameLower: 'petar dimitrov',
       searchTokens: ['petar', 'dimitrov', 'evening', evening],
       country: '',
+      paymentMethod: 'cash',
+      pricePaid: 4500,
       braceletId: chip,
       checkedInAt: serverTimestamp(),
       balance: 0,
@@ -936,6 +939,16 @@ describe('selling an evening ticket at the door', () => {
 
   it('refuses to let the bar sell one', async () => {
     await assertFails(sell(bar()));
+  });
+
+  it('THE CHANGE: an evening ticket also says how it was paid', async () => {
+    // One night at a door still takes money, and it goes in the same box as a
+    // 259 EUR Full Pass. The night decides the price, so the number here is
+    // whatever the terminal quoted for that evening.
+    await assertFails(sell(reception(), { overrides: { paymentMethod: null } }));
+    await assertFails(sell(reception(), { overrides: { pricePaid: null } }));
+    await assertFails(sell(reception(), { overrides: { paymentMethod: 'voucher' } }));
+    await assertSucceeds(sell(reception(), { overrides: { paymentMethod: 'card', pricePaid: 5000 } }));
   });
 
   it('refuses an evening ticket wearing another pass type', async () => {
@@ -1079,6 +1092,8 @@ describe('selling a pass at the door', () => {
       country: '',
       level: 'Advanced',
       danceRole: 'follower',
+      paymentMethod: 'card',
+      pricePaid: 20500,
       braceletId: chip,
       checkedInAt: serverTimestamp(),
       balance: 0,
@@ -1128,6 +1143,51 @@ describe('selling a pass at the door', () => {
 
   it('refuses a sale that starts with money on the bracelet', async () => {
     await assertFails(sellPass(reception(), { overrides: { balance: 20500 } }));
+  });
+
+  // ── What the desk took for it ────────────────────────────────────────────
+  //
+  // The cash box is counted against these afterwards, so they are mandatory in
+  // the same way `method` is on a top-up: a takings record that some sales carry
+  // and some do not cannot be counted against anything.
+
+  it('THE CHANGE: refuses a sale that does not say how it was paid', async () => {
+    await assertFails(sellPass(reception(), { overrides: { paymentMethod: null } }));
+    await assertFails(
+      sellPass(reception(), {
+        overrides: { paymentMethod: 'invoice' },
+      })
+    );
+    await assertFails(sellPass(reception(), { overrides: { paymentMethod: 'Cash' } }));
+    await assertSucceeds(sellPass(reception(), { overrides: { paymentMethod: 'cash' } }));
+  });
+
+  it('refuses a sale that does not say what was collected', async () => {
+    await assertFails(sellPass(reception(), { overrides: { pricePaid: null } }));
+    await assertFails(sellPass(reception(), { overrides: { pricePaid: '205.00' } }));
+    await assertFails(sellPass(reception(), { overrides: { pricePaid: 205 * 100 + 0.5 } }));
+    await assertFails(sellPass(reception(), { overrides: { pricePaid: -1 } }));
+    // The same typo ceiling the catalogue itself has: 2,000 EUR is a slipped
+    // decimal, not a festival pass.
+    await assertFails(sellPass(reception(), { overrides: { pricePaid: 200001 } }));
+  });
+
+  it('takes the price the terminal reports, not the catalogue\u2019s', async () => {
+    // Deliberate. A phone holding a catalogue five minutes out of date would
+    // otherwise have its sale refused in front of a queue, and the number wanted
+    // here is what was actually collected \u2014 the same snapshot rule the ledger
+    // follows for a round of drinks. Zero is allowed for the same reason: an
+    // organiser can price something at nothing.
+    // Different numbers and chips: the id is the sale, so two sales in one test
+    // are two sales.
+    await assertSucceeds(sellPass(reception(), { overrides: { pricePaid: 19000 } }));
+    await assertSucceeds(
+      sellPass(reception(), {
+        number: 8,
+        chip: '04:D2:0B:6B',
+        overrides: { doorNumber: 8, ticketRef: 'DOOR-8', pricePaid: 0 },
+      })
+    );
   });
 
   it('THE EMAIL IS NOT ON THE PARTICIPANT', async () => {

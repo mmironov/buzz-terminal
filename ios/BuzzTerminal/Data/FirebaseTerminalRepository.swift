@@ -542,8 +542,9 @@ actor FirebaseTerminalRepository: TerminalRepository {
     // MARK: - Door sales
 
     func createEveningTicket(
+        _ pass: DoorPass,
         evening: Evening,
-        name: String,
+        draft: DoorSaleDraft,
         bracelet: BraceletID
     ) async throws -> Participant {
         let uid = try requireStaffUid()
@@ -555,7 +556,7 @@ actor FirebaseTerminalRepository: TerminalRepository {
         // would spin forever writing nothing.
         for _ in 0..<25 {
             let ticket = Participant.eveningTicket(
-                evening: evening, number: number, name: name, bracelet: bracelet
+                pass, evening: evening, number: number, draft: draft, bracelet: bracelet
             )
             let batch = db.batch()
             batch.setData(

@@ -124,6 +124,10 @@ struct DoorSaleDraft: Equatable, Sendable {
     /// on screen rather than implied.
     var level: String = DoorSaleDraft.defaultLevel
     var email: String = ""
+    /// How the money reached the desk. Nothing is pre-selected, for the same
+    /// reason as on a top-up: a default here is a wrong answer that nobody has
+    /// to touch, and the cash box is counted against these numbers afterwards.
+    var method: PaymentMethod?
 
     /// The levels a class actually runs at — three, not the Sheet's four.
     ///
@@ -191,10 +195,13 @@ struct DoorSaleDraft: Equatable, Sendable {
     func blocker(for pass: DoorPass) -> String? {
         if trimmedName.isEmpty { return "Enter the guest’s name" }
         if trimmedName.count > Self.maxName { return "That name is too long" }
-        // An evening ticket asks for a name and nothing else. It is one night at
-        // a door with a queue behind it — no class list to build, so no dance
-        // role, no level, and nowhere to send an email.
-        guard pass.kind != .evening else { return nil }
+        // An evening ticket asks for a name and nothing else about the guest. It
+        // is one night at a door with a queue behind it — no class list to
+        // build, so no dance role, no level, and nowhere to send an email. The
+        // money still changed hands, though, so it is still asked how.
+        guard pass.kind != .evening else {
+            return method == nil ? "Choose cash or card" : nil
+        }
         if danceRole == nil { return "Choose leader or follower" }
         if pass.asksForLevel && level.isEmpty { return "Choose a level" }
         // Unreachable from the screen, which does not let a full class be
@@ -202,6 +209,9 @@ struct DoorSaleDraft: Equatable, Sendable {
         // a class with no place for them, and that should fail at the desk.
         if pass.asksForLevel && Self.isSoldOut(level) { return "\(level) is sold out" }
         if !emailLooksLikeAddress { return "Check the email address" }
+        // Last, because it is the last thing on the form and the last thing that
+        // happens at the desk: the pass is agreed, then the money is handed over.
+        if method == nil { return "Choose cash or card" }
         return nil
     }
 

@@ -323,10 +323,24 @@ struct ParticipantLifecycleTests {
 @Suite("Evening tickets")
 struct EveningTicketTests {
 
+    /// The catalogue entry the desk sold from. It is passed in now because the
+    /// sale records what it cost, and only the pass knows that.
+    private let pass = DoorPass(
+        id: "evening-ticket",
+        name: TicketType.eveningTicket,
+        price: Money(euros: 45),
+        kind: .evening
+    )
+
+    private func sale(_ name: String, method: PaymentMethod = .cash) -> DoorSaleDraft {
+        DoorSaleDraft(name: name, method: method)
+    }
+
     @Test("The id encodes the sequence, which is what makes it collision-proof")
     func identity() {
         let ticket = Participant.eveningTicket(
-            evening: .friday, number: 14, name: "Petar Dimitrov", bracelet: SampleData.braceletE
+            pass, evening: .friday, number: 14,
+            draft: sale("Petar Dimitrov"), bracelet: SampleData.braceletE
         )
         // Two reception desks selling at once both try `ev-friday-14`; Firestore's
         // `create` lets exactly one win, and the loser retries with 15. No counter
@@ -341,8 +355,8 @@ struct EveningTicketTests {
         // festival decided it wants to know who holds one; everything else it
         // decided not to ask stayed unasked, which is what this pins.
         let ticket = Participant.eveningTicket(
-            evening: .saturday, number: 3, name: "  Petar Dimitrov  ",
-            bracelet: SampleData.braceletE
+            pass, evening: .saturday, number: 3,
+            draft: sale("  Petar Dimitrov  "), bracelet: SampleData.braceletE
         )
         #expect(ticket.name == "Petar Dimitrov")   // trimmed, as the desk typed it
         #expect(ticket.country.isEmpty)
@@ -358,7 +372,8 @@ struct EveningTicketTests {
     @Test("It is created already paired and with nothing on it")
     func pairedAndEmpty() {
         let ticket = Participant.eveningTicket(
-            evening: .sunday, number: 1, name: "Petar Dimitrov", bracelet: SampleData.braceletE
+            pass, evening: .sunday, number: 1,
+            draft: sale("Petar Dimitrov"), bracelet: SampleData.braceletE
         )
         // The ticket price is cash to the festival, not credit on the bracelet.
         #expect(ticket.balance == .zero)
@@ -370,8 +385,8 @@ struct EveningTicketTests {
     @Test("The screen says which evening it was sold for")
     func description() {
         let evening = Participant.eveningTicket(
-            evening: .friday, number: 14, name: "Petar Dimitrov",
-            bracelet: SampleData.braceletE
+            pass, evening: .friday, number: 14,
+            draft: sale("Petar Dimitrov"), bracelet: SampleData.braceletE
         )
         #expect(evening.ticketDescription == "Evening ticket · Friday")
         #expect(evening.ticketType == TicketType.eveningTicket)
@@ -384,7 +399,8 @@ struct EveningTicketTests {
     @Test("Search finds an evening ticket by name, by number and by evening")
     func searchable() {
         let ticket = Participant.eveningTicket(
-            evening: .friday, number: 14, name: "Petar Dimitrov", bracelet: SampleData.braceletE
+            pass, evening: .friday, number: 14,
+            draft: sale("Petar Dimitrov"), bracelet: SampleData.braceletE
         )
         #expect(ticket.matches(query: "Petar"))
         #expect(ticket.matches(query: "evening"))

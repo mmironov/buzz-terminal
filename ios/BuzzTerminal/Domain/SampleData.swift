@@ -99,8 +99,14 @@ enum SampleData {
     /// name now, and still nothing else.
     static let eveningTickets: [Participant] = [
         Participant.eveningTicket(
-            evening: .friday, number: 14, name: "Petar Dimitrov",
-            bracelet: braceletE, checkedInAt: earlier(2)
+            doorPasses.first { $0.kind == .evening } ?? DoorPass(
+                id: "evening-ticket", name: TicketType.eveningTicket, price: .zero, kind: .evening
+            ),
+            evening: .friday,
+            number: 14,
+            draft: DoorSaleDraft(name: "Petar Dimitrov", method: .cash),
+            bracelet: braceletE,
+            checkedInAt: earlier(2)
         )
     ]
 

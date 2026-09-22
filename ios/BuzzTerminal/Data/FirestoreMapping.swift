@@ -108,6 +108,11 @@ enum Fire {
         /// Door passes: the sequence in the id, and which catalogue entry it was.
         static let doorNumber = "doorNumber"
         static let passId = "passId"
+        /// How a sale at the door was paid — `cash` or `card`, the same two
+        /// strings a top-up's `method` uses — and what was collected, in cents.
+        /// Both absent on everybody from the Sheet.
+        static let paymentMethod = "paymentMethod"
+        static let pricePaid = "pricePaid"
         static let braceletId = "braceletId"
         static let checkedInAt = "checkedInAt"
         static let balance = "balance"
@@ -207,6 +212,9 @@ extension Participant {
             eveningNumber: data[Fire.Participant.eveningNumber] as? Int,
             doorNumber: data[Fire.Participant.doorNumber] as? Int,
             passId: data[Fire.Participant.passId] as? String,
+            paymentMethod: (data[Fire.Participant.paymentMethod] as? String)
+                .flatMap(PaymentMethod.init(rawValue:)),
+            pricePaid: (data[Fire.Participant.pricePaid] as? Int).map(Money.init(cents:)),
             braceletId: (data[Fire.Participant.braceletId] as? String).map(BraceletID.init),
             checkedInAt: (data[Fire.Participant.checkedInAt] as? Timestamp)?.dateValue(),
             balance: Money(cents: balanceCents),
@@ -345,7 +353,12 @@ extension Participant {
         guard let evening, let eveningNumber, let braceletId else {
             preconditionFailure("an evening ticket must carry its evening, number and bracelet")
         }
+        guard let paymentMethod, let pricePaid else {
+            preconditionFailure("a door sale must say how it was paid, and how much")
+        }
         return [
+            Fire.Participant.paymentMethod: paymentMethod.wire,
+            Fire.Participant.pricePaid: pricePaid.cents,
             Fire.Participant.source: Source.evening.rawValue,
             Fire.Participant.ticketType: TicketType.eveningTicket,
             Fire.Participant.evening: evening.rawValue,
@@ -375,7 +388,12 @@ extension Participant {
         guard let doorNumber, let passId, let braceletId else {
             preconditionFailure("a door pass must carry its number, catalogue id and bracelet")
         }
+        guard let paymentMethod, let pricePaid else {
+            preconditionFailure("a door sale must say how it was paid, and how much")
+        }
         return [
+            Fire.Participant.paymentMethod: paymentMethod.wire,
+            Fire.Participant.pricePaid: pricePaid.cents,
             Fire.Participant.source: Source.door.rawValue,
             Fire.Participant.passId: passId,
             Fire.Participant.ticketType: ticketType,

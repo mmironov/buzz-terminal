@@ -36,6 +36,9 @@ export const PARTICIPANT_FIELDS = {
   danceRole: 'danceRole',
   source: 'source',
   evening: 'evening',
+  /** How a door sale was paid — `cash` or `card` — and what was collected. */
+  paymentMethod: 'paymentMethod',
+  pricePaid: 'pricePaid',
   eveningNumber: 'eveningNumber',
   braceletId: 'braceletId',
   checkedInAt: 'checkedInAt',
@@ -198,6 +201,16 @@ export interface Participant {
   /** `'friday'`, `'saturday'`, `'sunday'` — which night an evening ticket is
    *  for, and `''` for everybody else. It decides their wristband colour. */
   evening: string;
+  /**
+   * What the desk took for a pass sold at the door, and how.
+   *
+   * Both null for everybody from the Sheet, who paid a registration system
+   * months ago. `pricePaid` is a snapshot in cents, taken at the moment of
+   * sale: re-pricing a pass next week must not rewrite what was collected
+   * tonight. It is **not** the balance — nothing was loaded onto the wristband.
+   */
+  paymentMethod: PaymentMethod | null;
+  pricePaid: number | null;
   /** `null` until reception pairs a chip. Permanent once set. */
   braceletId: string | null;
   checkedInAt: Date | null;
@@ -310,6 +323,10 @@ export interface Transaction {
 
 export type PaymentMethod = 'cash' | 'card';
 
+/** The two spellings `firestore.rules` accepts, and nothing else. */
+const toPaymentMethod = (value: unknown): PaymentMethod | null =>
+  value === 'cash' || value === 'card' ? value : null;
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Cash',
   card: 'Card',
@@ -355,6 +372,8 @@ export function toParticipant(doc: Doc): Participant | null {
     source: str(data[PARTICIPANT_FIELDS.source], 'sheet'),
     danceRole: str(data[PARTICIPANT_FIELDS.danceRole]),
     evening: str(data[PARTICIPANT_FIELDS.evening]),
+    paymentMethod: toPaymentMethod(data[PARTICIPANT_FIELDS.paymentMethod]),
+    pricePaid: int(data[PARTICIPANT_FIELDS.pricePaid]),
     braceletId: str(data[PARTICIPANT_FIELDS.braceletId]) || null,
     checkedInAt: date(data[PARTICIPANT_FIELDS.checkedInAt]),
     balance,
@@ -493,7 +512,7 @@ export function toTransaction(doc: Doc): Transaction | null {
     terminalId: str(data['terminalId']),
     createdAt: date(data['createdAt']),
     items,
-    method: data['method'] === 'cash' || data['method'] === 'card' ? data['method'] : null,
+    method: toPaymentMethod(data['method']),
   };
 }
 
