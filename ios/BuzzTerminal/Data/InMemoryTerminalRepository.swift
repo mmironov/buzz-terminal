@@ -142,10 +142,13 @@ actor InMemoryTerminalRepository: TerminalRepository {
         return order
     }
 
-    func topUp(bracelet: BraceletID, amount: Money) async throws -> Participant {
+    func topUp(bracelet: BraceletID, amount: Money, method: PaymentMethod) async throws -> Participant {
         await simulateNetwork()
         guard var participant = participant(pairedTo: bracelet) else { throw TerminalError.braceletNotAssigned }
         guard !participant.isBlocked else { throw TerminalError.braceletBlocked }
+        // `method` goes unrecorded: this fixture keeps balances, not a ledger,
+        // and inventing half a ledger here would be a second source of truth for
+        // the screens to disagree with.
         participant.balance += amount
         roster[participant.id] = participant
         return participant

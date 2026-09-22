@@ -139,6 +139,9 @@ extension AppModel {
             bracelet = SampleData.braceletB
             participant = marta
             topUp.apply(preset: Money(euros: 20))
+            // Picked, so the screenshot shows the screen armed rather than the
+            // confirm button greyed out waiting for a radio button.
+            topUp.method = .cash
             screen = .topUp
 
         case "receipt":
@@ -152,6 +155,7 @@ extension AppModel {
                 rows: [
                     .init(key: "Participant", value: "Marta Lindqvist"),
                     .init(key: "Added", value: "20.00 €"),
+                    .init(key: "Paid by", value: "Cash"),
                     .init(key: "Previous balance", value: "23.50 €"),
                 ],
                 balance: Money(euros: 43, cents: 50)

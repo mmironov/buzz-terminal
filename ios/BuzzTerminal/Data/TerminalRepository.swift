@@ -81,9 +81,13 @@ protocol TerminalRepository: Sendable {
     /// an organiser with a database open.
     func setMerchCollected(_ collected: Bool, for participant: Participant) async throws -> MerchOrder
 
-    /// Take cash at reception and credit the account.
+    /// Take money at reception and credit the account.
     /// Must be atomic server-side — two reception desks may top up at once.
-    func topUp(bracelet: BraceletID, amount: Money) async throws -> Participant
+    ///
+    /// `method` is recorded on the ledger entry, not merely on the receipt: the
+    /// cash box and the card terminal's report are both counted after the
+    /// festival, and each needs a total to be counted against.
+    func topUp(bracelet: BraceletID, amount: Money, method: PaymentMethod) async throws -> Participant
 
     /// Debit the account for a round at the bar.
     /// Must be atomic server-side, and must re-check the balance: the client's

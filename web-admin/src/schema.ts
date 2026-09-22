@@ -169,7 +169,20 @@ export interface Transaction {
    * before the terminals recorded this — see `historyNote` in History.tsx.
    */
   items: LedgerItem[];
+  /**
+   * How a top-up was paid: cash or card. `null` on every charge, and on top-ups
+   * taken by a terminal that did not yet ask — which is a different fact from
+   * "cash", and is shown as a different thing.
+   */
+  method: PaymentMethod | null;
 }
+
+export type PaymentMethod = 'cash' | 'card';
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  card: 'Card',
+};
 
 // ── Reading ────────────────────────────────────────────────────────────────
 //
@@ -303,6 +316,7 @@ export function toTransaction(doc: Doc): Transaction | null {
     terminalId: str(data['terminalId']),
     createdAt: date(data['createdAt']),
     items,
+    method: data['method'] === 'cash' || data['method'] === 'card' ? data['method'] : null,
   };
 }
 

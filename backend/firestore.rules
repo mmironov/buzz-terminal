@@ -317,7 +317,8 @@ service cloud.firestore {
           let d = request.resource.data;
           return d.keys().hasOnly([
                    'clientTxId', 'type', 'amount', 'signedAmount',
-                   'staffUid', 'terminalId', 'createdAt', 'queuedOffline', 'items'
+                   'staffUid', 'terminalId', 'createdAt', 'queuedOffline',
+                   'items', 'method'
                  ])
             && d.keys().hasAll([
                  'clientTxId', 'type', 'amount', 'signedAmount',
@@ -330,9 +331,26 @@ service cloud.firestore {
             && d.signedAmount == (d.type == 'topup' ? d.amount : -d.amount)
             && d.staffUid == request.auth.uid
             && d.terminalId is string
+            && methodIsSane(d)
             // Server clock, not the phone's. An offline terminal with a wrong
             // date must not be able to backdate a charge.
             && d.createdAt == request.time;
+        }
+
+        // How the money reached the desk: `cash` or `card`, on a top-up only.
+        // A charge moves money that is already on the bracelet, so a payment
+        // method there would be a claim about a different transaction.
+        //
+        // Optional, deliberately. The iOS terminal will not let reception
+        // confirm a top-up without choosing, and that is where the requirement
+        // belongs — a terminal still on an older build, and Android until it
+        // carries the same change, would otherwise have every top-up denied at
+        // the desk with a queue in front of it. Absent means "not asked", which
+        // is legible at reconciliation time; a rule that made it mandatory here
+        // would trade a reporting gap for a festival that cannot take money.
+        function methodIsSane(d) {
+          return !('method' in d)
+            || (d.type == 'topup' && d.method in ['cash', 'card']);
         }
 
         // ── Itemisation ──────────────────────────────────────────────────────

@@ -13,6 +13,14 @@ struct TopUpEntry: Equatable, Sendable {
     /// What the operator has typed so far, e.g. `""`, `"12"`, `"12."`, `"12.50"`.
     private(set) var text: String = ""
 
+    /// Cash or card — `nil` until the operator says.
+    ///
+    /// Deliberately not defaulted to `.cash`. A default is a box that is already
+    /// ticked, and the one thing worse than an unrecorded payment method is a
+    /// wrongly recorded one: it would look like a fact at reconciliation time
+    /// rather than like a gap, and nobody would go looking.
+    var method: PaymentMethod?
+
     /// A key on the on-screen pad.
     enum Key: Hashable, Sendable {
         case digit(Character)
@@ -50,10 +58,16 @@ struct TopUpEntry: Equatable, Sendable {
 
     var amount: Money { Money(keypadText: text) }
 
-    var isConfirmable: Bool { amount.isPositive }
+    /// Both halves, not either: an amount the desk has not said how it was taken
+    /// is exactly the entry that cannot be reconciled afterwards.
+    var isConfirmable: Bool { amount.isPositive && method != nil }
 
+    /// Says which half is missing, rather than leaving a dead button and a guess.
+    /// The amount comes first because that is the order the screen is filled in.
     var confirmButtonTitle: String {
-        isConfirmable ? "Add \(amount)" : "Enter an amount"
+        guard amount.isPositive else { return "Enter an amount" }
+        guard method != nil else { return "Choose cash or card" }
+        return "Add \(amount)"
     }
 
     mutating func apply(preset: Money) {
@@ -62,6 +76,7 @@ struct TopUpEntry: Equatable, Sendable {
 
     mutating func clear() {
         text = ""
+        method = nil
     }
 
     /// Handle one key press, applying the rules a cash keypad needs:

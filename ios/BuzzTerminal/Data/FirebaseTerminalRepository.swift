@@ -474,11 +474,12 @@ actor FirebaseTerminalRepository: TerminalRepository {
 
     // MARK: - Money
 
-    func topUp(bracelet: BraceletID, amount: Money) async throws -> Participant {
+    func topUp(bracelet: BraceletID, amount: Money, method: PaymentMethod) async throws -> Participant {
         try await moveMoney(
             bracelet: bracelet,
             type: Fire.Transaction.typeTopUp,
-            amount: amount
+            amount: amount,
+            method: method
         )
     }
 
@@ -513,6 +514,7 @@ actor FirebaseTerminalRepository: TerminalRepository {
         bracelet: BraceletID,
         type: String,
         amount: Money,
+        method: PaymentMethod? = nil,
         items: [[String: Any]]? = nil
     ) async throws -> Participant {
         guard amount.isPositive else { throw TerminalError.insufficientFunds(balance: .zero, required: amount) }
@@ -545,6 +547,11 @@ actor FirebaseTerminalRepository: TerminalRepository {
         // least one line and a top-up to carry none at all.
         if let items, !items.isEmpty {
             entry[Fire.Transaction.items] = items
+        }
+        // The mirror image: only a top-up has a payment method, and the rules
+        // refuse one on a charge.
+        if let method {
+            entry[Fire.Transaction.method] = method.wire
         }
         batch.setData(entry, forDocument: transactionDocument(current.id, txId))
 

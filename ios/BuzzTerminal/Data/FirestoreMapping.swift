@@ -85,6 +85,12 @@ enum Fire {
         /// What a charge bought. Absent on a top-up — cash over the counter buys
         /// nothing, and the rules refuse an itemised one.
         static let items = "items"
+        /// `"cash"` or `"card"`, on a top-up only. Absent on entries written
+        /// before reception was asked the question, and on Android until it
+        /// carries this change too — the rules treat it as optional for exactly
+        /// that reason, so an older terminal keeps working rather than failing
+        /// its first top-up of the festival.
+        static let method = "method"
 
         static let typeTopUp = "topup"
         static let typeCharge = "charge"

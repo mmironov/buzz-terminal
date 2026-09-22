@@ -164,6 +164,9 @@ participants/tkt-10432/transactions/8f14e45f-ceea-…
   createdAt:     <server timestamp>
   queuedOffline: true                  // optional; set when replayed from the queue
 
+  // top-ups only — how the money reached the desk
+  method:        "cash" | "card"
+
   // charges only — what the round bought
   items: [
     { drinkId: "beer",  name: "Beer",  unitPrice: 400, quantity: 3 },
@@ -207,6 +210,25 @@ re-measuring, not just editing the number.
 Charges written before this existed have no `items`, and the admin panel says
 *"Itemisation not recorded"* rather than rendering an empty list that would read
 like "bought nothing".
+
+### `method`: cash or card, on top-ups only
+
+Reception takes both. The cash box is counted at the end of the festival and the
+card terminal produces its own report, and neither can be checked against a
+ledger that only records that money arrived.
+
+A charge must not carry one. It moves money that is already on the bracelet, so
+"cash or card" there would be a claim about a different transaction — and two
+records of the same fact are how two records come to disagree.
+
+**Required by the app, optional in the rules**, which is deliberate rather than
+an oversight. The iOS terminal will not let reception confirm a top-up until one
+of the two is chosen, and that is where the requirement belongs: it can be
+explained to the person holding the phone. Enforcing it in the rules instead
+would mean a terminal on an older build — or Android, which does not send it yet
+— having its first top-up of the festival denied with a queue in front of it. An
+absent `method` means "not asked", and the panel shows it as *"Method not
+recorded"* rather than as a blank that reads like cash.
 
 ## Evening tickets
 

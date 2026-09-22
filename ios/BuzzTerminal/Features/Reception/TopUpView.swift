@@ -13,6 +13,7 @@ struct TopUpView: View {
             amountDisplay
             presets
             keypad
+            methodPicker
             // No spacer: the design stacks the confirm button directly under the
             // pad rather than pinning it to the bottom of the screen.
             confirmButton
@@ -36,7 +37,10 @@ struct TopUpView: View {
 
     private var amountDisplay: some View {
         VStack(spacing: 0) {
-            SBKicker(text: "Cash received")
+            // "Cash received" until the desk could also take a card. The figure
+            // is the same either way; the label was the only thing claiming
+            // otherwise.
+            SBKicker(text: "Amount received")
             Text(model.topUp.display)
                 .font(.sbDisplay(62))
                 .tracking(-0.03 * 62)
@@ -88,6 +92,26 @@ struct TopUpView: View {
         }
     }
 
+    /// Cash or card, and nothing pre-selected. See `TopUpEntry.method`.
+    private var methodPicker: some View {
+        VStack(alignment: .leading, spacing: SBSpace.x2) {
+            SBKicker(text: "Payment method")
+            HStack(spacing: SBSpace.x2) {
+                ForEach(PaymentMethod.allCases) { method in
+                    MethodOption(
+                        method: method,
+                        isSelected: model.topUp.method == method,
+                        // Tapping the chosen option again does not clear it: the
+                        // rule on this screen is that one of the two is picked,
+                        // and a toggle would let a double-tap quietly un-pick it.
+                        select: { model.topUp.method = method }
+                    )
+                }
+            }
+        }
+        .padding(.top, SBSpace.x4)
+    }
+
     private var confirmButton: some View {
         Button(model.topUp.confirmButtonTitle) {
             Task { await model.confirmTopUp() }
@@ -95,6 +119,59 @@ struct TopUpView: View {
         .buttonStyle(.sbBlock(.primary, minHeight: 50, fontSize: 15))
         .disabled(!model.topUp.isConfirmable || model.isWorking)
         .padding(.top, SBSpace.x4)
+    }
+}
+
+/// One of the two payment-method options.
+///
+/// A radio button drawn square rather than round, because "do not round a corner
+/// anywhere" is the design system's first don't and a circle here would be the
+/// only one on the screen. It still reads as a radio: two mutually exclusive
+/// options, one marker, filled when chosen.
+///
+/// The selected state is carried by the fill and the marker together, not by
+/// colour alone — the accent is the only strong colour in this design, and a
+/// terminal at a dim reception desk is exactly where a colour-only difference
+/// fails.
+private struct MethodOption: View {
+    let method: PaymentMethod
+    let isSelected: Bool
+    let select: () -> Void
+
+    var body: some View {
+        Button(action: select) {
+            HStack(spacing: SBSpace.x2) {
+                marker
+                Text(method.label)
+                    .font(.sbHeading(15, weight: .extrabold))
+                    .foregroundStyle(.sbInk)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, SBSpace.x3)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(isSelected ? Color.sbAccent.opacity(0.12) : .clear)
+            .overlay {
+                Rectangle().stroke(
+                    isSelected ? Color.sbAccent : Color.sbDivider,
+                    lineWidth: isSelected ? SBRule.strong : SBRule.hairline
+                )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityLabel(method.label)
+    }
+
+    private var marker: some View {
+        Rectangle()
+            .stroke(isSelected ? Color.sbAccent : Color.sbInk(0.45), lineWidth: SBRule.hairline)
+            .frame(width: 16, height: 16)
+            .overlay {
+                if isSelected {
+                    Rectangle().fill(Color.sbAccent).frame(width: 8, height: 8)
+                }
+            }
     }
 }
 

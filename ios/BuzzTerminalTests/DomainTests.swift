@@ -80,10 +80,63 @@ struct TopUpEntryTests {
         #expect(entry.isConfirmable == false)
     }
 
-    @Test("The confirm button describes what it will do")
+    // MARK: Payment method
+
+    @Test("An amount alone is not confirmable — the desk must say cash or card")
+    func methodIsRequired() {
+        var entry = typing("20")
+        #expect(entry.method == nil)
+        #expect(entry.isConfirmable == false)
+
+        entry.method = .cash
+        #expect(entry.isConfirmable)
+    }
+
+    @Test("A method alone is not confirmable either")
+    func amountIsStillRequired() {
+        var entry = TopUpEntry()
+        entry.method = .card
+        #expect(entry.isConfirmable == false)
+    }
+
+    @Test("Clearing forgets the method, so the next guest starts from nothing")
+    func clearForgetsMethod() {
+        var entry = typing("20")
+        entry.method = .card
+        entry.clear()
+        #expect(entry.method == nil)
+    }
+
+    @Test("Choosing a preset leaves an already-chosen method alone")
+    func presetKeepsMethod() {
+        var entry = TopUpEntry()
+        entry.method = .cash
+        entry.apply(preset: Money(euros: 50))
+        #expect(entry.method == .cash)
+        #expect(entry.isConfirmable)
+    }
+
+    @Test("The confirm button describes what it will do, and what is missing")
     func confirmTitle() {
         #expect(TopUpEntry().confirmButtonTitle == "Enter an amount")
-        #expect(typing("20").confirmButtonTitle == "Add 20.00 €")
+        #expect(typing("20").confirmButtonTitle == "Choose cash or card")
+
+        var ready = typing("20")
+        ready.method = .cash
+        #expect(ready.confirmButtonTitle == "Add 20.00 €")
+
+        // Missing the amount is reported before the missing method, whichever
+        // order the operator filled the screen in.
+        var methodOnly = TopUpEntry()
+        methodOnly.method = .card
+        #expect(methodOnly.confirmButtonTitle == "Enter an amount")
+    }
+
+    @Test("The wire spelling is what firestore.rules accepts")
+    func wireSpelling() {
+        #expect(PaymentMethod.cash.wire == "cash")
+        #expect(PaymentMethod.card.wire == "card")
+        #expect(PaymentMethod.allCases.count == 2)
     }
 }
 

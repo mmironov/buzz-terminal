@@ -706,6 +706,11 @@ final class AppModel {
         guard let bracelet, let current = participant else { return }
         let amount = topUp.amount
         guard amount.isPositive else { return }
+        // The button is disabled without one, so this is the second lock on the
+        // same door rather than the first: `confirmTopUp` is also reachable from
+        // a UI test and from LaunchOverrides, and an unmethodded top-up must not
+        // be able to reach the ledger by either route.
+        guard let method = topUp.method else { return }
 
         isWorking = true
         defer { isWorking = false }
@@ -716,7 +721,7 @@ final class AppModel {
         // branch to keep in step with the real one.
         let updated: Participant
         do {
-            updated = try await repository.topUp(bracelet: bracelet, amount: amount)
+            updated = try await repository.topUp(bracelet: bracelet, amount: amount, method: method)
         } catch {
             errorMessage = error.localizedDescription
             return
@@ -728,10 +733,11 @@ final class AppModel {
             title: "Balance topped up",
             note: isOffline
                 ? "Saved on this device. It will sync to the festival server when the connection is back."
-                : "Cash taken at reception and added to the participant’s account.",
+                : method.receiptNote,
             rows: [
                 .init(key: "Participant", value: current.name),
                 .init(key: "Added", value: "\(amount)"),
+                .init(key: "Paid by", value: method.label),
                 .init(key: "Previous balance", value: "\(current.balance)"),
             ],
             balance: updated.balance,

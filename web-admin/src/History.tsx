@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { db } from './firebase';
 import {
   COLLECTIONS,
+  PAYMENT_METHOD_LABELS,
   euros,
   shortTime,
   toTransaction,
@@ -80,7 +81,17 @@ export function History({ participant }: { participant: Participant }) {
               <td className="mono">{shortTime(entry.createdAt)}</td>
               <td>
                 {entry.type === 'topup' ? 'Top-up' : 'Bar'}
-                {entry.type === 'charge' ? <Lines entry={entry} /> : null}
+                {entry.type === 'topup' ? (
+                  // Shown even when it is missing. A top-up with no method is
+                  // one the terminal took before it asked the question, and
+                  // that is worth seeing as a gap when the cash box is counted
+                  // rather than being rendered as an unremarkable blank.
+                  <p className="lines">
+                    {entry.method ? PAYMENT_METHOD_LABELS[entry.method] : 'Method not recorded'}
+                  </p>
+                ) : (
+                  <Lines entry={entry} />
+                )}
               </td>
               <td className={`num ${entry.signedAmount < 0 ? 'signed--out' : 'signed--in'}`}>
                 {entry.signedAmount > 0 ? '+' : ''}

@@ -336,7 +336,9 @@ address into the sign-in field impossible from the host keyboard.
 type or chip id, showing each person's bracelet, balance and block state. Expanding
 a row gives their ledger: every top-up and every round, newest first, itemised —
 `3 × Beer (4.00 € each)` — with the prices as they were at the moment of sale, and
-a footer saying whether the entries add up to the balance on the bracelet.
+a footer saying whether the entries add up to the balance on the bracelet. A
+top-up also says whether it was paid in cash or by card, which is what the cash
+box is counted against afterwards.
 
 **Bar.** The drinks catalogue: add, rename, reprice, reorder, take off the menu,
 delete. Taking off the menu (`isActive: false`) is the reversible one for a keg that

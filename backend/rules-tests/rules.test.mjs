@@ -402,6 +402,64 @@ describe('money moves only with a ledger entry behind it', () => {
   });
 });
 
+describe('how a top-up was paid', () => {
+  beforeEach(async () => {
+    await seedCheckedIn(2350);
+  });
+
+  /** A top-up carrying `method`, which the iOS terminal always sets. */
+  function topUpPaid(method, { txId = 'tx-1', balanceAfter = 4350 } = {}) {
+    return moneyBatch(reception(), {
+      txId, type: 'topup', amount: 2000,
+      staffUid: RECEPTION_UID, balanceAfter,
+      entry: {
+        ...ledgerEntry({ txId, type: 'topup', amount: 2000, staffUid: RECEPTION_UID }),
+        method,
+      },
+    });
+  }
+
+  it('accepts cash and card', async () => {
+    await assertSucceeds(topUpPaid('cash'));
+    await assertSucceeds(topUpPaid('card', { txId: 'tx-2', balanceAfter: 6350 }));
+  });
+
+  it('refuses anything else, so the reports have two buckets and not five', async () => {
+    await assertFails(topUpPaid('Cash'));
+    await assertFails(topUpPaid('revolut'));
+    await assertFails(topUpPaid(''));
+    await assertFails(topUpPaid(2));
+  });
+
+  it('refuses a payment method on a charge', async () => {
+    // The bar moves money that is already on the bracelet. How it got there is
+    // a fact about the top-up, and recording it twice is how two records come
+    // to disagree.
+    await assertFails(
+      moneyBatch(bar(), {
+        txId: 'tx-1', type: 'charge', amount: 400,
+        staffUid: BAR_UID, balanceAfter: 1950,
+        entry: {
+          ...ledgerEntry({ txId: 'tx-1', type: 'charge', amount: 400, staffUid: BAR_UID }),
+          method: 'cash',
+        },
+      })
+    );
+  });
+
+  it('still accepts a top-up without one, so an older terminal keeps working', async () => {
+    // The requirement lives in the app, where it can be explained to the
+    // person holding the phone. A terminal on last week's build must not have
+    // its first top-up of the festival denied with a queue in front of it.
+    await assertSucceeds(
+      moneyBatch(reception(), {
+        txId: 'tx-1', type: 'topup', amount: 2000,
+        staffUid: RECEPTION_UID, balanceAfter: 4350,
+      })
+    );
+  });
+});
+
 describe('the ledger is append-only and replay-safe', () => {
   beforeEach(async () => {
     await seedCheckedIn(2350);
