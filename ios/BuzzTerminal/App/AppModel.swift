@@ -173,6 +173,17 @@ final class AppModel {
     private(set) var doorPassesUnavailable = false
     /// Which pass is being sold right now.
     var selectedPass: DoorPass?
+
+    /// True while the participant screen is showing a door sale that has not
+    /// happened yet.
+    ///
+    /// The screen is the same one a guest off the check-in list gets, and for
+    /// the same purpose: a last look at who this is before a pairing that
+    /// cannot be undone. The difference is that this person does not exist yet
+    /// — nothing is written until the chip is read — so the screen is drawn
+    /// from the draft, the merch reads are skipped, and the button scans
+    /// instead of pairing.
+    private(set) var isPendingDoorSale = false
     /// What has been typed about the buyer.
     var doorSale = DoorSaleDraft()
 
@@ -610,6 +621,7 @@ final class AppModel {
     /// One funnel for both routes to the screen — a scan and a name off the
     /// check-in list — so neither can forget either read.
     private func showParticipant(_ guest: Participant) {
+        isPendingDoorSale = false
         participant = guest
         merch = nil
         freeShirt = nil
@@ -750,6 +762,13 @@ final class AppModel {
 
     /// Back out of the participant screen to wherever it was reached from.
     func leaveParticipant() {
+        // A door sale in progress goes back to the details it was typed into —
+        // losing a name to a stray tap on "Back" would be the worst of the
+        // three ways out of this screen.
+        if isPendingDoorSale {
+            backToDoorSaleDetails()
+            return
+        }
         // A guest still awaiting check-in can only have been reached from the
         // check-in list, so that is where "Back" belongs. Anyone else was
         // reached by scanning their chip, and the way out of that is home.
@@ -877,6 +896,47 @@ final class AppModel {
     /// Back from the buyer form, or the evening picker, to the list of passes.
     func backToPassPicker() {
         screen = .doorPass
+    }
+
+    /// Show what is about to be sold, before any wristband is touched.
+    ///
+    /// The provisional participant is never written and never leaves this
+    /// screen: it carries a sentinel id, and every path that would use one —
+    /// the merch read, the free-shirt read, a top-up — is either skipped or
+    /// unreachable while `isPendingDoorSale` is true.
+    func previewDoorSale() {
+        guard let pass = selectedPass, doorSale.isComplete(for: pass) else { return }
+        participant = Participant(
+            id: Self.pendingDoorSaleId,
+            ticketRef: "",
+            name: doorSale.trimmedName,
+            ticketType: pass.name,
+            country: "",
+            level: doorSale.level(for: pass),
+            danceRole: doorSale.danceRole?.wire ?? "",
+            source: pass.kind == .evening ? .evening : .door,
+            evening: pass.kind == .evening ? eveningSelection : nil
+        )
+        merch = nil
+        freeShirt = nil
+        merchUnavailable = false
+        isPendingDoorSale = true
+        screen = .participant
+    }
+
+    /// Not a document id anybody could have. Nothing reads it; it exists so a
+    /// provisional participant cannot be mistaken for a real one in a debugger.
+    private static let pendingDoorSaleId = ParticipantID("(not sold yet)")
+
+    /// Back from the preview to the form it was built from.
+    func backToDoorSaleDetails() {
+        participant = nil
+        isPendingDoorSale = false
+        guard let pass = selectedPass else {
+            screen = .doorPass
+            return
+        }
+        screen = pass.kind == .evening ? .assignEvening : .doorBuyer
     }
 
     /// Everything is decided; read the wristband it is going onto.
@@ -1050,6 +1110,7 @@ final class AppModel {
 
     func goHome() {
         screen = role?.homeScreen ?? .signIn
+        isPendingDoorSale = false
         bracelet = nil
         participant = nil
         merch = nil

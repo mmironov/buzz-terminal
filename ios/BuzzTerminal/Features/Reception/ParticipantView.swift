@@ -2,11 +2,16 @@ import SwiftUI
 
 /// Who this is, what they have, and the one thing to do next.
 ///
-/// Reached two ways since the check-in flow changed: by reading a paired
-/// bracelet, and by picking a name off the check-in list. In the second case the
-/// guest has no bracelet yet, so the screen is the confirmation step before an
-/// irreversible pairing — which is the whole reason it sits between the list and
-/// the chip. `CheckInAction` decides which of the two it is showing.
+/// Reached three ways: by reading a paired bracelet, by picking a name off the
+/// check-in list, and — since door sales grew a details form — as the last look
+/// before a pass is sold. The last two have no bracelet yet, so the screen is
+/// the confirmation step before an irreversible pairing, which is the whole
+/// reason it sits between the details and the chip.
+///
+/// `CheckInAction` decides which layout to draw; `model.isPendingDoorSale`
+/// decides whether the button pairs an existing person or mints a new one. The
+/// door sale does not exist as a document yet, so what is on screen is built
+/// from the draft — see `AppModel.previewDoorSale`.
 struct ParticipantView: View {
     @Environment(AppModel.self) private var model
 
@@ -213,7 +218,15 @@ struct ParticipantView: View {
         case .topUp:
             model.goToTopUp()
         case .scanAndAssign:
-            model.scanToAssignBracelet()
+            // The same button, two origins: a guest off the check-in list is
+            // paired to an existing document, a door sale is minted onto the
+            // chip as it is read. `isPendingDoorSale` is the only thing that
+            // tells them apart, because on screen they are identical.
+            if model.isPendingDoorSale {
+                model.scanForDoorSale()
+            } else {
+                model.scanToAssignBracelet()
+            }
         }
     }
 
@@ -222,6 +235,8 @@ struct ParticipantView: View {
         switch action {
         case .topUp:
             return "This bracelet is permanently paired with \(name). Checking in someone else needs a new bracelet."
+        case .scanAndAssign where model.isPendingDoorSale:
+            return "Nothing has been sold yet. Take the money, then hold a fresh bracelet to the phone — that is what records the sale, and the pairing is permanent."
         case .scanAndAssign:
             return "Check the name, then hold a fresh bracelet to the phone. The pairing is permanent, so the wrong wristband cannot be taken back."
         }
@@ -307,7 +322,11 @@ struct ParticipantView: View {
     private var subtitle: String {
         guard let participant = model.participant else { return "—" }
         guard !isAwaitingCheckIn else {
-            return "\(participant.ticketRef) · \(participant.country)"
+            // Joined rather than interpolated: a door sale has neither a ticket
+            // reference nor a country yet — it has no document at all — and a
+            // lone " · " under somebody's name reads like a rendering fault.
+            let parts = [participant.ticketRef, participant.country].filter { !$0.isEmpty }
+            return parts.isEmpty ? "Sold at the door" : parts.joined(separator: " · ")
         }
         let level = participant.levelForDisplay.map { " · \($0)" } ?? ""
         return "\(participant.ticketDescription)\(level) · Bracelet \(model.braceletLabel)"

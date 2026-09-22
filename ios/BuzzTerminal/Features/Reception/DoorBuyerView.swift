@@ -37,7 +37,7 @@ struct DoorBuyerView: View {
                         .buttonStyle(.sbGhost)
                 }
 
-                Text("\(pass?.collectLabel ?? "—") · bracelet scanned next")
+                Text("\(pass?.collectLabel ?? "—") · the bracelet comes last")
                     .font(.sbBody(11.5))
                     .foregroundStyle(.sbInk(0.55))
                     .padding(.top, 2)
@@ -124,11 +124,11 @@ struct DoorBuyerView: View {
         return VStack(alignment: .leading, spacing: 0) {
             SBDivider(weight: SBRule.hairline)
                 .padding(.top, SBSpace.x4)
-            // The pairing is the irreversible act, so it is the last one and it
-            // says what it is about to do. Until every field is filled the
-            // button names what is missing instead.
-            Button(blocker ?? "Scan bracelet · \(pass.priceLabel)") {
-                model.scanForDoorSale()
+            // Onward to the same confirmation screen a check-in gets, where the
+            // scan happens. Until every field is filled the button names what is
+            // missing instead.
+            Button(blocker ?? "Continue · \(pass.priceLabel)") {
+                model.previewDoorSale()
             }
             .buttonStyle(.sbBlock(.primary, minHeight: 50, fontSize: 15))
             .disabled(blocker != nil || model.isWorking)

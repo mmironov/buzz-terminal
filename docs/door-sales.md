@@ -7,8 +7,8 @@ and this is what it looks like.
 
 ## The order of the questions
 
-Pick the pass · take the buyer's details · scan the wristband · land on their
-participant screen.
+Pick the pass · take the buyer's details · **look at who you are about to sell
+to** · scan the wristband · land on their participant screen.
 
 The chip used to be read first, on the grounds that a pass is minted *onto* a
 bracelet in a single write and there is nothing to sell until there is a
@@ -23,6 +23,14 @@ only the order of the questions changed. Nothing is stored until the chip is
 read, and cancelling the scan keeps the draft, so a wristband from the wrong pile
 costs one tap rather than a re-typed name.
 
+The second-to-last step is the **same awaiting-check-in screen a check-in
+uses**, and deliberately so: a pairing is permanent, and the screen that asks
+"is this the right person?" should be the same one whichever way the desk got
+there. It is built from the draft rather than from a document, because there is
+no document yet — `AppModel.previewDoorSale` makes a provisional `Participant`
+with a sentinel id, the merch and free-shirt reads are skipped, and **Back**
+returns to the form with every field still filled in.
+
 It ends on the participant screen rather than a receipt, because that is the
 screen with **Add money** on it and a door buyer almost always loads the
 wristband in the same conversation. The price was in front of the operator the
@@ -34,7 +42,7 @@ There are two shapes, and the catalogue decides which one a sale takes.
 |---|---|---|
 | Who | A named guest | A named buyer |
 | Asked for | Name and which night | Name, dance role, level, email |
-| Then | Scan the wristband | Scan the wristband |
+| Then | Confirm, then scan the wristband | Confirm, then scan the wristband |
 | Document id | `ev-friday-14` | `door-7` |
 | `source` | `evening` | `door` |
 | Lives for | That evening | The whole festival |

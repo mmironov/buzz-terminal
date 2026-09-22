@@ -25,7 +25,7 @@ struct AssignEveningTicketView: View {
                     .buttonStyle(.sbGhost)
             }
 
-            Text("\(model.selectedPass?.collectLabel ?? "—") · bracelet scanned next")
+            Text("\(model.selectedPass?.collectLabel ?? "—") · the bracelet comes last")
                 .font(.sbBody(11.5))
                 .foregroundStyle(.sbInk(0.55))
                 .padding(.top, 2)
@@ -70,8 +70,8 @@ struct AssignEveningTicketView: View {
                 // Says what is missing rather than sitting there greyed out,
                 // the same rule the buyer form and the keypad follow.
                 let blocker = model.selectedPass.flatMap { model.doorSale.blocker(for: $0) }
-                Button(blocker ?? "Scan bracelet · \(model.eveningSelection.label)") {
-                    model.scanForDoorSale()
+                Button(blocker ?? "Continue · \(model.eveningSelection.label)") {
+                    model.previewDoorSale()
                 }
                 .buttonStyle(.sbBlock(.primary, minHeight: 50, fontSize: 15))
                 .disabled(blocker != nil || model.isWorking)
