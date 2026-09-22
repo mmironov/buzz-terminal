@@ -82,10 +82,10 @@ export function History({ participant }: { participant: Participant }) {
               <td>
                 {entry.type === 'topup' ? 'Top-up' : 'Bar'}
                 {entry.type === 'topup' ? (
-                  // Shown even when it is missing. A top-up with no method is
-                  // one the terminal took before it asked the question, and
-                  // that is worth seeing as a gap when the cash box is counted
-                  // rather than being rendered as an unremarkable blank.
+                  // Shown even when it is missing. The rules refuse a top-up
+                  // without a method, so a gap here means something wrote one
+                  // they should have refused — worth seeing when the cash box
+                  // is counted, rather than rendered as an unremarkable blank.
                   <p className="lines">
                     {entry.method ? PAYMENT_METHOD_LABELS[entry.method] : 'Method not recorded'}
                   </p>

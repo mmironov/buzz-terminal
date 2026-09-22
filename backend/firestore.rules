@@ -337,20 +337,30 @@ service cloud.firestore {
             && d.createdAt == request.time;
         }
 
-        // How the money reached the desk: `cash` or `card`, on a top-up only.
-        // A charge moves money that is already on the bracelet, so a payment
-        // method there would be a claim about a different transaction.
+        // How the money reached the desk: `cash` or `card`. Mandatory on a
+        // top-up, forbidden on a charge.
         //
-        // Optional, deliberately. The iOS terminal will not let reception
-        // confirm a top-up without choosing, and that is where the requirement
-        // belongs — a terminal still on an older build, and Android until it
-        // carries the same change, would otherwise have every top-up denied at
-        // the desk with a queue in front of it. Absent means "not asked", which
-        // is legible at reconciliation time; a rule that made it mandatory here
-        // would trade a reporting gap for a festival that cannot take money.
+        // Mandatory here and not only in the app, by an explicit decision. The
+        // app's own check can be lost in a build that skips it; this cannot. The
+        // cash box is counted against these entries after the festival, and an
+        // entry that merely says money arrived is one the count can never be
+        // reconciled with — so an unmethodded top-up is refused rather than
+        // recorded as a permanent hole.
+        //
+        // **The cost is real and is the point.** Every terminal that takes money
+        // must send it. A build without the picker — TestFlight 77 and earlier,
+        // and Android until it carries the same change — has its top-ups denied
+        // at the desk. Ship the terminals before a festival that uses these
+        // rules.
+        //
+        // A charge may not carry one at all. It moves money that is already on
+        // the bracelet, so a method there would be a claim about a different
+        // transaction, and two records of one fact are how two records come to
+        // disagree.
         function methodIsSane(d) {
-          return !('method' in d)
-            || (d.type == 'topup' && d.method in ['cash', 'card']);
+          return d.type == 'topup'
+            ? ('method' in d && d.method in ['cash', 'card'])
+            : !('method' in d);
         }
 
         // ── Itemisation ──────────────────────────────────────────────────────

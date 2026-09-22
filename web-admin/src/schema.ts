@@ -170,9 +170,12 @@ export interface Transaction {
    */
   items: LedgerItem[];
   /**
-   * How a top-up was paid: cash or card. `null` on every charge, and on top-ups
-   * taken by a terminal that did not yet ask — which is a different fact from
-   * "cash", and is shown as a different thing.
+   * How a top-up was paid: cash or card. `null` on every charge.
+   *
+   * The rules now require one on a top-up, so a null here should be unreachable
+   * for new entries. The panel still shows it as "Method not recorded" rather
+   * than as a blank, because the day it does appear is the day something wrote
+   * a top-up these rules were supposed to refuse — which is worth seeing.
    */
   method: PaymentMethod | null;
 }

@@ -71,14 +71,15 @@ function rosterDoc(overrides = {}) {
 }
 
 /**
- * A well-formed ledger entry. `type` decides the sign, and whether it carries an
- * itemisation: a charge must say what was bought, a top-up must not.
+ * A well-formed ledger entry. `type` decides the sign and what else it must
+ * carry: a charge says what was bought, a top-up says how it was paid, and
+ * neither may carry the other's field.
  *
- * The default itemisation is one line priced at the whole amount, so every
- * pre-existing money test keeps testing what it was written to test rather than
- * tripping over the new rule.
+ * Both defaults are filled in — one line priced at the whole amount, and cash —
+ * so every pre-existing money test keeps testing what it was written to test
+ * rather than tripping over a rule added later.
  */
-function ledgerEntry({ txId, type, amount, staffUid, items }) {
+function ledgerEntry({ txId, type, amount, staffUid, items, method }) {
   const entry = {
     clientTxId: txId,
     type,
@@ -88,7 +89,11 @@ function ledgerEntry({ txId, type, amount, staffUid, items }) {
     terminalId: 'terminal-01',
     createdAt: serverTimestamp(),
   };
-  if (type === 'topup') return entry;
+  // A top-up must say how it was paid and a charge must not, so the default
+  // carries one for a top-up only — same reasoning as `items` above: the money
+  // tests written before this rule existed keep testing what they were written
+  // to test rather than tripping over it.
+  if (type === 'topup') return { ...entry, method: method ?? 'cash' };
   return { ...entry, items: items ?? [oneLine(amount)] };
 }
 
@@ -447,14 +452,33 @@ describe('how a top-up was paid', () => {
     );
   });
 
-  it('still accepts a top-up without one, so an older terminal keeps working', async () => {
-    // The requirement lives in the app, where it can be explained to the
-    // person holding the phone. A terminal on last week's build must not have
-    // its first top-up of the festival denied with a queue in front of it.
-    await assertSucceeds(
+  it('THE DELIBERATE BREAK: refuses a top-up that does not say', async () => {
+    // A terminal built before the picker existed — TestFlight 77 and earlier,
+    // and Android — is refused here rather than writing an entry the cash count
+    // can never be reconciled against. Every terminal that takes money has to
+    // ship with the picker; that is the trade this rule makes on purpose.
+    // Built by hand rather than through `ledgerEntry`, which now fills a method
+    // in: this is the one test that needs an entry without one.
+    const { method, ...noMethod } = ledgerEntry({
+      txId: 'tx-1', type: 'topup', amount: 2000, staffUid: RECEPTION_UID,
+    });
+    await assertFails(
       moneyBatch(reception(), {
         txId: 'tx-1', type: 'topup', amount: 2000,
         staffUid: RECEPTION_UID, balanceAfter: 4350,
+        entry: noMethod,
+      })
+    );
+  });
+
+  it('still lets the bar charge without one', async () => {
+    // The mandatory half is the top-up's. Making a charge carry a method too
+    // would have stopped the bar as well, which nothing about counting the cash
+    // box calls for.
+    await assertSucceeds(
+      moneyBatch(bar(), {
+        txId: 'tx-1', type: 'charge', amount: 400,
+        staffUid: BAR_UID, balanceAfter: 1950,
       })
     );
   });
@@ -987,6 +1011,7 @@ describe('selling an evening ticket at the door', () => {
     batch.set(doc(db, 'participants', pid, 'transactions', 'tx-ev-1'), {
       clientTxId: 'tx-ev-1', type: 'topup', amount: 2000, signedAmount: 2000,
       staffUid: RECEPTION_UID, terminalId: 'terminal-01', createdAt: serverTimestamp(),
+      method: 'cash',
     });
     batch.update(doc(db, 'participants', pid), { balance: 2000, lastTxId: 'tx-ev-1' });
     await assertSucceeds(batch.commit());

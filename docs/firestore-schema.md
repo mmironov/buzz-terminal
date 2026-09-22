@@ -221,14 +221,21 @@ A charge must not carry one. It moves money that is already on the bracelet, so
 "cash or card" there would be a claim about a different transaction — and two
 records of the same fact are how two records come to disagree.
 
-**Required by the app, optional in the rules**, which is deliberate rather than
-an oversight. The iOS terminal will not let reception confirm a top-up until one
-of the two is chosen, and that is where the requirement belongs: it can be
-explained to the person holding the phone. Enforcing it in the rules instead
-would mean a terminal on an older build — or Android, which does not send it yet
-— having its first top-up of the festival denied with a queue in front of it. An
-absent `method` means "not asked", and the panel shows it as *"Method not
-recorded"* rather than as a blank that reads like cash.
+**Required in both places.** The iOS terminal will not let reception confirm a
+top-up until one of the two is chosen, so the requirement can be explained to the
+person holding the phone rather than arriving as a refusal — and the rules refuse
+it anyway, because an app's own check is only as good as the build running it.
+
+The cost is deliberate and worth stating plainly: **a terminal that does not send
+`method` cannot take money.** That includes TestFlight build 77 and earlier, and
+Android until it carries the same change. Ship the terminals before a festival
+that runs on these rules. The alternative was a permanent hole in the count that
+nobody would notice until the cash box disagreed, which is the failure this field
+exists to prevent.
+
+A charge must not carry one, and the panel still renders *"Method not recorded"*
+for a top-up without one. Nothing in production can produce that any more; it is
+kept because a screen that silently shows nothing is how a gap becomes invisible.
 
 ## Evening tickets
 
