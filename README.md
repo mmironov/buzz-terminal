@@ -72,7 +72,8 @@ none yet:
 ./ios/scripts/run.sh -sbScreen payreview-blocked
 ```
 
-Screens: `reception`, `bar`, `assign`, `assign-evening`, `participant`,
+Screens: `reception`, `bar`, `assign`, `door-pass`, `door-buyer`,
+`assign-evening`, `participant`,
 `evening-participant`, `blocked`, `topup`, `receipt`, `cart`, `payreview`,
 `payreview-short`, `payreview-blocked`, `payreview-unassigned`. Flags: `-sbOffline`,
 `-sbScanning`. In Xcode the same arguments go in Scheme ▸ Run ▸ Arguments.

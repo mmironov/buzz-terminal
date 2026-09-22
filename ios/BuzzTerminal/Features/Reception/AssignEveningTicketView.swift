@@ -1,15 +1,14 @@
 import SwiftUI
 
-/// Selling a pass on the door, on the fresh bracelet that was just scanned.
+/// Which night an evening ticket is for.
 ///
-/// Reached from the home screen: *Sell evening ticket* reads a chip first,
-/// because a ticket is minted *onto* a bracelet in a single write — there is no
-/// ticket to sell until there is a wristband to put it on. A chip that already
-/// belongs to somebody is refused during that scan and never reaches this screen.
+/// Reached from the pass picker when the chosen pass is the anonymous numbered
+/// ticket. It is the evening ticket's whole "buyer details" step: nothing is
+/// asked of the guest, because these are anonymous by design — the point is that
+/// a queue at the door moves.
 ///
-/// Deliberately the shortest screen in the app: pick an evening, confirm. Nothing
-/// is asked of the guest, because evening tickets are anonymous — the whole point
-/// is that a queue at the door moves.
+/// The wristband is scanned after this, as the last act, exactly as on the buyer
+/// form beside it. A chip that already belongs to somebody is refused then.
 struct AssignEveningTicketView: View {
     @Environment(AppModel.self) private var model
 
@@ -22,11 +21,13 @@ struct AssignEveningTicketView: View {
                 // Home, not the check-in list: the scan that reached this screen
                 // started from home, and abandoning a door sale should not drop
                 // the operator into an unrelated flow holding a loose chip.
-                Button("Cancel") { model.goHome() }
+                // Back to the passes, not home: picking the wrong row is the
+                // likely correction, and nothing has been paired yet.
+                Button("Back") { model.backToPassPicker() }
                     .buttonStyle(.sbGhost)
             }
 
-            Text("Bracelet \(model.braceletLabel) · sold at the door")
+            Text("\(model.selectedPass?.collectLabel ?? "—") · bracelet scanned next")
                 .font(.sbBody(11.5))
                 .foregroundStyle(.sbInk(0.55))
                 .padding(.top, 2)
@@ -60,8 +61,8 @@ struct AssignEveningTicketView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 SBDivider(weight: SBRule.hairline)
-                Button("Assign · \(model.eveningSelection.label)") {
-                    Task { await model.assignEveningTicket() }
+                Button("Scan bracelet · \(model.eveningSelection.label)") {
+                    model.scanForDoorSale()
                 }
                 .buttonStyle(.sbBlock(.primary, minHeight: 50, fontSize: 15))
                 .disabled(model.isWorking)
@@ -103,7 +104,8 @@ private struct EveningChoiceStyle: ButtonStyle {
 #Preview {
     let model = AppModel()
     model.role = .reception
-    model.bracelet = SampleData.braceletA
+    model.doorPasses = SampleData.doorPasses
+    model.selectedPass = SampleData.doorPasses.first { $0.kind == .evening }
     model.screen = .assignEvening
     return AssignEveningTicketView()
         .environment(model)

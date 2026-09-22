@@ -68,10 +68,12 @@ struct ScanOverlayView: View {
             guard let guest = model.participant else { return Self.genericSubtitle }
             return "This bracelet becomes \(guest.name)’s for the whole festival"
         case .doorSale:
-            // Which pass has not been chosen yet — the chip is read first,
-            // because there is nothing to sell until there is a wristband to
-            // sell it on.
-            return "A pass will be sold on this bracelet"
+            guard let pass = model.selectedPass else { return Self.genericSubtitle }
+            // Everything is decided by now, so this can name it — and naming it
+            // is the last chance to notice the wrong wristband is in hand.
+            return pass.kind == .evening
+                ? "It becomes an evening ticket for \(model.eveningSelection.label)"
+                : "It becomes \(model.doorSale.trimmedName)’s \(pass.name)"
         case .identify, .payment:
             return Self.genericSubtitle
         }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Who is buying the pass, on the bracelet that was just scanned.
+/// Who is buying the pass. Asked before any wristband is touched.
 ///
 /// Four questions, and no more. A door sale competes with a queue, so everything
 /// here has to earn its place:
@@ -31,13 +31,13 @@ struct DoorBuyerView: View {
                         .font(.sbHeading(24))
                         .frame(maxWidth: .infinity, alignment: .leading)
                     // Back to the passes rather than home: changing your mind
-                    // about which pass is the likely correction here, and the
-                    // chip is already in hand either way.
+                    // about which pass is the likely correction here, and
+                    // nothing has been paired yet to undo.
                     Button("Back") { model.backToPassPicker() }
                         .buttonStyle(.sbGhost)
                 }
 
-                Text("\(pass?.priceLabel ?? "—") to collect · bracelet \(model.braceletLabel)")
+                Text("\(pass?.collectLabel ?? "—") · bracelet scanned next")
                     .font(.sbBody(11.5))
                     .foregroundStyle(.sbInk(0.55))
                     .padding(.top, 2)
@@ -124,8 +124,11 @@ struct DoorBuyerView: View {
         return VStack(alignment: .leading, spacing: 0) {
             SBDivider(weight: SBRule.hairline)
                 .padding(.top, SBSpace.x4)
-            Button(blocker ?? "Sell · \(pass.priceLabel)") {
-                Task { await model.confirmDoorSale() }
+            // The pairing is the irreversible act, so it is the last one and it
+            // says what it is about to do. Until every field is filled the
+            // button names what is missing instead.
+            Button(blocker ?? "Scan bracelet · \(pass.priceLabel)") {
+                model.scanForDoorSale()
             }
             .buttonStyle(.sbBlock(.primary, minHeight: 50, fontSize: 15))
             .disabled(blocker != nil || model.isWorking)
@@ -182,7 +185,6 @@ private struct ChoiceBox: View {
 #Preview("Full Pass — asks for a level") {
     let model = AppModel()
     model.role = .reception
-    model.bracelet = SampleData.braceletA
     model.doorPasses = SampleData.doorPasses
     model.selectedPass = SampleData.doorPasses.first { $0.id == "full-pass" }
     model.screen = .doorBuyer
@@ -194,7 +196,6 @@ private struct ChoiceBox: View {
 #Preview("Party Pass — no level") {
     let model = AppModel()
     model.role = .reception
-    model.bracelet = SampleData.braceletA
     model.doorPasses = SampleData.doorPasses
     model.selectedPass = SampleData.doorPasses.first { $0.id == "party-pass" }
     model.screen = .doorBuyer

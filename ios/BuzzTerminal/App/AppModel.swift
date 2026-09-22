@@ -405,8 +405,23 @@ final class AppModel {
     /// pairing about to happen is permanent, and this is the last surface it
     /// appears on before it does.
     private func scanPrompt(for purpose: ScanState.Purpose) -> String? {
-        guard case .assignToSelected = purpose, let guest = participant else { return nil }
-        return "Hold a fresh bracelet to the top of the phone to pair it with \(guest.name)."
+        switch purpose {
+        case .assignToSelected:
+            guard let guest = participant else { return nil }
+            return "Hold a fresh bracelet to the top of the phone to pair it with \(guest.name)."
+        case .doorSale:
+            guard let pass = selectedPass else { return nil }
+            // iOS draws this sheet over the whole app during a read, so on
+            // hardware it is the last thing anybody sees before a pass becomes
+            // permanent — and the last chance to notice it is the wrong one.
+            let who = pass.kind == .evening
+                ? "an evening ticket for \(eveningSelection.label)"
+                : "a \(pass.name) for \(doorSale.trimmedName)"
+            let price = pass.price.isPositive ? " · take \(pass.price)" : ""
+            return "Hold a fresh bracelet to the top of the phone to sell \(who)\(price)."
+        case .identify, .payment:
+            return nil
+        }
     }
 
     /// Wait for a real chip, then resolve it exactly as a simulated read does.
@@ -502,6 +517,13 @@ final class AppModel {
                 await pairScannedChip(scanned, existingHolder: found)
                 return
             }
+            // Same reason, one step further: a door sale has a pass and a buyer
+            // in hand and no participant yet, so it finishes here rather than
+            // falling through to "show me whoever this chip belongs to".
+            if case .doorSale = purpose {
+                await completeDoorSale(scanned, existingHolder: found)
+                return
+            }
 
             bracelet = scanned
             participant = found
@@ -516,25 +538,8 @@ final class AppModel {
                 break
 
             case .doorSale:
-                if let found {
-                    // Minting a ticket onto an owned chip would either be
-                    // refused by the rules or, worse, hand a guest's balance to
-                    // an anonymous door sale. Refuse it here, by name.
-                    bracelet = nil
-                    participant = nil
-                    merch = nil
-                    merchUnavailable = false
-                    ScanFeedback.shared.problem()
-                    errorMessage = "This bracelet already belongs to \(found.name). Use a fresh one."
-                } else {
-                    // Which pass comes next, because the catalogue decides
-                    // whether this sale needs a buyer at all.
-                    eveningSelection = Evening.today ?? .friday
-                    doorSale = DoorSaleDraft()
-                    selectedPass = nil
-                    screen = .doorPass
-                    ScanFeedback.shared.success()
-                }
+                // Handled above, before `participant` was replaced.
+                break
 
             case .identify:
                 search = ""
@@ -766,11 +771,18 @@ final class AppModel {
 
     // MARK: - Reception: door sales
 
-    /// Start a door sale: read a chip, then pick the evening.
+    /// Start a door sale: pick the pass, take the buyer's details, then scan.
     ///
-    /// Chip first because an evening ticket is *minted onto* a bracelet in a
-    /// single write — there is no ticket to sell until there is a wristband to
-    /// put it on. The evening is chosen afterwards, on `AssignEveningTicketView`.
+    /// The chip used to come first, on the grounds that a ticket is minted *onto*
+    /// a bracelet in one write and there is nothing to sell until there is a
+    /// wristband to sell it on. True of the write, wrong for the desk: it put a
+    /// scan in front of a conversation that had not happened yet, and left an
+    /// operator holding a wristband while somebody decided which pass they
+    /// wanted and spelled their name.
+    ///
+    /// So the order now matches checking somebody in — decide who and what
+    /// first, pair the bracelet last, as the final irreversible act. The write is
+    /// still a single batch; only the order of the questions changed.
     func beginDoorSale() {
         participant = nil
         merch = nil
@@ -778,11 +790,8 @@ final class AppModel {
         bracelet = nil
         selectedPass = nil
         doorSale = DoorSaleDraft()
-        // Alongside the scan rather than before it: the chip read takes about a
-        // second on hardware, which is plenty for six documents, and nobody
-        // should wait on a price list to hold a wristband to a phone.
+        screen = .doorPass
         Task { await refreshDoorPasses() }
-        beginScan(for: .doorSale)
     }
 
     /// A pass was picked from the catalogue. Where that leads depends on the
@@ -801,81 +810,73 @@ final class AppModel {
         }
     }
 
-    /// Back from the buyer form to the list of passes.
+    /// Back from the buyer form, or the evening picker, to the list of passes.
     func backToPassPicker() {
         screen = .doorPass
     }
 
-    /// Sell the chosen pass to the buyer on screen.
-    func confirmDoorSale() async {
-        guard let bracelet, let pass = selectedPass else { return }
-        guard doorSale.isComplete(for: pass) else { return }
-
-        isWorking = true
-        defer { isWorking = false }
-
-        do {
-            let buyer = try await repository.createDoorPass(
-                pass,
-                draft: doorSale,
-                bracelet: bracelet
-            )
-            participant = buyer
-            receipt = Receipt(
-                kind: .checkIn,
-                title: "\(pass.name) sold",
-                // The price is on the receipt because the desk has to collect
-                // it, and nothing else in the app will ever mention it again.
-                note: pass.price.isPositive
-                    ? "Take \(pass.price) at the desk. The bracelet is paired to \(buyer.name) for the whole festival."
-                    : "This pass has no price set in the admin panel. The bracelet is paired to \(buyer.name).",
-                rows: [
-                    .init(key: "Buyer", value: buyer.name),
-                    .init(key: "Pass", value: pass.name),
-                    .init(key: "To collect", value: pass.priceLabel),
-                    .init(key: "Dances", value: buyer.danceRoleForDisplay ?? "—"),
-                ]
-                + (buyer.levelForDisplay.map { [Receipt.Row(key: "Level", value: $0)] } ?? [])
-                + [.init(key: "Bracelet", value: bracelet.rawValue)],
-                balance: buyer.balance
-            )
-            selectedPass = nil
-            doorSale = DoorSaleDraft()
-            screen = .receipt
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+    /// Everything is decided; read the wristband it is going onto.
+    ///
+    /// Nothing is written until that chip is read, and nothing is kept if the
+    /// read is cancelled — the draft stays exactly where it was, so a wristband
+    /// from the wrong pile costs one more tap rather than the buyer's details.
+    func scanForDoorSale() {
+        guard let pass = selectedPass else { return }
+        guard pass.kind == .evening || doorSale.isComplete(for: pass) else { return }
+        bracelet = nil
+        beginScan(for: .doorSale)
     }
 
-    /// Sell an evening ticket on the bracelet that was just scanned.
+    /// Sell the chosen pass to the buyer on screen.
+    /// Mint the sale onto the chip that has just been read.
     ///
-    /// Anonymous: nothing is asked of the guest and nothing is stored about them.
-    /// The receipt shows the generated label so reception has something to say and
-    /// something to reconcile a cash count against.
-    func assignEveningTicket() async {
-        guard let bracelet else { return }
+    /// Ends on the participant screen rather than a receipt, which is what the
+    /// desk wants next: a door buyer almost always loads money onto the
+    /// wristband in the same conversation, and that is the screen with the
+    /// button for it. The pass and the price were both on screen a moment ago,
+    /// while the cash was being taken.
+    private func completeDoorSale(_ scanned: BraceletID, existingHolder: Participant?) async {
+        guard let pass = selectedPass else {
+            scan = nil
+            return
+        }
+
+        if let existingHolder {
+            // Nothing is lost: the draft is untouched, so the next chip out of
+            // the box finishes the same sale.
+            scan = nil
+            ScanFeedback.shared.problem()
+            errorMessage = "This bracelet already belongs to \(existingHolder.name). Use a fresh one."
+            return
+        }
+
+        bracelet = scanned
+        scan = nil
+        ScanFeedback.shared.success()
+
         isWorking = true
         defer { isWorking = false }
+
         do {
-            let ticket = try await repository.createEveningTicket(
-                evening: eveningSelection,
-                bracelet: bracelet
-            )
-            participant = ticket
-            receipt = Receipt(
-                kind: .checkIn,
-                title: "Evening ticket assigned",
-                note: "\(ticket.name) is paired to this bracelet. Valid for \(eveningSelection.label) — an organiser freezes it afterwards from the admin panel.",
-                rows: [
-                    .init(key: "Ticket", value: ticket.ticketDescription),
-                    .init(key: "Label", value: ticket.name),
-                    .init(key: "Bracelet", value: bracelet.rawValue),
-                ],
-                balance: ticket.balance
-            )
-            screen = .receipt
+            let buyer: Participant
+            if pass.kind == .evening {
+                buyer = try await repository.createEveningTicket(
+                    evening: eveningSelection,
+                    bracelet: scanned
+                )
+            } else {
+                buyer = try await repository.createDoorPass(pass, draft: doorSale, bracelet: scanned)
+            }
+            selectedPass = nil
+            doorSale = DoorSaleDraft()
+            showParticipant(buyer)
         } catch {
+            // Put the chip down, keep the sale. Whatever the server refused, it
+            // refused this wristband — and the operator is still standing with
+            // the buyer, whose name should not have to be typed again.
+            bracelet = nil
             errorMessage = error.localizedDescription
+            ScanFeedback.shared.problem()
         }
     }
 

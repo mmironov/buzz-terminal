@@ -39,6 +39,14 @@ struct DoorPass: Identifiable, Equatable, Sendable {
         price.isPositive ? "\(price)" : "No price set"
     }
 
+    /// What the screens above the scan say they are about to take.
+    ///
+    /// Separate from `priceLabel` because "No price set to collect" is not a
+    /// sentence, and this one is read by somebody holding out their hand.
+    var collectLabel: String {
+        price.isPositive ? "\(price) to collect" : "No price set in the admin panel"
+    }
+
     /// Whether this pass has a level worth asking for.
     ///
     /// The same two pass types `Participant.levelForDisplay` prints, and for the

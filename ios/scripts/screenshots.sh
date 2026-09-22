@@ -33,8 +33,10 @@ shoot 01-signin
 shoot 02-reception-home  -sbScreen reception
 shoot 03-scan            -sbScreen reception -sbScanning
 shoot 04-assign          -sbScreen assign
-shoot 05-assign-evening  -sbScreen assign-evening
-shoot 05b-evening-participant -sbScreen evening-participant
+shoot 05-door-pass       -sbScreen door-pass
+shoot 05a-door-buyer     -sbScreen door-buyer
+shoot 05b-assign-evening -sbScreen assign-evening
+shoot 05c-evening-participant -sbScreen evening-participant
 shoot 06-participant     -sbScreen participant
 shoot 07-topup           -sbScreen topup
 shoot 08-receipt         -sbScreen receipt

@@ -11,8 +11,8 @@ import Foundation
 ///
 /// Available screens: `reception`, `bar`, `assign`, `participant`, `blocked`,
 /// `topup`, `receipt`, `cart`, `payreview`, `payreview-short`,
-/// `payreview-blocked`, `payreview-unassigned`, `assign-evening`,
-/// `evening-participant`.
+/// `payreview-blocked`, `payreview-unassigned`, `assign-evening`, `door-pass`,
+/// `door-buyer`, `evening-participant`.
 /// Add `-sbOffline` for the offline banner, `-sbScanning` for the scan sheet,
 /// `-sbBackend memory` to use the in-memory fixtures rather than Firestore, and
 /// `-sbEmulator` to point Firebase at the local emulators.
@@ -113,8 +113,23 @@ extension AppModel {
 
         case "assign-evening":
             role = .reception
-            bracelet = SampleData.braceletA
+            // No bracelet: it is scanned after this screen now, and the header
+            // reads the pass rather than a chip.
+            doorPasses = SampleData.doorPasses
+            selectedPass = SampleData.doorPasses.first { $0.kind == .evening }
             screen = .assignEvening
+
+        case "door-pass":
+            role = .reception
+            doorPasses = SampleData.doorPasses
+            screen = .doorPass
+
+        case "door-buyer":
+            role = .reception
+            doorPasses = SampleData.doorPasses
+            selectedPass = SampleData.doorPasses.first { $0.id == "full-pass-gold" }
+            doorSale = DoorSaleDraft(name: "Jana Novak", danceRole: .follower, level: "Advanced")
+            screen = .doorBuyer
 
         case "evening-participant":
             role = .reception

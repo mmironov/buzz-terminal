@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Which pass is being sold, on the bracelet that was just scanned.
+/// Which pass is being sold. The first question of a door sale.
 ///
 /// The list is the admin panel's `doorPasses`, in the order organisers put them
 /// in, and it is the whole of what reception may sell — `firestore.rules` checks
@@ -23,7 +23,7 @@ struct DoorPassPickerView: View {
                     .buttonStyle(.sbGhost)
             }
 
-            Text("Bracelet \(model.braceletLabel) · sold at the door")
+            Text("Sold at the door · the bracelet is scanned last")
                 .font(.sbBody(11.5))
                 .foregroundStyle(.sbInk(0.55))
                 .padding(.top, 2)
@@ -83,7 +83,7 @@ struct DoorPassPickerView: View {
     private var unreadable: some View {
         VStack(alignment: .leading, spacing: SBSpace.x3) {
             SBBand(text: "Could not read the passes", tone: .alert, glyph: .nfcWave)
-            Text("The price list did not load, so there is nothing to sell from. Check the connection and try again — the bracelet is still in hand.")
+            Text("The price list did not load, so there is nothing to sell from. Check the connection and try again — nothing has been paired yet.")
                 .font(.sbBody(13))
                 .foregroundStyle(.sbInk(0.7))
                 .sbLineHeight(1.5, size: 13)
@@ -159,7 +159,6 @@ private struct PassChoiceStyle: ButtonStyle {
 #Preview {
     let model = AppModel()
     model.role = .reception
-    model.bracelet = SampleData.braceletA
     model.doorPasses = SampleData.doorPasses
     model.screen = .doorPass
     return DoorPassPickerView()

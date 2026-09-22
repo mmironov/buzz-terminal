@@ -153,5 +153,9 @@ struct DoorSaleTests {
     func unpricedReadsAsAWarning() {
         #expect(evening.priceLabel == "No price set")
         #expect(fullPass.priceLabel == "205.00 €")
+        // The screens above the scan read as a sentence, which "No price set to
+        // collect" is not.
+        #expect(fullPass.collectLabel == "205.00 € to collect")
+        #expect(evening.collectLabel == "No price set in the admin panel")
     }
 }

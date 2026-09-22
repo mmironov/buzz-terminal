@@ -5,12 +5,36 @@ those buyers have no row in the registrations Sheet — so the terminal creates 
 participant itself. That is the one hole in *"the roster belongs to the Sheet"*,
 and this is what it looks like.
 
+## The order of the questions
+
+Pick the pass · take the buyer's details · scan the wristband · land on their
+participant screen.
+
+The chip used to be read first, on the grounds that a pass is minted *onto* a
+bracelet in a single write and there is nothing to sell until there is a
+wristband to sell it on. True of the write and wrong for the desk: it put a scan
+in front of a conversation that had not happened yet, and left an operator
+holding somebody's wristband while they decided which pass they wanted and
+spelled their name.
+
+So the order now matches checking somebody in: decide who and what first, pair
+the bracelet last, as the final irreversible act. The write is still one batch —
+only the order of the questions changed. Nothing is stored until the chip is
+read, and cancelling the scan keeps the draft, so a wristband from the wrong pile
+costs one tap rather than a re-typed name.
+
+It ends on the participant screen rather than a receipt, because that is the
+screen with **Add money** on it and a door buyer almost always loads the
+wristband in the same conversation. The price was in front of the operator the
+whole way — on the pass list, on the buyer form, on the scan sheet itself.
+
 There are two shapes, and the catalogue decides which one a sale takes.
 
 | | Evening ticket | Door pass |
 |---|---|---|
 | Who | Anonymous — "Evening #14" | A named buyer |
 | Asked for | Which night | Name, dance role, level, email |
+| Then | Scan the wristband | Scan the wristband |
 | Document id | `ev-friday-14` | `door-7` |
 | `source` | `evening` | `door` |
 | Lives for | That evening | The whole festival |
