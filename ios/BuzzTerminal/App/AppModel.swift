@@ -163,10 +163,14 @@ final class AppModel {
 
     /// What the desk may sell, as organisers priced it in the admin panel.
     ///
-    /// Loaded with the rest of the catalogue at sign-in. An empty list is a real
-    /// state — nobody has set the passes up — and the picker says so rather than
-    /// showing a blank screen somebody taps at.
+    /// Refreshed every time a door sale starts, not only at sign-in — see
+    /// `refreshDoorPasses`. An empty list is a real state, and so is a read that
+    /// failed; the picker tells those two apart rather than saying "nothing on
+    /// sale" to somebody whose phone simply could not read the list.
     var doorPasses: [DoorPass] = []
+    private(set) var isLoadingDoorPasses = false
+    /// The read failed and there is nothing to fall back on.
+    private(set) var doorPassesUnavailable = false
     /// Which pass is being sold right now.
     var selectedPass: DoorPass?
     /// What has been typed about the buyer.
@@ -223,11 +227,7 @@ final class AppModel {
             // cannot sell at the door at all, and the picker says exactly that.
             // Still not worth failing sign-in over — check-in and the bar are
             // what most of a festival is.
-            do {
-                doorPasses = try await repository.doorPasses()
-            } catch {
-                Self.log.error("door passes failed to load: \(error.localizedDescription, privacy: .public)")
-            }
+            await refreshDoorPasses()
             // Logged because "the list is empty" has two very different causes —
             // an empty roster, or a read the rules refused — and they look
             // identical on screen.
@@ -235,6 +235,55 @@ final class AppModel {
         } catch {
             Self.log.error("catalogue load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Re-read the door catalogue.
+    ///
+    /// **This is not only a sign-in concern any more.** A terminal now stays
+    /// signed in for days, so a list loaded once at sign-in is a list that can be
+    /// days old — and one that failed to load once stays empty until somebody
+    /// force-quits the app. That is how a desk ends up being told there is
+    /// nothing on sale while six passes sit in the catalogue.
+    ///
+    /// Six documents, read at the moment somebody starts a sale, which is also
+    /// the moment a price an organiser just changed matters most.
+    func refreshDoorPasses() async {
+        isLoadingDoorPasses = true
+        defer { isLoadingDoorPasses = false }
+        do {
+            doorPasses = try await repository.doorPasses()
+            doorPassesUnavailable = false
+        } catch {
+            // A stale price list beats no price list, so whatever was there
+            // stays. Only an empty one is worth admitting to.
+            doorPassesUnavailable = doorPasses.isEmpty
+            Self.log.error("door passes failed to load: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Re-read who is still awaiting check-in.
+    ///
+    /// Same reasoning as the catalogue, and with a sharper edge: people keep
+    /// paying, the roster is re-imported during the festival, and a terminal
+    /// signed in yesterday would otherwise never see somebody who bought a
+    /// ticket this morning. The old list is kept on failure — a stale roster is
+    /// still most of the roster.
+    func refreshRoster() async {
+        do {
+            awaitingCheckIn = try await repository.awaitingCheckIn()
+        } catch {
+            Self.log.error("roster refresh failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Re-read the drinks menu. Prices change mid-festival and a bar terminal is
+    /// signed in all weekend.
+    func refreshMenu() async {
+        do {
+            menu = try await repository.drinks()
+        } catch {
+            Self.log.error("menu refresh failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -615,6 +664,8 @@ final class AppModel {
         merchUnavailable = false
         search = ""
         screen = .assign
+        // The list on screen may be a day old; see `refreshRoster`.
+        Task { await refreshRoster() }
     }
 
     /// A name was tapped on the check-in list.
@@ -727,6 +778,10 @@ final class AppModel {
         bracelet = nil
         selectedPass = nil
         doorSale = DoorSaleDraft()
+        // Alongside the scan rather than before it: the chip read takes about a
+        // second on hardware, which is plenty for six documents, and nobody
+        // should wait on a price list to hold a wristband to a phone.
+        Task { await refreshDoorPasses() }
         beginScan(for: .doorSale)
     }
 
@@ -952,6 +1007,7 @@ final class AppModel {
 
     func goToMenu() {
         screen = .barMenu
+        Task { await refreshMenu() }
         bracelet = nil
         participant = nil
         merch = nil

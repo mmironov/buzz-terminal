@@ -32,7 +32,16 @@ struct DoorPassPickerView: View {
                 .padding(.vertical, 14)
 
             if model.doorPasses.isEmpty {
-                empty
+                if model.isLoadingDoorPasses {
+                    Text("Reading the price list…")
+                        .font(.sbBody(13))
+                        .foregroundStyle(.sbInk(0.55))
+                        .padding(.top, SBSpace.x2)
+                } else if model.doorPassesUnavailable {
+                    unreadable
+                } else {
+                    empty
+                }
             } else {
                 SBKicker(text: "What are they buying")
                     .padding(.bottom, 10)
@@ -62,6 +71,32 @@ struct DoorPassPickerView: View {
         .padding(.horizontal, 18)
         .padding(.top, SBSpace.x4)
         .padding(.bottom, 20)
+    }
+
+    /// The list could not be read at all.
+    ///
+    /// A different sentence from "nothing on sale", and the difference is the
+    /// whole point: one is an organiser who has not filled the catalogue in, the
+    /// other is a phone that could not reach it. Told apart on screen because
+    /// they are told apart in the model — the same mistake as swallowing a
+    /// permission error into "ordered nothing", which cost an evening once.
+    private var unreadable: some View {
+        VStack(alignment: .leading, spacing: SBSpace.x3) {
+            SBBand(text: "Could not read the passes", tone: .alert, glyph: .nfcWave)
+            Text("The price list did not load, so there is nothing to sell from. Check the connection and try again — the bracelet is still in hand.")
+                .font(.sbBody(13))
+                .foregroundStyle(.sbInk(0.7))
+                .sbLineHeight(1.5, size: 13)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Try again") {
+                Task { await model.refreshDoorPasses() }
+            }
+            .buttonStyle(.sbBlock(.primary, minHeight: 50, fontSize: 15))
+            .disabled(model.isLoadingDoorPasses)
+            .padding(.top, SBSpace.x2)
+            Button("Cancel the sale") { model.goHome() }
+                .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 14))
+        }
     }
 
     /// Nobody has set the catalogue up. Says which screen fixes it, because the

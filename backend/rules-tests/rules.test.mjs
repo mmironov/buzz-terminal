@@ -23,6 +23,10 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
   doc,
   getDoc,
   setDoc,
@@ -1258,6 +1262,17 @@ describe('the door catalogue belongs to the admin panel', () => {
     // The bar reads it too. It is a price list, not personal data — and a rule
     // narrower than the need is how a screen ends up silently showing nothing.
     await assertSucceeds(getDoc(passRef(bar())));
+  });
+
+  it('lets a terminal LIST the catalogue, which is how it actually reads it', async () => {
+    // The apps do not fetch passes one id at a time — they run
+    // `collection("doorPasses").order(by: "sortOrder")`. A rule can allow a get
+    // and refuse a list, and the difference would show up as an empty picker
+    // saying "Nothing on sale" rather than as an error anybody could act on.
+    await assertSucceeds(
+      getDocs(query(collection(reception(), 'doorPasses'), orderBy('sortOrder')))
+    );
+    await assertSucceeds(getDocs(collection(bar(), 'doorPasses')));
   });
 
   it('THE ONE THAT MATTERS: no terminal can set a price', async () => {
