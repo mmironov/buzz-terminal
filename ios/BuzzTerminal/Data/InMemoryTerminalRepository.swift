@@ -19,15 +19,20 @@ actor InMemoryTerminalRepository: TerminalRepository {
     /// Standing in for `participants/{id}/merch/order`.
     private var merch: [ParticipantID: MerchOrder]
 
+    /// Standing in for `participants/{id}/merch/freeShirt`.
+    private var freeShirts: [ParticipantID: FreeShirt]
+
     init(
         roster: [Participant] = SampleData.roster,
         menu: [Drink] = SampleData.drinks,
         merch: [ParticipantID: MerchOrder] = SampleData.merchOrders,
+        freeShirts: [ParticipantID: FreeShirt] = SampleData.freeShirts,
         latency: Duration = .milliseconds(180)
     ) {
         self.roster = Dictionary(uniqueKeysWithValues: roster.map { ($0.id, $0) })
         self.menu = menu
         self.merch = merch
+        self.freeShirts = freeShirts
         self.latency = latency
     }
 
@@ -167,6 +172,29 @@ actor InMemoryTerminalRepository: TerminalRepository {
     func merchOrder(for participant: Participant) async throws -> MerchOrder? {
         await simulateNetwork()
         return merch[participant.id]
+    }
+
+    func freeShirt(for participant: Participant) async throws -> FreeShirt? {
+        await simulateNetwork()
+        return freeShirts[participant.id]
+    }
+
+    func setFreeShirt(
+        size: String?,
+        colour: String?,
+        handedOver: Bool,
+        for participant: Participant
+    ) async throws -> FreeShirt {
+        await simulateNetwork()
+        guard var shirt = freeShirts[participant.id], shirt.entitled else {
+            throw TerminalError.noFreeShirt
+        }
+        shirt.size = size
+        shirt.colour = colour
+        shirt.collectedAt = handedOver ? .now : nil
+        shirt.collectedBy = handedOver ? "fixture-staff" : nil
+        freeShirts[participant.id] = shirt
+        return shirt
     }
 
     func setMerchCollected(_ collected: Bool, for participant: Participant) async throws -> MerchOrder {

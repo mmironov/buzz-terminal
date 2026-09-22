@@ -156,3 +156,67 @@ against the Sheet: participant `212` reads `shirt · L · Natural`.
 - **Android has none of this.** No model, no screen, no repository call.
 - **Sizes are not reconciled against stock.** The app reports what was ordered;
   whether a Sky Blue M is in the box is a question for the person holding it.
+
+
+---
+
+# The free shirt
+
+Some people get a shirt for nothing — teachers, volunteers, whoever the
+organisers put on the list. The Sheet's `Free T-Shirt` column says who: `TRUE`
+for five of the hundred and ten paid rows, blank for everybody else.
+
+It lives beside the preorder, in `participants/{id}/merch/freeShirt`, behind the
+same rule: reception reads it, the bar does not.
+
+```
+participants/tkt-10432/merch/freeShirt
+  // ── from the Sheet, import-only ──
+  entitled:     true
+  importedAt:   <timestamp>
+
+  // ── festival state: from the terminals ──
+  size:         null | "M"
+  colour:       null | "Natural"
+  collectedAt:  null | <server timestamp>
+  collectedBy:  null | "<uid of whoever was on the desk>"
+```
+
+## The one difference from a preorder, and everything that follows from it
+
+A preordered shirt was chosen months ago, so the Sheet knows the item, the size
+and the colour, and the terminal may only say it was handed over. **Nobody chose
+a free shirt in advance.** The Sheet knows only *that* somebody gets one; the
+size and the colour are picked at the desk, off whatever is in the box.
+
+So `size` and `colour` are festival state here, where on an order they are
+import-owned. Three consequences, each of them enforced rather than intended:
+
+- **The importer must never write them.** `FREE_SHIRT_IMPORT_OWNED_FIELDS` is
+  `['entitled', 'importedAt']` and `assertTouchesOnlyFreeShirtImportFields`
+  throws otherwise. An import that wrote a blank size over `L · Sky Blue` would
+  erase the record of what somebody was actually given, and the desk would hand
+  them a second shirt.
+- **The rules let the terminal write them**, which the `order` rule does not.
+  `firestore.rules` branches on the document id inside `match /merch/{merchId}`:
+  `order` allows only `collectedAt` and `collectedBy` to change, `freeShirt`
+  also allows `size` and `colour`.
+- **A handover must name the shirt.** The rules refuse a `collectedAt` with a
+  null size or colour, because "a shirt, size unknown, handed over" is how
+  somebody ends up with two. The app keeps the button disabled until both are
+  chosen, so the refusal arrives as a button that waits rather than a red banner
+  in front of somebody holding a shirt.
+
+`entitled` is the Sheet's word and no terminal can touch it — the rule's
+`hasOnly` list has no room for it. Somebody taken off the list is **retired**
+(`entitled: false`) rather than deleted, exactly as a withdrawn order is: the
+shirt may already be on their back, and the record of that outlives the
+entitlement.
+
+## What the desk sees
+
+The section only appears for the five people who are owed one. Two rows of
+one-tap choices — five sizes, four colours in the Sheet's own spelling — then
+**Mark as handed over**. Afterwards the choice reads back struck through with
+the time beside it, and an **Undo** for the mis-tap, which is reversible for the
+same reason the preorder's is.

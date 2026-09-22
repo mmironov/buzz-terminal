@@ -37,7 +37,7 @@ const HEADER = [
   'Id', 'Клеймо за време', ' Full Name', 'Email', 'Phone Number', 'Role',
   'PASS TYPE', 'Level', 'Which country are you coming from?', 'Comments', 'Status',
   'Festival T-Shirt and tote bag. Choose your Swing Buzz attire.',
-  'T-Shirt Size', 'T-Shirt Color',
+  'T-Shirt Size', 'T-Shirt Color', 'Free T-Shirt',
 ];
 
 const NO_ATTIRE = 'No Swing Buzz attire';
@@ -45,10 +45,10 @@ const NO_ATTIRE = 'No Swing Buzz attire';
 const row = ({
   id, name, pass = 'Full pass', country = 'Bulgaria', status = 'Paid',
   level = 'Intermediate - you have been dancing Lindy Hop for at least 1 year',
-  attire = NO_ATTIRE, size = NO_ATTIRE, colour = NO_ATTIRE,
+  attire = NO_ATTIRE, size = NO_ATTIRE, colour = NO_ATTIRE, freeShirt = '',
 }) =>
   [id, '2026-07-01 10:00:00', name, `${id}@example.com`, '+359000000', 'Follower',
-   pass, level, country, '', status, attire, size, colour];
+   pass, level, country, '', status, attire, size, colour, freeShirt];
 
 const SHEET = [
   row({ id: '1041', name: 'Amélie Roux', country: 'France' }),
@@ -409,4 +409,19 @@ test('the price paid does not reach Firestore', () => {
   assert.ok(!serialised.includes('EARLY BIRD'), serialised);
   // …and the search tokens use the clean name, not the invoice line.
   assert.deepEqual(fields.searchTokens.sort(), ['full', 'ivan', 'naydenov', 'pass']);
+});
+
+test('door sales of both kinds are never reported as orphans', () => {
+  // They were never in the Sheet and never will be. Listing them would put a
+  // growing block of noise in front of whoever is deciding whether to --apply.
+  const orphans = findOrphans(
+    [{ __id: 'tkt-1' }],
+    new Map([
+      ['tkt-1', { source: 'sheet' }],
+      ['ev-friday-3', { source: 'evening', name: 'Petar Dimitrov' }],
+      ['door-7', { source: 'door', name: 'Jana Novak' }],
+      ['tkt-9', { source: 'sheet', name: 'Gone from the Sheet' }],
+    ])
+  );
+  assert.deepEqual(orphans.map((o) => o.id), ['tkt-9']);
 });

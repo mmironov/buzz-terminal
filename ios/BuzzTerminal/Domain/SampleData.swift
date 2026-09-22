@@ -107,6 +107,20 @@ enum SampleData {
     /// Everything in Firestore: the imported roster plus door sales.
     static var roster: [Participant] { checkedIn + awaitingCheckIn + eveningTickets }
 
+    /// Free shirts. Two people out of the whole fixture roster, which is the
+    /// real proportion — five of a hundred and ten — so most screens are
+    /// unchanged rather than carrying an empty row.
+    ///
+    /// One still to choose, one already handed over: the two states the section
+    /// has to look right in.
+    static let freeShirts: [ParticipantID: FreeShirt] = [
+        ParticipantID("tkt-10432"): FreeShirt(entitled: true),
+        ParticipantID("tkt-10001"): FreeShirt(
+            entitled: true, size: "L", colour: "Natural",
+            collectedAt: earlier(4), collectedBy: "fixture-staff"
+        ),
+    ]
+
     /// Wristband colours, as an organiser would have set them in the panel.
     ///
     /// Deliberately not exhaustive: `Jazz Performance Track` has no colour, so

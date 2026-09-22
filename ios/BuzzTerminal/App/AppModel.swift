@@ -352,6 +352,7 @@ final class AppModel {
         bracelet = nil
         participant = nil
         merch = nil
+        freeShirt = nil
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -600,16 +601,77 @@ final class AppModel {
     /// the t-shirt they paid for.
     private(set) var merchUnavailable = false
 
-    /// Show a participant, and start loading what they preordered.
+    /// The free shirt this person is owed, once it has loaded. Nil for almost
+    /// everybody — five people on a roster of a hundred and ten.
+    private(set) var freeShirt: FreeShirt?
+
+    /// Show a participant, and start loading what they are owed.
     ///
     /// One funnel for both routes to the screen — a scan and a name off the
-    /// check-in list — so neither can forget the merch read.
+    /// check-in list — so neither can forget either read.
     private func showParticipant(_ guest: Participant) {
         participant = guest
         merch = nil
+        freeShirt = nil
         merchUnavailable = false
         screen = .participant
         Task { await loadMerch(for: guest) }
+        Task { await loadFreeShirt(for: guest) }
+    }
+
+    private func loadFreeShirt(for guest: Participant) async {
+        do {
+            let shirt = try await repository.freeShirt(for: guest)
+            // The operator may have moved on while this was in flight.
+            guard participant?.id == guest.id else { return }
+            freeShirt = shirt
+        } catch {
+            // Folded into the same warning the merch read raises rather than a
+            // second line saying the same thing: both live in one subcollection
+            // behind one rule, so they fail together, and one sentence about it
+            // is the one somebody reads.
+            Self.log.error("free-shirt load failed: \(error.localizedDescription, privacy: .public)")
+            guard participant?.id == guest.id else { return }
+            merchUnavailable = true
+        }
+    }
+
+    /// Choose which shirt is coming off the pile, before it is handed over.
+    ///
+    /// Held locally until the handover is recorded: picking a size is not a
+    /// write, and a desk that changed its mind three times should not have
+    /// written three times.
+    func chooseFreeShirt(size: String? = nil, colour: String? = nil) {
+        guard var shirt = freeShirt else { return }
+        if let size { shirt.size = size }
+        if let colour { shirt.colour = colour }
+        freeShirt = shirt
+    }
+
+    /// Hand the free shirt over, or take that back.
+    func setFreeShirtHandedOver(_ handedOver: Bool) async {
+        guard let guest = participant, let shirt = freeShirt, shirt.entitled else { return }
+        // The rules refuse a handover with no size or colour; this is the same
+        // rule on the near side of the network, where it is a disabled button
+        // rather than a red banner in front of somebody holding a shirt.
+        guard !handedOver || shirt.canBeHandedOver else { return }
+
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let updated = try await repository.setFreeShirt(
+                size: shirt.size,
+                colour: shirt.colour,
+                handedOver: handedOver,
+                for: guest
+            )
+            guard participant?.id == guest.id else { return }
+            freeShirt = updated
+            ScanFeedback.shared.success()
+        } catch {
+            errorMessage = error.localizedDescription
+            ScanFeedback.shared.problem()
+        }
     }
 
     private func loadMerch(for guest: Participant) async {
@@ -666,6 +728,7 @@ final class AppModel {
         bracelet = nil
         participant = nil
         merch = nil
+        freeShirt = nil
         merchUnavailable = false
         search = ""
         screen = .assign
@@ -786,6 +849,7 @@ final class AppModel {
     func beginDoorSale() {
         participant = nil
         merch = nil
+        freeShirt = nil
         merchUnavailable = false
         bracelet = nil
         selectedPass = nil
@@ -989,6 +1053,7 @@ final class AppModel {
         bracelet = nil
         participant = nil
         merch = nil
+        freeShirt = nil
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -1013,6 +1078,7 @@ final class AppModel {
         bracelet = nil
         participant = nil
         merch = nil
+        freeShirt = nil
         merchUnavailable = false
         paymentDecision = nil
     }

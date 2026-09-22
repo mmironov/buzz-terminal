@@ -401,6 +401,56 @@ actor FirebaseTerminalRepository: TerminalRepository {
         }
     }
 
+    func freeShirt(for participant: Participant) async throws -> FreeShirt? {
+        do {
+            let document = try await freeShirtDocument(participant.id).getDocument()
+            guard document.exists else { return nil }
+            return FreeShirt(document: document)
+        } catch {
+            // Same treatment as the merch read, and for the same reason: the
+            // bar is refused by design and reception only when something is
+            // wrong. Swallowing both would make a missing rule look exactly
+            // like "not on the list", which cost an evening once already.
+            let nsError = error as NSError
+            guard nsError.domain == FirestoreErrorDomain,
+                  nsError.code == FirestoreErrorCode.permissionDenied.rawValue,
+                  signedInRole != .reception
+            else {
+                Self.log.error("free-shirt read refused for a reception terminal — are the rules deployed?")
+                throw error
+            }
+            return nil
+        }
+    }
+
+    func setFreeShirt(
+        size: String?,
+        colour: String?,
+        handedOver: Bool,
+        for participant: Participant
+    ) async throws -> FreeShirt {
+        let uid = try requireStaffUid()
+        let document = freeShirtDocument(participant.id)
+
+        var payload: [String: Any] = [
+            Fire.Merch.size: size as Any? ?? NSNull(),
+            Fire.Merch.colour: colour as Any? ?? NSNull(),
+        ]
+        // The rules pin the timestamp to the server clock and the uid to the
+        // caller, so these are sent exactly as written or the write is refused.
+        payload[Fire.Merch.collectedAt] = handedOver ? FieldValue.serverTimestamp() : NSNull()
+        payload[Fire.Merch.collectedBy] = handedOver ? uid : NSNull()
+
+        // `updateData`: a shirt nobody is owed is a bug worth surfacing rather
+        // than a document to invent. The Sheet decides who is on the list.
+        try await document.updateData(payload)
+
+        guard let updated = FreeShirt(document: try await document.getDocument()) else {
+            throw TerminalError.noFreeShirt
+        }
+        return updated
+    }
+
     func setMerchCollected(_ collected: Bool, for participant: Participant) async throws -> MerchOrder {
         let uid = try requireStaffUid()
         let document = merchDocument(participant.id)
@@ -747,6 +797,12 @@ actor FirebaseTerminalRepository: TerminalRepository {
         participantDocument(id)
             .collection(Fire.Collection.contact)
             .document(Fire.Contact.documentId)
+    }
+
+    private func freeShirtDocument(_ id: ParticipantID) -> DocumentReference {
+        participantDocument(id)
+            .collection(Fire.Collection.merch)
+            .document(Fire.Merch.freeShirtDocumentId)
     }
 
     private func merchDocument(_ id: ParticipantID) -> DocumentReference {

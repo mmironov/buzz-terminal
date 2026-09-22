@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 import {
+  buildFreeShirtPlan,
   buildMerchPlan,
   buildPlan,
   findOrphans,
@@ -175,8 +176,10 @@ async function cmdImport() {
   requireProject();
 
   requireKeyFile();
-  const { readSheet, initAdmin, fetchParticipants, applyPlan, fetchMerchOrders, applyMerchPlan } =
-    await cloud();
+  const {
+    readSheet, initAdmin, fetchParticipants, applyPlan,
+    fetchMerchOrders, applyMerchPlan, fetchFreeShirts, applyFreeShirtPlan,
+  } = await cloud();
   const { header, rows: cells } = await readSheet(config);
   const resolved = resolveColumns(header);
 
@@ -220,11 +223,14 @@ async function cmdImport() {
   const db = app.firestore();
   const existing = await fetchParticipants(db);
   const existingMerch = await fetchMerchOrders(db);
+  const existingShirts = await fetchFreeShirts(db);
   console.log(`Firestore:  ${existing.size} participants already present`);
-  console.log(`            ${existingMerch.size} merch order(s) already recorded\n`);
+  console.log(`            ${existingMerch.size} merch order(s) already recorded`);
+  console.log(`            ${existingShirts.size} free shirt(s) already recorded\n`);
 
   const plan = buildPlan(importable, existing);
   const merch = buildMerchPlan(importable, existingMerch);
+  const shirts = buildFreeShirtPlan(importable, existingShirts);
   const orphans = findOrphans(importable, existing);
   const revoked = findRevoked(excluded, existing);
 
@@ -265,6 +271,17 @@ async function cmdImport() {
     console.log(`  - ${r.id.padEnd(24)} order withdrawn in the Sheet`);
   }
 
+  const shirtsNew = shirts.writes.filter((w) => w.isNew).length;
+  console.log(`\n  free shirt ${shirtsNew} new, ${shirts.writes.length - shirtsNew} restored, ` +
+              `${shirts.retires.length} withdrawn, ${shirts.unchanged.length} unchanged`);
+  console.log(`             the size and colour are chosen at the desk, never here\n`);
+  for (const w of shirts.writes) {
+    console.log(`  ${w.isNew ? '+' : '~'} ${w.id.padEnd(24)} free shirt`);
+  }
+  for (const r of shirts.retires) {
+    console.log(`  - ${r.id.padEnd(24)} free shirt withdrawn in the Sheet`);
+  }
+
   for (const c of plan.creates.slice(0, 20)) {
     console.log(`  + ${c.id.padEnd(24)} ${c.data.name}  (${c.data.ticketType})`);
   }
@@ -296,7 +313,8 @@ async function cmdImport() {
     console.log(`    admin panel, not here — some of these people may have money on a bracelet.`);
   }
 
-  const merchPending = merch.writes.length + merch.retires.length;
+  const merchPending = merch.writes.length + merch.retires.length
+    + shirts.writes.length + shirts.retires.length;
   if (!plan.creates.length && !plan.updates.length && !merchPending) {
     console.log(`\n✔ Nothing to do.\n`);
     return;
@@ -310,8 +328,10 @@ async function cmdImport() {
   console.log(`\nApplying…`);
   const written = await applyPlan(db, plan);
   const merchWritten = await applyMerchPlan(db, merch);
-  console.log(`\n✔ ${written} participant document(s) and ${merchWritten} merch order(s) written.`);
-  console.log(`  Balances, check-in state and merch collections untouched.\n`);
+  const shirtsWritten = await applyFreeShirtPlan(db, shirts);
+  console.log(`\n✔ ${written} participant document(s), ${merchWritten} merch order(s) and ` +
+              `${shirtsWritten} free shirt(s) written.`);
+  console.log(`  Balances, check-in state, collected merch and handed-over shirts untouched.\n`);
 }
 
 async function cmdSetRole() {

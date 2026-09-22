@@ -1453,6 +1453,118 @@ describe('preordered merch', () => {
 //  would produce a terminal that silently shows no colour.
 // ───────────────────────────────────────────────────────────────────────────
 
+describe('the free shirt', () => {
+  const shirtRef = (db, pid = PARTICIPANT) => doc(db, 'participants', pid, 'merch', 'freeShirt');
+
+  /** As the importer writes it: on the list, nothing chosen yet. */
+  async function seedShirt(extra = {}) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(shirtRef(context.firestore()), {
+        entitled: true,
+        size: null,
+        colour: null,
+        collectedAt: null,
+        collectedBy: null,
+        ...extra,
+      });
+    });
+  }
+
+  /** What the terminal sends when the shirt goes over the counter. */
+  const handover = (overrides = {}) => ({
+    size: 'M',
+    colour: 'Sky Blue',
+    collectedAt: serverTimestamp(),
+    collectedBy: RECEPTION_UID,
+    ...overrides,
+  });
+
+  it('THE ONE THAT MATTERS: the bar cannot read who gets a free shirt', async () => {
+    await seedShirt();
+    await assertFails(getDoc(shirtRef(bar())));
+    await assertSucceeds(getDoc(shirtRef(reception())));
+  });
+
+  it('lets reception record the size and colour it was handed over in', async () => {
+    // The difference from a preordered order: there, the Sheet decided the size
+    // and the terminal may not touch it. Here nobody chose in advance, so the
+    // desk writes what came off the pile.
+    await seedShirt();
+    await assertSucceeds(updateDoc(shirtRef(reception()), handover()));
+  });
+
+  it('lets reception undo a handover, and keeps the shirt on the list', async () => {
+    await seedShirt();
+    await assertSucceeds(updateDoc(shirtRef(reception()), handover()));
+    await assertSucceeds(
+      updateDoc(shirtRef(reception()), { collectedAt: null, collectedBy: null })
+    );
+  });
+
+  it('refuses the bar handing one over', async () => {
+    await seedShirt();
+    await assertFails(updateDoc(shirtRef(bar()), handover({ collectedBy: BAR_UID })));
+  });
+
+  it('refuses a handover with no size or no colour', async () => {
+    // "A shirt, size unknown, handed over" is how somebody ends up with two.
+    await seedShirt();
+    await assertFails(updateDoc(shirtRef(reception()), handover({ size: null })));
+    await assertFails(updateDoc(shirtRef(reception()), handover({ colour: null })));
+  });
+
+  it('refuses one for somebody who is not on the list', async () => {
+    await seedShirt({ entitled: false });
+    await assertFails(updateDoc(shirtRef(reception()), handover()));
+  });
+
+  it('THE OTHER ONE: a terminal cannot put itself on the list', async () => {
+    await seedShirt({ entitled: false });
+    await assertFails(updateDoc(shirtRef(reception()), { entitled: true }));
+    // Nor alongside a handover, which is the shape somebody would actually try.
+    await assertFails(updateDoc(shirtRef(reception()), { ...handover(), entitled: true }));
+  });
+
+  it('refuses a backdated handover and one attributed to somebody else', async () => {
+    await seedShirt();
+    await assertFails(updateDoc(shirtRef(reception()), handover({ collectedAt: new Date(0) })));
+    await assertFails(updateDoc(shirtRef(reception()), handover({ collectedBy: ADMIN_UID })));
+  });
+
+  it('refuses nonsense in the size or the colour', async () => {
+    await seedShirt();
+    await assertFails(updateDoc(shirtRef(reception()), handover({ size: '' })));
+    await assertFails(updateDoc(shirtRef(reception()), handover({ size: 'x'.repeat(9) })));
+    await assertFails(updateDoc(shirtRef(reception()), handover({ colour: 'x'.repeat(41) })));
+    await assertFails(updateDoc(shirtRef(reception()), handover({ size: 42 })));
+  });
+
+  it('refuses extra fields — this is a shirt, not a profile', async () => {
+    await seedShirt();
+    await assertFails(updateDoc(shirtRef(reception()), { ...handover(), note: 'nice one' }));
+  });
+
+  it('cannot be created or deleted by a terminal', async () => {
+    await assertFails(setDoc(shirtRef(reception()), { entitled: true }));
+    await seedShirt();
+    await assertFails(deleteDoc(shirtRef(reception())));
+  });
+
+  it('leaves the preordered order rule alone', async () => {
+    // Both documents live in the same subcollection and the rule branches on the
+    // id. This is the check that the branch did not loosen the older half: an
+    // `order` still refuses a size change, which a free shirt allows.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'participants', PARTICIPANT, 'merch', 'order'), {
+        item: 'shirt', size: 'M', colour: 'Natural', collectedAt: null, collectedBy: null,
+      });
+    });
+    await assertFails(
+      updateDoc(doc(reception(), 'participants', PARTICIPANT, 'merch', 'order'), { size: 'L' })
+    );
+  });
+});
+
 describe('bracelet colours', () => {
   const ref = (db, id = 'full-pass') => doc(db, 'braceletColours', id);
   const colour = (overrides = {}) => ({

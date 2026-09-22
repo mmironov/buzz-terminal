@@ -49,6 +49,12 @@ export const COLUMNS = {
   merchAttire: 'Festival T-Shirt and tote bag. Choose your Swing Buzz attire.',
   merchSize: 'T-Shirt Size',
   merchColour: 'T-Shirt Color',
+
+  /// Who gets a shirt for nothing — teachers, volunteers, the people who make
+  /// the festival happen. `TRUE` or blank, and that is all the Sheet knows: the
+  /// size and colour are chosen at the desk when the shirt is handed over, so
+  /// they are festival state and never import-owned. See docs/merch.md.
+  freeShirt: 'Free T-Shirt',
 };
 
 /**
@@ -362,6 +368,37 @@ export const MERCH_IMPORT_OWNED_FIELDS = ['item', 'size', 'colour', 'orderHash',
 /** Festival state given to a merch order the first time it is imported. */
 export function initialMerchState() {
   return { collectedAt: null, collectedBy: null };
+}
+
+// ── The free shirt ──────────────────────────────────────────────────────────
+
+/**
+ * Whether this row is owed a free shirt.
+ *
+ * The Sheet writes `TRUE` and leaves every other row blank, which is what a
+ * checkbox column produces. Read tolerantly — `true`, `yes`, `1` — because the
+ * column is maintained by hand and the cost of a false negative is somebody
+ * being told at the desk that they are not on the list.
+ */
+export function parseFreeShirt(raw) {
+  const text = String(raw ?? '').trim().toLowerCase();
+  return ['true', 'yes', 'y', '1', 'да'].includes(text);
+}
+
+/**
+ * Fields the importer owns on a free-shirt document.
+ *
+ * `size` and `colour` are NOT here, unlike a preordered order where the Sheet
+ * decides them. Nobody chose a free shirt in advance; the desk picks one off the
+ * pile at the moment it is handed over, so those two belong to the terminals
+ * exactly as `collectedAt` does. An import that wrote them would erase what was
+ * actually given to somebody.
+ */
+export const FREE_SHIRT_IMPORT_OWNED_FIELDS = ['entitled', 'importedAt'];
+
+/** Festival state given to a free shirt the first time it is imported. */
+export function initialFreeShirtState() {
+  return { size: null, colour: null, collectedAt: null, collectedBy: null };
 }
 
 /** Festival state given to a person the first time they are imported. */

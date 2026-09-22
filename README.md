@@ -168,6 +168,10 @@ renamed column, or a status spelled something other than `paid`, before anything
 written. `import` is a dry run showing exactly who would be created or changed; add
 `--apply` to commit it.
 
+The Sheet's `Free T-Shirt` column comes in too: five people are owed a shirt for
+nothing, and the desk picks the size and colour when they collect it — so the
+importer writes only *who*, never *which*. See `docs/merch.md`.
+
 Only `Status = paid` is imported, and only roster fields. Balances, bracelets and
 check-in state belong to the terminals and are never touched, so re-importing
 mid-festival cannot clobber somebody who has already checked in.

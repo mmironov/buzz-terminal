@@ -61,9 +61,28 @@ export async function applyPlan(db, plan, { batchSize = 400 } = {}) {
  * person, at a known path, readable offline from cache on a terminal.
  */
 export async function fetchMerchOrders(db) {
+  return fetchMerchDocuments(db, 'order');
+}
+
+/** The same collection, the other document id. See `fetchMerchDocuments`. */
+export async function fetchFreeShirts(db) {
+  return fetchMerchDocuments(db, 'freeShirt');
+}
+
+/**
+ * One document id out of the `merch` subcollection, keyed by participant.
+ *
+ * **The id filter is load-bearing.** A collection-group query over `merch`
+ * returns every document in it, and there are two per person now — the
+ * preordered `order` and the `freeShirt`. Keying a map by the parent id without
+ * filtering would let one silently overwrite the other, and the importer would
+ * then compare a free shirt against a t-shirt order and rewrite both.
+ */
+async function fetchMerchDocuments(db, documentId) {
   const snapshot = await db.collectionGroup('merch').get();
   const existing = new Map();
   snapshot.forEach((doc) => {
+    if (doc.id !== documentId) return;
     const participantId = doc.ref.parent.parent?.id;
     if (participantId) existing.set(participantId, doc.data());
   });
@@ -78,7 +97,11 @@ export async function fetchMerchOrders(db) {
  * first write the initial state is included so the fields exist rather than
  * being absent, which keeps the security rules' shape check simple.
  */
-export async function applyMerchPlan(db, plan, { batchSize = 400 } = {}) {
+export async function applyFreeShirtPlan(db, plan, { batchSize = 400 } = {}) {
+  return applyMerchPlan(db, plan, { batchSize, documentId: 'freeShirt', label: 'free shirts' });
+}
+
+export async function applyMerchPlan(db, plan, { batchSize = 400, documentId = 'order', label = 'merch' } = {}) {
   const { FieldValue } = admin.firestore;
   const operations = [
     ...plan.writes.map((w) => ({ ...w, data: { ...(w.initial ?? {}), ...w.data } })),
@@ -89,12 +112,12 @@ export async function applyMerchPlan(db, plan, { batchSize = 400 } = {}) {
   for (let i = 0; i < operations.length; i += batchSize) {
     const batch = db.batch();
     for (const op of operations.slice(i, i + batchSize)) {
-      const ref = db.collection('participants').doc(op.id).collection('merch').doc('order');
+      const ref = db.collection('participants').doc(op.id).collection('merch').doc(documentId);
       batch.set(ref, { ...op.data, importedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     await batch.commit();
     written += Math.min(batchSize, operations.length - i);
-    process.stdout.write(`    committed ${written}/${operations.length} merch\n`);
+    process.stdout.write(`    committed ${written}/${operations.length} ${label}\n`);
   }
   return written;
 }

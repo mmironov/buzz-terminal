@@ -113,6 +113,26 @@ protocol TerminalRepository: Sendable {
     /// have to know the rule exists.
     func merchOrder(for participant: Participant) async throws -> MerchOrder?
 
+    /// The free shirt this person is owed, or nil if they are owed none.
+    ///
+    /// Same subcollection as the preorder and the same read rule — reception
+    /// yes, the bar no — so a bar terminal gets nil rather than an error.
+    func freeShirt(for participant: Participant) async throws -> FreeShirt?
+
+    /// Record which shirt was handed over, or undo that.
+    ///
+    /// `size` and `colour` are written by the terminal, unlike a preordered
+    /// order where the Sheet owns them: nobody chose a free shirt in advance.
+    /// Passing `nil` for `handedOver` clears the handover and leaves the choice
+    /// where it was, so a mis-tap does not also erase which shirt came off the
+    /// pile.
+    func setFreeShirt(
+        size: String?,
+        colour: String?,
+        handedOver: Bool,
+        for participant: Participant
+    ) async throws -> FreeShirt
+
     /// Record that the merch was handed over, or undo that.
     ///
     /// Reversible, unlike a bracelet pairing: the cost of a mis-tap is a guest
@@ -146,6 +166,7 @@ enum TerminalError: Error, Equatable, LocalizedError {
     case doorSequenceExhausted
     case braceletBlocked
     case noMerchOrdered
+    case noFreeShirt
     case insufficientFunds(balance: Money, required: Money)
     case tooManyDrinksInOneRound(limit: Int)
     case offline
@@ -176,6 +197,8 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "This bracelet is blocked. An organiser must lift the block."
         case .noMerchOrdered:
             "There is no merch order for this participant."
+        case .noFreeShirt:
+            "This participant is not on the free-shirt list."
         case .insufficientFunds(let balance, let required):
             "Balance is \(balance) but the round costs \(required)."
         case .tooManyDrinksInOneRound(let limit):

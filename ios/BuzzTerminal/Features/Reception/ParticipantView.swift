@@ -60,7 +60,16 @@ struct ParticipantView: View {
             if let merch = model.merch, merch.hasSomethingToCollect {
                 merchSection(merch)
                     .padding(.top, SBSpace.x4)
-            } else if model.merchUnavailable {
+            }
+
+            if let shirt = model.freeShirt, shirt.entitled {
+                freeShirtSection(shirt)
+                    .padding(.top, SBSpace.x4)
+            }
+
+            if model.merch?.hasSomethingToCollect != true,
+               model.freeShirt?.entitled != true,
+               model.merchUnavailable {
                 // Said out loud, because "nothing ordered" and "could not find
                 // out" are the same blank space otherwise — and the difference
                 // is a guest going home without a t-shirt they paid for.
@@ -134,6 +143,68 @@ struct ParticipantView: View {
             .buttonStyle(.sbBlock(.secondary, minHeight: 44, fontSize: 14))
             .disabled(model.isWorking)
             .padding(.top, 12)
+        }
+    }
+
+    /// A shirt somebody gets for nothing, and the two choices that go with it.
+    ///
+    /// Unlike the preorder above, nothing was decided in advance: the desk picks
+    /// a size and a colour off whatever is in the box, then hands it over. So
+    /// this section has pickers where that one has a line of text, and the
+    /// button stays disabled until both are chosen — the rules refuse a
+    /// handover without them, and a refusal in front of somebody holding a
+    /// shirt is worse than a button that waits.
+    private func freeShirtSection(_ shirt: FreeShirt) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SBDivider(weight: SBRule.hairline)
+
+            HStack(alignment: .firstTextBaseline, spacing: SBSpace.x2) {
+                SBKicker(text: "Free t-shirt")
+                Spacer(minLength: 0)
+                if let collected = shirt.collectedLabel {
+                    Text(collected)
+                        .font(.sbBody(11))
+                        .foregroundStyle(.sbOk)
+                }
+            }
+            .padding(.top, 12)
+
+            Text(shirt.choiceSummary)
+                .font(.sbHeading(19))
+                .foregroundStyle(shirt.isCollected ? .sbInk(0.45) : .sbInk)
+                .strikethrough(shirt.isCollected, pattern: .solid, color: .sbInk(0.4))
+                .padding(.top, 5)
+
+            // Once it is handed over the choice is a record rather than a
+            // question, so the pickers go away. Undo brings them back.
+            if !shirt.isCollected {
+                chips(FreeShirt.sizes, chosen: shirt.size) { model.chooseFreeShirt(size: $0) }
+                    .padding(.top, 10)
+                chips(FreeShirt.colours, chosen: shirt.colour) { model.chooseFreeShirt(colour: $0) }
+                    .padding(.top, 6)
+            }
+
+            Button(shirt.isCollected ? "Undo — not handed over" : "Mark as handed over") {
+                Task { await model.setFreeShirtHandedOver(!shirt.isCollected) }
+            }
+            .buttonStyle(.sbBlock(.secondary, minHeight: 44, fontSize: 14))
+            .disabled(model.isWorking || (!shirt.isCollected && !shirt.canBeHandedOver))
+            .padding(.top, 12)
+        }
+    }
+
+    /// A row of one-tap choices that wraps — five sizes fit across a phone,
+    /// four colour names do not.
+    private func chips(
+        _ options: [String],
+        chosen: String?,
+        select: @escaping (String) -> Void
+    ) -> some View {
+        FlowRow(spacing: SBSpace.x2) {
+            ForEach(options, id: \.self) { option in
+                Button(option) { select(option) }
+                    .buttonStyle(ChipStyle(isSelected: chosen == option))
+            }
         }
     }
 
@@ -260,4 +331,105 @@ struct ParticipantView: View {
     return ParticipantView()
         .environment(model)
         .background(Color.sbBackground)
+}
+
+/// A compact one-tap choice: a size, a colour.
+///
+/// Smaller than the `ChoiceBox` on the door-sale form because there are nine of
+/// them on one screen rather than two, and they sit under a heading that already
+/// says what they are. Selected is an accent fill, the design system's way of
+/// marking the thing that is currently true.
+private struct ChipStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.sbHeading(13, weight: .extrabold))
+            .foregroundStyle(isSelected ? Color.sbBackground : .sbInk)
+            .padding(.horizontal, SBSpace.x3)
+            .frame(minHeight: 36)
+            .background(background(pressed: configuration.isPressed))
+            .overlay {
+                if !isSelected {
+                    Rectangle().stroke(Color.sbDivider, lineWidth: SBRule.hairline)
+                }
+            }
+            .contentShape(Rectangle())
+    }
+
+    private func background(pressed: Bool) -> Color {
+        if isSelected { return pressed ? .sbAccent700 : .sbAccent }
+        return pressed ? Color.sbAccent.opacity(0.18) : .clear
+    }
+}
+
+/// A horizontal row that wraps onto the next line when it runs out of width.
+///
+/// Five sizes fit across a phone; four colour names do not, and "French Navy"
+/// truncated to "French N…" on the one screen where somebody is matching a word
+/// to a shirt in their hand would be the wrong economy. A `Layout` rather than a
+/// `LazyVGrid` because the items are different widths and a grid would give
+/// "XS" the same column as "Pale Pink".
+private struct FlowRow: Layout {
+    var spacing: CGFloat = SBSpace.x2
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.replacingUnspecifiedDimensions().width
+        let rows = rows(subviews, width: width)
+        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        var y = bounds.minY
+        for row in rows(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y),
+                    anchor: .topLeading,
+                    proposal: ProposedViewSize(size)
+                )
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var height: CGFloat = 0
+    }
+
+    /// One pass, greedy: an item goes on the current line if it fits, otherwise
+    /// it starts the next one. Called by both `sizeThatFits` and
+    /// `placeSubviews`, so the two cannot disagree about where anything went.
+    private func rows(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        var x: CGFloat = 0
+
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            if current.indices.isEmpty {
+                x = size.width
+            } else if x + spacing + size.width <= width {
+                x += spacing + size.width
+            } else {
+                rows.append(current)
+                current = Row()
+                x = size.width
+            }
+            current.indices.append(index)
+            current.height = max(current.height, size.height)
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
+    }
 }

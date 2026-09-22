@@ -386,11 +386,52 @@ service cloud.firestore {
         // the record that a shirt was handed over outlives the festival.
         allow create, delete: if false;
 
-        // The one thing a terminal may do: say it was handed over, or take that
-        // back. Reversible on purpose, unlike a bracelet pairing — the cost of
-        // a mis-tap here is a guest being told their shirt is already gone, and
-        // the fix should not need an organiser with a database open.
-        allow update: if isReception() && isCollectionChange();
+        // Two documents live here, and they are not the same shape:
+        //
+        //   · `order`     — what somebody PAID for in advance. The Sheet decides
+        //                   the item, the size and the colour; the terminal may
+        //                   only say it was handed over.
+        //   · `freeShirt` — who is owed one for nothing. The Sheet decides only
+        //                   THAT; the size and colour are picked at the desk off
+        //                   whatever is in the box, so the terminal writes those
+        //                   too.
+        //
+        // Both are reversible on purpose, unlike a bracelet pairing: the cost of
+        // a mis-tap is a guest being told their shirt is already gone, and the
+        // fix should not need an organiser with a database open.
+        allow update: if isReception() && (
+          (merchId == 'order' && isCollectionChange())
+          || (merchId == 'freeShirt' && isFreeShirtHandover())
+        );
+
+        function isFreeShirtHandover() {
+          let after = request.resource.data;
+          return after.diff(resource.data).affectedKeys()
+                   .hasOnly(['size', 'colour', 'collectedAt', 'collectedBy'])
+            // `entitled` is the Sheet's word and the terminal cannot touch it —
+            // the `hasOnly` above sees to that. Nothing is handed over to
+            // somebody who is not on the list, and somebody taken off the list
+            // keeps whatever record already exists.
+            && resource.data.get('entitled', false) == true
+            && (after.collectedAt == null
+                  ? after.get('collectedBy', null) == null
+                  // Server clock, same as everywhere else money or goods move.
+                  : (after.collectedAt == request.time
+                       && after.collectedBy == request.auth.uid))
+            // Handing one over means saying which one. A record of "a shirt,
+            // size unknown" is how somebody ends up with a second shirt.
+            && (after.collectedAt == null
+                  || (after.get('size', null) != null && after.get('colour', null) != null))
+            // Bounds, not a catalogue. The app offers the four sizes and four
+            // colours the festival printed; pinning the list here would make a
+            // fourth copy of a decision that changes every year, and the failure
+            // it would prevent — a typo in a size — is one somebody can see on
+            // the screen in front of them.
+            && (after.get('size', null) == null
+                  || (after.size is string && after.size.size() > 0 && after.size.size() <= 8))
+            && (after.get('colour', null) == null
+                  || (after.colour is string && after.colour.size() > 0 && after.colour.size() <= 40));
+        }
 
         function isCollectionChange() {
           let after = request.resource.data;

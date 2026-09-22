@@ -69,6 +69,12 @@ enum Fire {
         /// read rather than a query, which resolves from the offline cache and
         /// needs no index.
         static let documentId = "order"
+        /// The other document in the same subcollection: a shirt somebody gets
+        /// for nothing. `firestore.rules` branches on this id, because the two
+        /// have different owners — see `FreeShirt`.
+        static let freeShirtDocumentId = "freeShirt"
+        /// Free shirts only: whether the Sheet says they are owed one.
+        static let entitled = "entitled"
 
         static let item = "item"
         static let size = "size"
@@ -262,6 +268,26 @@ extension BraceletColour {
             level: data[Fire.BraceletColour.level] as? String ?? "",
             hex: hex,
             name: data[Fire.BraceletColour.name] as? String ?? ""
+        )
+    }
+}
+
+extension FreeShirt {
+    /// Build from `participants/{id}/merch/freeShirt`.
+    ///
+    /// Nil only when the document does not exist, which is the common case —
+    /// five people on a roster of a hundred and ten are owed one.
+    init?(document: DocumentSnapshot) {
+        guard let data = document.data() else { return nil }
+        self.init(
+            // Absent reads as not entitled: a document with no `entitled` field
+            // is not one this importer wrote, and offering a free shirt on the
+            // strength of a malformed document is the wrong way to be wrong.
+            entitled: data[Fire.Merch.entitled] as? Bool ?? false,
+            size: data[Fire.Merch.size] as? String,
+            colour: data[Fire.Merch.colour] as? String,
+            collectedAt: (data[Fire.Merch.collectedAt] as? Timestamp)?.dateValue(),
+            collectedBy: data[Fire.Merch.collectedBy] as? String
         )
     }
 }

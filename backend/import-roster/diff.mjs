@@ -7,11 +7,14 @@
 import { createHash } from 'node:crypto';
 import {
   COLUMNS,
+  FREE_SHIRT_IMPORT_OWNED_FIELDS,
   IDENTITY_COLUMN,
   IMPORT_OWNED_FIELDS,
   MERCH_IMPORT_OWNED_FIELDS,
   initialFestivalState,
+  initialFreeShirtState,
   initialMerchState,
+  parseFreeShirt,
   isImportableStatus,
   normaliseStatus,
   toDocumentId,
@@ -270,6 +273,85 @@ export function buildMerchPlan(rows, existingMerch) {
 }
 
 /**
+ * Build the free-shirt plan: one document per person the Sheet says is owed one.
+ *
+ * Simpler than the merch plan in one way and sharper in another. Simpler,
+ * because the Sheet holds a single boolean and there is nothing to hash — the
+ * write is skipped when the document already says `entitled: true`. Sharper,
+ * because `size` and `colour` are chosen at the desk rather than imported, so
+ * this must never write them; `assertTouchesOnlyFreeShirtImportFields` is what
+ * stops a future edit from erasing the shirt somebody was actually handed.
+ *
+ * @param rows            output of validateIdentity().usable, paid rows only
+ * @param existingShirts  Map of participantId → current free-shirt document
+ * @returns { writes, retires, unchanged }
+ */
+export function buildFreeShirtPlan(rows, existingShirts) {
+  const writes = [];
+  const retires = [];
+  const unchanged = [];
+
+  for (const row of rows) {
+    const id = row.__id;
+    const entitled = parseFreeShirt(row.freeShirt);
+    const current = existingShirts.get(id);
+
+    if (!entitled) {
+      // Taken off the list. Retired rather than deleted, because deleting would
+      // also delete the record that a shirt was handed over — and somebody is
+      // wearing it either way.
+      if (current && current.entitled === true) {
+        const data = { entitled: false };
+        assertTouchesOnlyFreeShirtImportFields(data);
+        retires.push({ id, sheetRow: row.__sheetRow, data });
+      }
+      continue;
+    }
+
+    if (current?.entitled === true) {
+      unchanged.push({ id, sheetRow: row.__sheetRow });
+      continue;
+    }
+
+    const data = { entitled: true };
+    assertTouchesOnlyFreeShirtImportFields(data);
+    writes.push({
+      id,
+      sheetRow: row.__sheetRow,
+      isNew: !current,
+      data,
+      // Only on a create, exactly as with merch: on an update these are absent
+      // from the payload, so a merge leaves a shirt already handed over — and
+      // the size and colour it was handed over in — exactly where they were.
+      initial: current ? null : initialFreeShirtState(),
+    });
+  }
+
+  return { writes, retires, unchanged };
+}
+
+/**
+ * The free shirt's twin of the merch assertion, guarding a different field.
+ *
+ * `size` and `colour` are the ones to watch here. On a preordered order the
+ * Sheet decides them; on a free shirt the desk does, at the moment of handing
+ * it over. An import that wrote either would overwrite what somebody actually
+ * received with a blank — and nobody would notice until a second shirt was
+ * handed to the same person.
+ */
+export function assertTouchesOnlyFreeShirtImportFields(data) {
+  const offending = Object.keys(data).filter(
+    (k) => !FREE_SHIRT_IMPORT_OWNED_FIELDS.includes(k)
+  );
+  if (offending.length) {
+    throw new Error(
+      `Refusing to build a free-shirt update touching non-import fields: ${offending.join(', ')}. ` +
+        `size, colour, collectedAt and collectedBy belong to the terminals.`
+    );
+  }
+}
+
+/**
  * The merch twin of `assertTouchesOnlyImportOwnedFields`, and the reason it
  * exists: an import that wrote `collectedAt` would un-collect every shirt
  * handed out so far, silently, and the first anybody would know is a queue of
@@ -330,17 +412,21 @@ function describeChanges(current, roster) {
  * Reported, never deleted. A refund or a cancelled ticket is an organiser
  * decision, and somebody may already be checked in with money on their bracelet.
  *
- * Door-sold evening tickets are skipped entirely. They were never in the Sheet
- * and never will be, so reporting them here would mean every import run listing
- * every door sale of the festival so far — noise that would quickly train
- * everybody to ignore this section, which is the opposite of what it is for.
+ * Anything sold at the door is skipped entirely — evening tickets and door
+ * passes alike. They were never in the Sheet and never will be, so reporting
+ * them here would mean every import run listing every door sale of the festival
+ * so far — noise that would quickly train everybody to ignore this section,
+ * which is the opposite of what it is for.
  */
 export function findOrphans(rows, existing) {
   const inSheet = new Set(rows.map((r) => r.__id));
   const orphans = [];
   for (const [id, doc] of existing) {
     if (inSheet.has(id)) continue;
-    if (doc.source === 'evening') continue;
+    // Both door-sale sources. A door pass reported here every run would train
+    // everybody to ignore this section, which is the opposite of what it is
+    // for — and it was doing exactly that for a day before anybody looked.
+    if (doc.source === 'evening' || doc.source === 'door') continue;
     orphans.push({
       id,
       name: doc.name ?? '(unnamed)',

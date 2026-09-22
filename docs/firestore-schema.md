@@ -154,6 +154,26 @@ resolves from the offline cache. `collectedAt` and `collectedBy` are festival
 state and never import-owned, for the same reason `balance` is not — see
 `docs/merch.md`.
 
+## `participants/{participantId}/merch/freeShirt`
+
+The other document in the same subcollection: a shirt somebody gets for nothing.
+
+```
+participants/tkt-10432/merch/freeShirt
+  entitled:     true          // from the Sheet's "Free T-Shirt" column
+  importedAt:   <timestamp>
+  size:         null | "M"    // chosen AT THE DESK, not imported
+  colour:       null | "Natural"
+  collectedAt:  null | <server timestamp>
+  collectedBy:  null | "<uid>"
+```
+
+**`size` and `colour` are festival state here**, unlike the `order` document
+beside it where the Sheet owns them — nobody chose a free shirt in advance, so
+the desk picks one off the pile when it is handed over. `firestore.rules`
+branches on the document id to allow that, and refuses a handover that does not
+name the size and the colour. See `docs/merch.md`.
+
 ## `participants/{participantId}/transactions/{clientTxId}`
 
 Append-only ledger. Immutable once written — a dispute at the bar is answered by
