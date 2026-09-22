@@ -252,6 +252,18 @@ struct ParticipantView: View {
                 autocapitalization: .sentences
             )
 
+            // Always said out loud, never silently absent. A screen that simply
+            // has no fee control looks like it forgot one — the same reason the
+            // door catalogue says "No price set" rather than hiding a row.
+            if model.replacementFee?.isPositive != true {
+                Text("No replacement fee is set in the admin panel, so there is nothing to charge.")
+                    .font(.sbBody(11.5))
+                    .foregroundStyle(.sbInk(0.55))
+                    .sbLineHeight(1.5, size: 11.5)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, SBSpace.x3)
+            }
+
             if let fee = model.replacementFee, fee.isPositive {
                 Button {
                     model.replacement.chargesFee.toggle()
