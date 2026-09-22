@@ -19,7 +19,13 @@ struct DoorPass: Identifiable, Equatable, Sendable {
     let id: String
     /// Written verbatim onto the buyer as their `ticketType`.
     let name: String
+    /// What it costs, and for an evening ticket what it costs on a night with
+    /// no price of its own.
     let price: Money
+    /// Friday, Saturday and Sunday can differ, so an evening ticket carries a
+    /// price per night. Partial on purpose: only the nights that differ need an
+    /// entry, and the rest fall back to `price`.
+    var prices: [Evening: Money] = [:]
     var sortOrder: Int = 0
     var kind: Kind = .pass
 
@@ -30,21 +36,40 @@ struct DoorPass: Identifiable, Equatable, Sendable {
         case evening
     }
 
+    /// What this costs on a given night. Nil means "not sold by the night", so
+    /// the flat price applies.
+    func price(on evening: Evening?) -> Money {
+        guard let evening else { return price }
+        return prices[evening] ?? price
+    }
+
     /// `"205.00 €"`, or "No price set" for a row nobody has priced yet.
     ///
     /// Zero is legal — a comp is a real thing — but it is far more often a price
     /// an organiser has not typed, and reading "0.00 €" to a paying guest is the
     /// failure this wording avoids.
-    var priceLabel: String {
-        price.isPositive ? "\(price)" : "No price set"
+    func priceLabel(on evening: Evening? = nil) -> String {
+        let amount = price(on: evening)
+        return amount.isPositive ? "\(amount)" : "No price set"
     }
 
     /// What the screens above the scan say they are about to take.
     ///
     /// Separate from `priceLabel` because "No price set to collect" is not a
     /// sentence, and this one is read by somebody holding out their hand.
-    var collectLabel: String {
-        price.isPositive ? "\(price) to collect" : "No price set in the admin panel"
+    func collectLabel(on evening: Evening? = nil) -> String {
+        let amount = price(on: evening)
+        return amount.isPositive ? "\(amount) to collect" : "No price set in the admin panel"
+    }
+
+    /// Whether the nights are priced differently from each other.
+    ///
+    /// Drives nothing on its own; it is here so a screen can say "45 € a night"
+    /// rather than repeating the same number three times, if anybody ever wants
+    /// that. The evening screen currently shows all three regardless, because
+    /// the desk is reading one line per night either way.
+    var nightsDiffer: Bool {
+        Set(Evening.allCases.map { price(on: $0) }).count > 1
     }
 
     /// Whether this pass has a level worth asking for.

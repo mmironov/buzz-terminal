@@ -44,8 +44,11 @@ enum Fire {
 
     enum DoorPass {
         static let name = "name"
-        /// Cents, like every other price.
+        /// Cents, like every other price. For an evening ticket this is the
+        /// fallback for a night with no price of its own.
         static let price = "price"
+        /// `{ friday: 4500, saturday: 5000 }` — cents per night, partial.
+        static let prices = "prices"
         static let sortOrder = "sortOrder"
         static let isActive = "isActive"
         /// `"pass"` or `"evening"`. Decides which flow the terminal runs.
@@ -224,10 +227,23 @@ extension DoorPass {
               data[Fire.DoorPass.isActive] as? Bool ?? true
         else { return nil }
 
+        // A night with an unreadable value is simply absent, and falls back to
+        // the flat price — the desk quoting last year's number is better than
+        // the desk quoting nothing.
+        var prices: [Evening: Money] = [:]
+        if let raw = data[Fire.DoorPass.prices] as? [String: Any] {
+            for evening in Evening.allCases {
+                if let cents = raw[evening.rawValue] as? Int {
+                    prices[evening] = Money(cents: cents)
+                }
+            }
+        }
+
         self.init(
             id: document.documentID,
             name: name,
             price: Money(cents: priceCents),
+            prices: prices,
             sortOrder: data[Fire.DoorPass.sortOrder] as? Int ?? 0,
             // Anything unrecognised is an ordinary pass. Refusing to sell
             // something because of a `kind` this build has not heard of would be

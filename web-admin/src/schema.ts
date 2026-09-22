@@ -56,6 +56,8 @@ export const DRINK_FIELDS = {
 export const DOOR_PASS_FIELDS = {
   name: 'name',
   price: 'price',
+  /** Per-night prices for an evening ticket. A night left out falls back. */
+  prices: 'prices',
   sortOrder: 'sortOrder',
   isActive: 'isActive',
   /** `'pass'` asks for a buyer; `'evening'` is the anonymous numbered ticket. */
@@ -159,11 +161,29 @@ export interface Participant {
  * see the `doorPasses` block in firestore.rules. `name` is written verbatim onto
  * the buyer as their `ticketType`, which is why it is bounded the same way.
  */
+/** The three nights an evening ticket can be sold for. */
+export const EVENINGS = ['friday', 'saturday', 'sunday'] as const;
+export type EveningName = (typeof EVENINGS)[number];
+
+export const EVENING_LABELS: Record<EveningName, string> = {
+  friday: 'Friday',
+  saturday: 'Saturday',
+  sunday: 'Sunday',
+};
+
 export interface DoorPass {
   id: string;
   name: string;
-  /** Cents. */
+  /**
+   * Cents. For an evening ticket this is the fallback: a night with no entry in
+   * `prices` is sold at this.
+   */
   price: number;
+  /**
+   * Cents per night, for a festival that charges differently on a Sunday.
+   * Partial on purpose — only the nights that differ need an entry.
+   */
+  prices: Partial<Record<EveningName, number>>;
   sortOrder: number;
   isActive: boolean;
   /**
@@ -309,10 +329,20 @@ export function toDoorPass(doc: Doc): DoorPass | null {
   const price = int(data[DOOR_PASS_FIELDS.price]);
   if (typeof name !== 'string' || price === null) return null;
 
+  const raw = data[DOOR_PASS_FIELDS.prices];
+  const prices: Partial<Record<EveningName, number>> = {};
+  if (raw && typeof raw === 'object') {
+    for (const night of EVENINGS) {
+      const value = int((raw as Record<string, unknown>)[night]);
+      if (value !== null) prices[night] = value;
+    }
+  }
+
   return {
     id: doc.id,
     name,
     price,
+    prices,
     sortOrder: int(data[DOOR_PASS_FIELDS.sortOrder]) ?? 0,
     isActive: data[DOOR_PASS_FIELDS.isActive] !== false,
     // Anything unrecognised is an ordinary pass. A terminal that met a `kind` it

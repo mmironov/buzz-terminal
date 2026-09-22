@@ -15,6 +15,8 @@ import { db } from './firebase';
 import {
   COLLECTIONS,
   DOOR_PASS_FIELDS,
+  EVENINGS,
+  EVENING_LABELS,
   MAX_PASS_NAME,
   MAX_PASS_PRICE,
   euros,
@@ -22,6 +24,7 @@ import {
   slugify,
   toDoorPass,
   type DoorPass,
+  type EveningName,
 } from './schema';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -147,22 +150,39 @@ function PassRow({
   nextNeighbour: DoorPass | undefined;
   onError: (message: string) => void;
 }) {
+  const isEvening = pass.kind === 'evening';
   const [name, setName] = useState(pass.name);
   const [price, setPrice] = useState(centsToInput(pass.price));
+  // One box per night for an evening ticket. Seeded from the flat price where a
+  // night has no entry of its own, so the three start at what was already being
+  // charged rather than at zero.
+  const [nights, setNights] = useState(() => nightInputs(pass));
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     setName(pass.name);
     setPrice(centsToInput(pass.price));
-  }, [pass.name, pass.price]);
+    setNights(nightInputs(pass));
+  }, [pass.name, pass.price, pass.prices.friday, pass.prices.saturday, pass.prices.sunday]);
 
   const cents = parseEuros(price);
+  const nightCents = Object.fromEntries(
+    EVENINGS.map((night) => [night, parseEuros(nights[night])])
+  ) as Record<EveningName, number | null>;
+
   const trimmed = name.trim();
   const nameOK = trimmed.length > 0 && trimmed.length <= MAX_PASS_NAME;
-  const priceOK = cents !== null && cents <= MAX_PASS_PRICE;
-  const dirty = trimmed !== pass.name || cents !== pass.price;
-  const isEvening = pass.kind === 'evening';
+  const flatPriceOK = cents !== null && cents <= MAX_PASS_PRICE;
+  const nightsOK = EVENINGS.every(
+    (night) => nightCents[night] !== null && (nightCents[night] as number) <= MAX_PASS_PRICE
+  );
+  const priceOK = isEvening ? nightsOK : flatPriceOK;
+  const dirty =
+    trimmed !== pass.name ||
+    (isEvening
+      ? EVENINGS.some((night) => nightCents[night] !== (pass.prices[night] ?? pass.price))
+      : cents !== pass.price);
 
   async function run(work: () => Promise<void>) {
     setBusy(true);
@@ -188,24 +208,49 @@ function PassRow({
         />
         <div className="sub mono">
           {pass.id}
-          {isEvening ? ' · anonymous, per evening' : ''}
+          {isEvening ? ' · priced per night' : ''}
         </div>
       </td>
       <td className="num">
-        <input
-          aria-label={`Price of ${pass.name}`}
-          className="price"
-          inputMode="decimal"
-          value={price}
-          onChange={(event) => setPrice(event.target.value)}
-        />
-        {priceOK ? null : <div className="field__hint field__hint--bad">Not a price</div>}
-        {priceOK && cents === 0 ? (
-          // Zero is legal and is occasionally meant — a comp — but far more often
-          // it is a row nobody has got round to pricing, and the desk would read
-          // "0.00 €" to a paying customer.
-          <div className="field__hint">No price set</div>
-        ) : null}
+        {isEvening ? (
+          // Friday, Saturday and Sunday can cost different amounts, so this row
+          // has three boxes where every other row has one. The terminal shows
+          // them beside the nights, not on the list of passes.
+          <div className="stack stack--tight">
+            {EVENINGS.map((night) => (
+              <label key={night} className="night">
+                <span className="sub">{EVENING_LABELS[night]}</span>
+                <input
+                  aria-label={`${EVENING_LABELS[night]} price of ${pass.name}`}
+                  className="price"
+                  inputMode="decimal"
+                  value={nights[night]}
+                  onChange={(event) =>
+                    setNights((current) => ({ ...current, [night]: event.target.value }))
+                  }
+                />
+              </label>
+            ))}
+            {nightsOK ? null : <div className="field__hint field__hint--bad">Not a price</div>}
+          </div>
+        ) : (
+          <>
+            <input
+              aria-label={`Price of ${pass.name}`}
+              className="price"
+              inputMode="decimal"
+              value={price}
+              onChange={(event) => setPrice(event.target.value)}
+            />
+            {flatPriceOK ? null : <div className="field__hint field__hint--bad">Not a price</div>}
+            {flatPriceOK && cents === 0 ? (
+              // Zero is legal and is occasionally meant — a comp — but far more
+              // often it is a row nobody has got round to pricing, and the desk
+              // would read "0.00 €" to a paying customer.
+              <div className="field__hint">No price set</div>
+            ) : null}
+          </>
+        )}
       </td>
       <td>
         {pass.isActive ? (
@@ -271,7 +316,17 @@ function PassRow({
                 run(async () => {
                   await updateDoc(ref, {
                     [DOOR_PASS_FIELDS.name]: trimmed,
-                    [DOOR_PASS_FIELDS.price]: cents as number,
+                    ...(isEvening
+                      ? {
+                          [DOOR_PASS_FIELDS.prices]: Object.fromEntries(
+                            EVENINGS.map((night) => [night, nightCents[night] as number])
+                          ),
+                          // The flat price stays the fallback, and keeping it in
+                          // step with Friday means a terminal that never heard of
+                          // per-night prices still quotes something sensible.
+                          [DOOR_PASS_FIELDS.price]: nightCents.friday as number,
+                        }
+                      : { [DOOR_PASS_FIELDS.price]: cents as number }),
                   });
                 })
               }
@@ -390,6 +445,19 @@ function AddPass({
       </button>
     </div>
   );
+}
+
+/**
+ * What the three night boxes start with.
+ *
+ * A night with no entry of its own shows the flat price, so an organiser
+ * opening this for the first time sees 45 · 45 · 45 rather than three blanks —
+ * and saving keeps whatever they did not change.
+ */
+function nightInputs(pass: DoorPass): Record<EveningName, string> {
+  return Object.fromEntries(
+    EVENINGS.map((night) => [night, centsToInput(pass.prices[night] ?? pass.price)])
+  ) as Record<EveningName, string>;
 }
 
 /** Swap two rows' `sortOrder`, which is what the arrows do. */

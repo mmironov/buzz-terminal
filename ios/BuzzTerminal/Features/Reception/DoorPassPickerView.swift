@@ -127,17 +127,22 @@ private struct PassLabel: View {
                     .font(.sbHeading(17, weight: .extrabold))
                     .multilineTextAlignment(.leading)
                 if pass.kind == .evening {
-                    Text("Name and night only")
+                    Text("Priced per night")
                         .font(.sbBody(10.5))
                         .foregroundStyle(.sbInk(0.5))
                 }
             }
             Spacer(minLength: 0)
-            Text(pass.priceLabel)
-                .font(.sbHeading(15, weight: .extrabold))
-                // An unpriced pass reads as a warning rather than as a number,
-                // because the desk is about to say it out loud.
-                .foregroundStyle(pass.price.isPositive ? Color.sbInk : Color.sbAccent)
+            // An evening ticket costs a different amount on each night, so the
+            // number belongs beside the nights rather than here, where it could
+            // only be one of three and would be read out as if it were the one.
+            if pass.kind != .evening {
+                Text(pass.priceLabel())
+                    .font(.sbHeading(15, weight: .extrabold))
+                    // An unpriced pass reads as a warning rather than as a
+                    // number, because the desk is about to say it out loud.
+                    .foregroundStyle(pass.price.isPositive ? Color.sbInk : Color.sbAccent)
+            }
         }
     }
 }

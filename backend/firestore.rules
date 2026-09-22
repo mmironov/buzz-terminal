@@ -704,7 +704,7 @@ service cloud.firestore {
 
       function isWellFormedPass() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['name', 'price', 'sortOrder', 'isActive', 'kind'])
+        return d.keys().hasOnly(['name', 'price', 'sortOrder', 'isActive', 'kind', 'prices'])
           && d.keys().hasAll(['name', 'price', 'sortOrder', 'isActive', 'kind'])
           // `name` is written verbatim onto the participant as `ticketType`, and
           // `isWellFormedDoorPass` checks the two agree — so this bound is also
@@ -715,10 +715,37 @@ service cloud.firestore {
           && d.price is int && d.price >= 0 && d.price <= 200000
           && d.sortOrder is int && d.sortOrder >= 0
           && d.isActive is bool
-          // `evening` routes the terminal to the anonymous numbered flow instead
-          // of asking for a name. It is a behaviour, not a label, which is why
-          // it is a field the rules know about rather than a name match.
-          && d.kind in ['pass', 'evening'];
+          // `evening` routes the terminal to the numbered flow — a name and a
+          // night — instead of the full buyer form. It is a behaviour, not a
+          // label, which is why it is a field the rules know about rather than
+          // a name match.
+          && d.kind in ['pass', 'evening']
+          && pricesPerNightAreSane(d);
+      }
+
+      // Friday, Saturday and Sunday can cost different amounts, so an evening
+      // ticket carries a price per night as well as the flat one.
+      //
+      // Optional, and a night missing from the map falls back to `price` — which
+      // is what every existing document does, so the three nights start at
+      // whatever the single price already was rather than at zero. A pass that
+      // is not sold by the night may carry one too; it would simply never be
+      // read, and refusing it here would be a rule about tidiness rather than
+      // about money.
+      function pricesPerNightAreSane(d) {
+        return !('prices' in d)
+          || (d.prices is map
+                && d.prices.keys().hasOnly(['friday', 'saturday', 'sunday'])
+                && nightIsSane(d.prices, 'friday')
+                && nightIsSane(d.prices, 'saturday')
+                && nightIsSane(d.prices, 'sunday'));
+      }
+
+      // Absent is fine — that is the fallback. Present means whole cents inside
+      // the same typo bound the flat price has.
+      function nightIsSane(prices, night) {
+        return !(night in prices)
+          || (prices[night] is int && prices[night] >= 0 && prices[night] <= 200000);
       }
     }
 

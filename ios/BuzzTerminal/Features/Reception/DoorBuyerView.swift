@@ -37,7 +37,7 @@ struct DoorBuyerView: View {
                         .buttonStyle(.sbGhost)
                 }
 
-                Text("\(pass?.collectLabel ?? "—") · the bracelet comes last")
+                Text("\(pass?.collectLabel() ?? "—") · the bracelet comes last")
                     .font(.sbBody(11.5))
                     .foregroundStyle(.sbInk(0.55))
                     .padding(.top, 2)
@@ -127,7 +127,7 @@ struct DoorBuyerView: View {
             // Onward to the same confirmation screen a check-in gets, where the
             // scan happens. Until every field is filled the button names what is
             // missing instead.
-            Button(blocker ?? "Continue · \(pass.priceLabel)") {
+            Button(blocker ?? "Continue · \(pass.priceLabel())") {
                 model.previewDoorSale()
             }
             .buttonStyle(.sbBlock(.primary, minHeight: 50, fontSize: 15))

@@ -361,7 +361,11 @@ doorPasses/full-pass-gold
   sortOrder: 4
   isActive:  true
   kind:      "pass" | "evening"
+  prices:    { friday: 4500, saturday: 5000, sunday: 4000 }   // evening only
 ```
+
+`prices` is optional and partial: a night with no entry is sold at `price`. Only
+an evening ticket is read by the night; see `docs/door-sales.md`.
 
 ## `bracelets/{chipUid}`
 

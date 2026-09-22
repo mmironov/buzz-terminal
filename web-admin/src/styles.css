@@ -643,3 +643,16 @@ select {
   color: var(--accent-700);
   font-size: 13px;
 }
+
+/* Three price boxes in one cell, for an evening ticket's per-night prices.
+   Tighter than a normal stack because the cell is 120px wide and the labels are
+   doing the work a column header would do elsewhere. */
+.stack--tight > * + * { margin-top: 6px; }
+
+.night {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+}

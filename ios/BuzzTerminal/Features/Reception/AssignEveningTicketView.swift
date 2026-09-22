@@ -25,7 +25,7 @@ struct AssignEveningTicketView: View {
                     .buttonStyle(.sbGhost)
             }
 
-            Text("\(model.selectedPass?.collectLabel ?? "—") · the bracelet comes last")
+            Text("\(model.selectedPass?.collectLabel(on: model.eveningSelection) ?? "—") · the bracelet comes last")
                 .font(.sbBody(11.5))
                 .foregroundStyle(.sbInk(0.55))
                 .padding(.top, 2)
@@ -49,8 +49,17 @@ struct AssignEveningTicketView: View {
                     Button {
                         model.eveningSelection = evening
                     } label: {
-                        Text(evening.label)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: SBSpace.x3) {
+                            Text(evening.label)
+                            Spacer(minLength: 0)
+                            // The price lives here rather than on the list of
+                            // passes: Friday, Saturday and Sunday can cost
+                            // different amounts, and this is the screen where
+                            // the desk picks one and says the number out loud.
+                            Text(model.selectedPass?.priceLabel(on: evening) ?? "—")
+                                .font(.sbHeading(15, weight: .extrabold))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(EveningChoiceStyle(isSelected: model.eveningSelection == evening))
                 }

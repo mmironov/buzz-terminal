@@ -429,7 +429,8 @@ final class AppModel {
             let who = pass.kind == .evening
                 ? "\(doorSale.trimmedName) an evening ticket for \(eveningSelection.label)"
                 : "a \(pass.name) for \(doorSale.trimmedName)"
-            let price = pass.price.isPositive ? " · take \(pass.price)" : ""
+            let amount = pass.price(on: pass.kind == .evening ? eveningSelection : nil)
+            let price = amount.isPositive ? " · take \(amount)" : ""
             return "Hold a fresh bracelet to the top of the phone to sell \(who)\(price)."
         case .identify, .payment:
             return nil

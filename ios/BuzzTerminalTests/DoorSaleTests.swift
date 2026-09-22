@@ -170,11 +170,57 @@ struct DoorSaleTests {
 
     @Test("An unpriced pass says so rather than reading 0.00 €")
     func unpricedReadsAsAWarning() {
-        #expect(evening.priceLabel == "No price set")
-        #expect(fullPass.priceLabel == "205.00 €")
+        #expect(evening.priceLabel() == "No price set")
+        #expect(fullPass.priceLabel() == "205.00 €")
         // The screens above the scan read as a sentence, which "No price set to
         // collect" is not.
-        #expect(fullPass.collectLabel == "205.00 € to collect")
-        #expect(evening.collectLabel == "No price set in the admin panel")
+        #expect(fullPass.collectLabel() == "205.00 € to collect")
+        #expect(evening.collectLabel() == "No price set in the admin panel")
+    }
+
+    // MARK: A price per night
+
+    @Test("THE CHANGE: each evening can cost a different amount")
+    func nightsCanDiffer() {
+        let nights = DoorPass(
+            id: "evening-ticket", name: TicketType.eveningTicket, price: Money(euros: 45),
+            prices: [.friday: Money(euros: 45), .saturday: Money(euros: 50), .sunday: Money(euros: 40)],
+            kind: .evening
+        )
+        #expect(nights.price(on: .friday) == Money(euros: 45))
+        #expect(nights.price(on: .saturday) == Money(euros: 50))
+        #expect(nights.price(on: .sunday) == Money(euros: 40))
+        #expect(nights.priceLabel(on: .saturday) == "50.00 €")
+        #expect(nights.collectLabel(on: .sunday) == "40.00 € to collect")
+        #expect(nights.nightsDiffer)
+    }
+
+    @Test("A night with no price of its own falls back to the flat one")
+    func fallsBack() {
+        // So a festival that charges the same on Friday and Saturday writes one
+        // entry rather than three, and every document that predates per-night
+        // prices keeps quoting what it always did.
+        let sundayOnly = DoorPass(
+            id: "evening-ticket", name: TicketType.eveningTicket, price: Money(euros: 45),
+            prices: [.sunday: Money(euros: 40)], kind: .evening
+        )
+        #expect(sundayOnly.price(on: .friday) == Money(euros: 45))
+        #expect(sundayOnly.price(on: .saturday) == Money(euros: 45))
+        #expect(sundayOnly.price(on: .sunday) == Money(euros: 40))
+
+        let flat = DoorPass(
+            id: "evening-ticket", name: TicketType.eveningTicket,
+            price: Money(euros: 45), kind: .evening
+        )
+        #expect(flat.price(on: .friday) == flat.price)
+        #expect(flat.nightsDiffer == false)
+    }
+
+    @Test("An ordinary pass ignores the night entirely")
+    func aFullPassHasOnePrice() {
+        // Asked for by the shared call site rather than by anything real: the
+        // buyer form passes no night, and a pass sold for a weekend should not
+        // start quoting a Sunday rate if somebody ever passes one.
+        #expect(fullPass.price(on: .sunday) == Money(euros: 205))
     }
 }

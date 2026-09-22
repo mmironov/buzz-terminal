@@ -78,7 +78,30 @@ doorPasses/full-pass-gold
   sortOrder: 4
   isActive:  true
   kind:      "pass" | "evening"
+
+doorPasses/evening-ticket
+  price:     4500                // the fallback for a night with no price
+  prices:    { friday: 4500, saturday: 5000, sunday: 4000 }
+  kind:      "evening"
 ```
+
+### An evening ticket is priced per night
+
+Friday, Saturday and Sunday can cost different amounts, so the evening row
+carries a `prices` map as well as the flat `price`. A night missing from the map
+falls back to `price`, which means a festival charging the same on two nights
+writes one entry rather than three — and every document written before this
+existed keeps quoting exactly what it always did.
+
+**The number lives beside the nights, not on the list of passes.** On the picker
+the evening row shows "Priced per night" and no figure at all: it could only be
+one of three there, and a desk reading it out as if it were *the* price is the
+mistake that costs somebody five euros. The evening screen lists all three, and
+the header follows whichever night is selected.
+
+The panel's evening row has three price boxes instead of one, seeded from the
+flat price so an organiser opening it the first time sees what is already being
+charged rather than three blanks.
 
 The festival's prices seed with `npm run seed-passes -- --apply`, and are edited
 in the panel from then on. The evening ticket is seeded **unpriced**, because

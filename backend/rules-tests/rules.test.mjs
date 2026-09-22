@@ -1299,6 +1299,35 @@ describe('the door catalogue belongs to the admin panel', () => {
     await assertFails(setDoc(passRef(admin()), pass({ price: 2000000 })));
   });
 
+  it('takes a price per night, for the evenings that differ', async () => {
+    await assertSucceeds(
+      setDoc(passRef(admin()), pass({
+        kind: 'evening',
+        prices: { friday: 4500, saturday: 5000, sunday: 4000 },
+      }))
+    );
+    // A night left out falls back to the flat price, so a festival that charges
+    // the same on Friday and Saturday writes one entry, not three.
+    await assertSucceeds(
+      setDoc(passRef(admin()), pass({ kind: 'evening', prices: { sunday: 4000 } }))
+    );
+    await assertSucceeds(setDoc(passRef(admin()), pass({ kind: 'evening', prices: {} })));
+  });
+
+  it('refuses a night that is not one of the three, or a slipped decimal', async () => {
+    await assertFails(setDoc(passRef(admin()), pass({ prices: { monday: 4500 } })));
+    await assertFails(setDoc(passRef(admin()), pass({ prices: { friday: 45.5 } })));
+    await assertFails(setDoc(passRef(admin()), pass({ prices: { friday: -100 } })));
+    await assertFails(setDoc(passRef(admin()), pass({ prices: { friday: 2000000 } })));
+    await assertFails(setDoc(passRef(admin()), pass({ prices: 4500 })));
+  });
+
+  it('still lets no terminal touch the per-night prices', async () => {
+    await assertFails(
+      setDoc(passRef(reception()), pass({ kind: 'evening', prices: { friday: 1 } }))
+    );
+  });
+
   it('refuses a kind the terminals would not know how to sell', async () => {
     await assertFails(setDoc(passRef(admin()), pass({ kind: 'weekend' })));
     await assertSucceeds(setDoc(passRef(admin()), pass({ kind: 'evening' })));
