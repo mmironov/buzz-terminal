@@ -240,6 +240,29 @@ final class AppModel {
 
     // MARK: - Auth
 
+    /// True until the app has looked for an existing session, so the sign-in
+    /// screen does not flash in front of somebody who is already signed in.
+    var isRestoringSession = true
+
+    /// Pick up where this device left off, if it was signed in.
+    ///
+    /// Called once at launch. Signing in lasts until somebody signs out: the
+    /// people carrying these phones mostly do not know the account password, and
+    /// a terminal that logged itself out overnight would be a locked till at
+    /// nine in the morning.
+    func restoreSession() async {
+        defer { isRestoringSession = false }
+        guard let role = await repository.restoreSession() else { return }
+
+        self.role = role
+        screen = role.homeScreen
+        // Exactly what `signIn` does after it succeeds, and in the same order —
+        // the listener is refused while unauthenticated, so it cannot start any
+        // earlier than this.
+        await repository.startMonitoringConnectivity()
+        await loadCatalogue()
+    }
+
     func signIn() async {
         isWorking = true
         defer { isWorking = false }
@@ -258,7 +281,19 @@ final class AppModel {
         }
     }
 
+    /// Set while the sign-out button is waiting to be confirmed.
+    ///
+    /// Two taps rather than one. A mis-tap on a busy bar terminal would put a
+    /// password prompt in front of somebody who does not have the password —
+    /// and now that a session survives everything else, an accidental tap is the
+    /// only way left to lose one.
+    var isConfirmingSignOut = false
+
+    func askToSignOut() { isConfirmingSignOut = true }
+    func keepSignedIn() { isConfirmingSignOut = false }
+
     func signOut() async {
+        isConfirmingSignOut = false
         await repository.signOut()
         role = nil
         screen = .signIn

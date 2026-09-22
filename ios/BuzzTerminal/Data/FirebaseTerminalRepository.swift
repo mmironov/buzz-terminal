@@ -40,6 +40,9 @@ actor FirebaseTerminalRepository: TerminalRepository {
     /// Which physical device took the cash. Recorded on every ledger entry so a
     /// till can be reconciled at the end of the night.
     private let terminalId: String
+    /// Which role this device last signed in as, per account. Only ever used to
+    /// decide what to draw when the token cannot be read — see `restoreSession`.
+    private let sessionCache: SessionCache
 
     /// The next evening-ticket number to try, per evening.
     ///
@@ -56,11 +59,13 @@ actor FirebaseTerminalRepository: TerminalRepository {
         db: Firestore = .firestore(),
         auth: Auth = .auth(),
         terminalId: String = TerminalIdentity.current,
+        sessionCache: SessionCache = SessionCache(),
         sync: SyncCenter
     ) {
         self.db = db
         self.auth = auth
         self.terminalId = terminalId
+        self.sessionCache = sessionCache
         self.sync = sync
     }
 
@@ -146,7 +151,55 @@ actor FirebaseTerminalRepository: TerminalRepository {
             throw TerminalError.noRoleAssigned
         }
         signedInRole = role
+        sessionCache.remember(role, for: result.user.uid)
         return role
+    }
+
+    /// Pick up the session Firebase already has in the keychain.
+    ///
+    /// Signing in once should last the festival. The token itself is refreshed by
+    /// the SDK; all this does is read the role back off it and say who is at the
+    /// terminal.
+    ///
+    /// **The offline case is the whole reason this is not two lines.** An ID
+    /// token lives an hour, and refreshing one needs the network. A terminal
+    /// launched in a venue whose wifi is down, more than an hour after it last
+    /// talked to Google, cannot read its own claim — and dropping it to a sign-in
+    /// screen would be worse than useless, because signing in needs the network
+    /// too. So a failed read falls back to the role this device last recorded for
+    /// that account. That is a UI decision and never an authorisation one: every
+    /// write still carries the real token, and `firestore.rules` still decides.
+    func restoreSession() async -> StaffRole? {
+        guard let user = auth.currentUser else { return nil }
+
+        do {
+            // Not forced: the cached token is fine and is readable offline until
+            // it expires. Forcing a refresh here would turn every cold launch
+            // into a network round trip before the first screen.
+            let token = try await user.getIDTokenResult()
+            guard let raw = token.claims["role"] as? String,
+                  let role = StaffRole(claim: raw)
+            else {
+                // The claim was taken away, or never granted. Sign out rather
+                // than leave a terminal signed in as nothing — this is the one
+                // case where the session should not survive.
+                Self.log.error("restored session has no usable role claim; signing out")
+                sessionCache.forget(uid: user.uid)
+                try? auth.signOut()
+                return nil
+            }
+            signedInRole = role
+            sessionCache.remember(role, for: user.uid)
+            return role
+        } catch {
+            guard let remembered = sessionCache.role(for: user.uid) else {
+                Self.log.error("could not read the role claim and nothing was remembered: \(error.localizedDescription, privacy: .public)")
+                return nil
+            }
+            Self.log.notice("restored \(remembered.rawValue, privacy: .public) from the last sign-in; the token could not be refreshed")
+            signedInRole = remembered
+            return remembered
+        }
     }
 
     /// The role this terminal signed in with.
@@ -160,6 +213,12 @@ actor FirebaseTerminalRepository: TerminalRepository {
     func signOut() async {
         connectivity?.remove()
         connectivity = nil
+        // Forgotten before the sign-out, while there is still a uid to key on.
+        // Otherwise "sign out" would be undone by the next offline launch.
+        if let uid = auth.currentUser?.uid {
+            sessionCache.forget(uid: uid)
+        }
+        signedInRole = nil
         try? auth.signOut()
     }
 

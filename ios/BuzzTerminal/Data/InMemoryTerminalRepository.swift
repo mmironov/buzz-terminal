@@ -58,6 +58,11 @@ actor InMemoryTerminalRepository: TerminalRepository {
         await simulateNetwork()
     }
 
+    /// The fixtures keep no session. A sign-in here is two taps and a password
+    /// nobody checks, so restoring one would only hide the screen this path
+    /// exists to exercise.
+    func restoreSession() async -> StaffRole? { nil }
+
     // MARK: Connectivity
 
     /// Nothing to monitor and nothing to disconnect: the fixtures are in this

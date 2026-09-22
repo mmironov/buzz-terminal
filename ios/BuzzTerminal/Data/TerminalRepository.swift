@@ -23,6 +23,19 @@ protocol TerminalRepository: Sendable {
     func signIn(email: String, password: String) async throws -> StaffRole
     func signOut() async
 
+    /// The role this device is already signed in as, or `nil` if nobody is.
+    ///
+    /// Firebase keeps the session in the keychain, so a terminal that signed in
+    /// on Thursday is still signed in on Saturday and through every force-quit in
+    /// between. Staff sign out when they mean to and not because the app was
+    /// relaunched — at a festival, most people carrying a terminal do not know
+    /// the account password, and the person who does is not at the desk.
+    ///
+    /// Never throws. A session that cannot be restored is the same outcome as no
+    /// session — the sign-in screen — and there is nobody to read an alert at
+    /// launch anyway.
+    func restoreSession() async -> StaffRole?
+
     // MARK: Connectivity
     /// Begin reporting whether the backend is reachable.
     func startMonitoringConnectivity() async

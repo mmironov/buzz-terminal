@@ -108,6 +108,23 @@ Drop `-sbEmulator` and you are on the real `swing-buzz` project — which is the
 default, so it is what you get by typing nothing. Those writes are real and the
 ledger is append-only by design, so `npm run reset` is how you undo a test session.
 
+### Staying signed in
+
+A terminal signs in once and stays signed in — through force-quits, a flat
+battery and a night in a drawer — until somebody taps **Sign out** and confirms
+it. That is deliberate: most of the people carrying these phones do not know the
+account password, and the person who does is not standing at the desk at nine in
+the morning.
+
+Firebase keeps the session in the keychain; the app reads the role back off the
+token at launch. **If the token cannot be refreshed** — a cold launch in a venue
+whose wifi is down, more than an hour since the phone last reached Google — it
+falls back to the role that device last recorded, rather than dropping to a
+sign-in screen that cannot authenticate offline either. That fallback decides
+which screens to draw and nothing else: every write still carries the real token,
+and `firestore.rules` still decides what it may do. Signing out forgets it, so
+signing out stays signed out even offline.
+
 ### Onto staff phones
 
 TestFlight, with a public link — no App Store listing, no UDIDs. Full runbook in
@@ -287,6 +304,23 @@ Studio preview now that sign-in owns the launch screen — and carries a weight
 check, because the failure it guards against is invisible: Archivo's variable
 default is `wght` 600, so a family that loads but never applies its variation
 settings renders everything at semibold and reads as a design choice.
+
+### Staying signed in
+
+A terminal signs in once and stays signed in — through force-quits, a flat
+battery and a night in a drawer — until somebody taps **Sign out** and confirms
+it. That is deliberate: most of the people carrying these phones do not know the
+account password, and the person who does is not standing at the desk at nine in
+the morning.
+
+Firebase keeps the session in the keychain; the app reads the role back off the
+token at launch. **If the token cannot be refreshed** — a cold launch in a venue
+whose wifi is down, more than an hour since the phone last reached Google — it
+falls back to the role that device last recorded, rather than dropping to a
+sign-in screen that cannot authenticate offline either. That fallback decides
+which screens to draw and nothing else: every write still carries the real token,
+and `firestore.rules` still decides what it may do. Signing out forgets it, so
+signing out stays signed out even offline.
 
 ### Onto staff phones
 

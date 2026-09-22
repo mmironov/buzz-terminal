@@ -8,11 +8,19 @@ struct RootView: View {
         ZStack {
             Color.sbBackground.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                if model.screen != .signIn {
-                    StatusHeaderView()
+            if model.isRestoringSession {
+                // A held frame rather than the sign-in screen: this device may
+                // already be signed in, and showing a login form for a tenth of
+                // a second before replacing it reads as a glitch on a terminal
+                // somebody launches twenty times a day.
+                RestoringSessionView()
+            } else {
+                VStack(spacing: 0) {
+                    if model.screen != .signIn {
+                        StatusHeaderView()
+                    }
+                    currentScreen
                 }
-                currentScreen
             }
 
             if let scan = model.scan {
@@ -25,18 +33,24 @@ struct RootView: View {
         }
         // Modernist is a light system. See the note in `Tokens.swift`.
         .preferredColorScheme(.light)
-        #if DEBUG
+        // One task, not two: `-sbSignIn` and a restored session both decide who
+        // is at the terminal, and two `.task` modifiers would race to say.
         .task {
-            guard model.autoSignInRequested else { return }
-            model.autoSignInRequested = false
-            await model.signIn()
-            switch model.screenAfterSignIn {
-            case "assign": model.bracelet = SampleData.braceletA; model.screen = .assign
-            case "bar": model.screen = .barMenu
-            default: break
+            #if DEBUG
+            if model.autoSignInRequested {
+                model.autoSignInRequested = false
+                model.isRestoringSession = false
+                await model.signIn()
+                switch model.screenAfterSignIn {
+                case "assign": model.bracelet = SampleData.braceletA; model.screen = .assign
+                case "bar": model.screen = .barMenu
+                default: break
+                }
+                return
             }
+            #endif
+            await model.restoreSession()
         }
-        #endif
         .animation(.easeOut(duration: 0.25), value: model.screen)
         .animation(.easeOut(duration: 0.25), value: model.isScanning)
         .alert(

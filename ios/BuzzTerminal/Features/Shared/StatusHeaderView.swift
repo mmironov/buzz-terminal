@@ -19,10 +19,23 @@ struct StatusHeaderView: View {
 
                 networkToggle
 
-                Button("Sign out") {
-                    Task { await model.signOut() }
+                // Two taps. A session now survives a force-quit, a flat battery
+                // and a night in a drawer, so this button is the only way left
+                // to lose one — and whoever is holding the phone probably does
+                // not know the password to get back in.
+                if model.isConfirmingSignOut {
+                    HStack(spacing: SBSpace.x2) {
+                        Button("Stay") { model.keepSignedIn() }
+                            .buttonStyle(SBButtonStyle(kind: .secondary, minHeight: 32, fontSize: 12))
+                        Button("Sign out") {
+                            Task { await model.signOut() }
+                        }
+                        .buttonStyle(SBButtonStyle(kind: .primary, minHeight: 32, fontSize: 12))
+                    }
+                } else {
+                    Button("Sign out") { model.askToSignOut() }
+                        .buttonStyle(.sbGhost)
                 }
-                .buttonStyle(.sbGhost)
             }
             .padding(.horizontal, 18)
             .padding(.top, 6)
