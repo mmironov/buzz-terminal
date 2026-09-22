@@ -119,8 +119,19 @@ struct DoorSaleDraft: Equatable, Sendable {
     var level: String = ""
     var email: String = ""
 
-    /// The four levels, matching `LEVELS` in the panel and the importer.
-    static let levels = ["Intermediate", "Advanced", "Pro", "Other"]
+    /// The levels a class actually runs at — three, not the Sheet's four.
+    ///
+    /// `Other` is the registration form's way of saying "not applicable": it is
+    /// what somebody buying a Party Pass answers, and a Party Pass has no level.
+    /// Nobody standing at the desk buying a Full Pass is in a class called
+    /// Other, and there is no Other wristband to hand them — the panel colours
+    /// Full Pass INT, ADV and PRO. Offering it here only invited the fourth box
+    /// to be tapped when somebody did not want to ask.
+    ///
+    /// It remains a valid value on a participant, because the Sheet produces it
+    /// and the importer keeps what it is given. This is about what the desk can
+    /// choose, not about what exists.
+    static let levels = ["Intermediate", "Advanced", "Pro"]
 
     /// The longest name `firestore.rules` accepts.
     static let maxName = 80

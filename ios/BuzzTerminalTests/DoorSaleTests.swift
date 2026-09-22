@@ -63,6 +63,16 @@ struct DoorSaleTests {
         #expect(draft(level: "").isComplete(for: partyPass))
     }
 
+    @Test("THE CHANGE: the desk is offered three levels, and Other is not one")
+    func levelsOffered() {
+        // `Other` is the registration form's way of saying "not applicable" —
+        // what a Party Pass holder answers — and there is no Other wristband to
+        // hand anybody: the panel colours Full Pass INT, ADV and PRO. It stays a
+        // valid value on a participant, because the Sheet still produces it.
+        #expect(DoorSaleDraft.levels == ["Intermediate", "Advanced", "Pro"])
+        #expect(DoorSaleDraft.levels.contains("Other") == false)
+    }
+
     @Test("A level typed under one pass does not follow the buyer to another")
     func levelIsDroppedWhereItDoesNotApply() {
         // The screen keeps what was typed when somebody goes back and picks a

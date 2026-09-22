@@ -71,9 +71,9 @@ struct DoorBuyerView: View {
                         .padding(.top, SBSpace.x4)
                         .padding(.bottom, SBSpace.x2)
 
-                    // Two rows of two rather than four across: at 16pt these
-                    // labels do not fit a quarter of a phone, and a level chosen
-                    // by mis-tapping a cramped row is worse than a taller screen.
+                    // Two to a row rather than all across: at 16pt these labels
+                    // do not fit a third of a phone, and a level chosen by
+                    // mis-tapping a cramped row is worse than a taller screen.
                     let levels = DoorSaleDraft.levels
                     VStack(spacing: SBSpace.x2) {
                         ForEach(Array(stride(from: 0, to: levels.count, by: 2)), id: \.self) { start in
@@ -84,6 +84,12 @@ struct DoorBuyerView: View {
                                         isSelected: model.doorSale.level == level,
                                         select: { model.doorSale.level = level }
                                     )
+                                }
+                                // Three levels leave the last one alone on its
+                                // row, and a box that fills the width reads as a
+                                // different, bigger control than the two above.
+                                if levels.count - start == 1 {
+                                    Color.clear.frame(maxWidth: .infinity, minHeight: 46)
                                 }
                             }
                         }
