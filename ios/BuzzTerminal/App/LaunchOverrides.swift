@@ -128,7 +128,9 @@ extension AppModel {
             role = .reception
             doorPasses = SampleData.doorPasses
             selectedPass = SampleData.doorPasses.first { $0.id == "full-pass-gold" }
-            doorSale = DoorSaleDraft(name: "Jana Novak", danceRole: .follower, level: "Advanced")
+            // No level passed: the draft starts on the only one still on sale,
+            // which is what the desk sees on a real sale.
+            doorSale = DoorSaleDraft(name: "Jana Novak", danceRole: .follower)
             screen = .doorBuyer
 
         case "evening-participant":

@@ -42,10 +42,34 @@ There are two shapes, and the catalogue decides which one a sale takes.
 |---|---|---|
 | Who | A named guest | A named buyer |
 | Asked for | Name and which night | Name, dance role, level, email |
+| Levels offered | — | Intermediate only; Advanced and Pro are full |
 | Then | Confirm, then scan the wristband | Confirm, then scan the wristband |
 | Document id | `ev-friday-14` | `door-7` |
 | `source` | `evening` | `door` |
 | Lives for | That evening | The whole festival |
+
+### What the desk may choose for a level
+
+Three boxes, not the Sheet's four: `Other` is the registration form's way of
+saying "not applicable" — what somebody buying a Party Pass answers — and nobody
+standing at the desk buying a Full Pass is in a class called Other. There is no
+Other wristband to hand them either, since the panel colours Full Pass INT, ADV
+and PRO.
+
+Of the three, **Advanced and Pro are full**, so the sale starts on Intermediate
+with the box already checked and the other two greyed out and marked *Sold out*.
+Shown rather than removed: a level that vanished would leave reception explaining
+an empty space to somebody asking for Advanced, while one that is visibly full
+answers them before they ask. `DoorSaleDraft.soldOutLevels` is the one place that
+changes if places open up again, and `blocker(for:)` refuses a sale carrying a
+full class even though the screen cannot produce one — recording it would be a
+person turning up to a class with no place for them.
+
+`firestore.rules` still accepts all four values. Tightening it would refuse a
+sale from a phone still running an older build, and the Sheet keeps producing
+`Other` for the pass types where it means "not applicable" — eleven Party Pass
+holders carry it. What the desk may choose is not the same question as what may
+exist.
 
 ### The evening ticket used to be anonymous
 
@@ -144,7 +168,7 @@ participants/door-7
   name:        "Jana Novak"
   nameLower, searchTokens            // so the desk can find them again
   danceRole:   "leader" | "follower"
-  level:       "Advanced" | ""       // Full Pass and Full Pass Gold only
+  level:       "Intermediate" | ""   // Full Pass and Full Pass Gold only
   country:     ""
   braceletId, checkedInAt, balance: 0, isBlocked: false, createdBy
 

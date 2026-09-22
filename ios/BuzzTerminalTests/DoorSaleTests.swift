@@ -27,7 +27,7 @@ struct DoorSaleTests {
     private func draft(
         name: String = "Jana Novak",
         role: DanceRole? = .follower,
-        level: String = "Advanced",
+        level: String = "Intermediate",
         email: String = ""
     ) -> DoorSaleDraft {
         DoorSaleDraft(name: name, danceRole: role, level: level, email: email)
@@ -71,6 +71,37 @@ struct DoorSaleTests {
         // valid value on a participant, because the Sheet still produces it.
         #expect(DoorSaleDraft.levels == ["Intermediate", "Advanced", "Pro"])
         #expect(DoorSaleDraft.levels.contains("Other") == false)
+    }
+
+    @Test("THE CHANGE: a sale starts on Intermediate, the one level still open")
+    func startsOnTheOpenLevel() {
+        #expect(DoorSaleDraft().level == "Intermediate")
+        #expect(DoorSaleDraft.isSoldOut("Intermediate") == false)
+        // A name and a role away from being sellable, with nothing to tap for
+        // the level — which is the point of starting it there.
+        #expect(DoorSaleDraft(name: "Jana Novak", danceRole: .leader).isComplete(for: fullPass))
+    }
+
+    @Test("Advanced and Pro are sold out, and a sale carrying one is refused")
+    func soldOutLevels() {
+        #expect(DoorSaleDraft.isSoldOut("Advanced"))
+        #expect(DoorSaleDraft.isSoldOut("Pro"))
+        // The screen does not let them be tapped; this is the same rule where a
+        // sale is decided, because recording one is a person turning up to a
+        // class with no place for them.
+        #expect(draft(level: "Advanced").blocker(for: fullPass) == "Advanced is sold out")
+        #expect(draft(level: "Pro").blocker(for: fullPass) == "Pro is sold out")
+        // Still listed, because a level that vanished would leave reception
+        // explaining a gap to somebody asking for Advanced.
+        #expect(DoorSaleDraft.levels.contains("Advanced"))
+    }
+
+    @Test("A full class stops nothing on a pass that has no levels")
+    func soldOutDoesNotReachOtherPasses() {
+        // The draft keeps whatever was typed when the operator changes pass, so
+        // a Party Pass must not inherit a blocker about a class it has none of.
+        #expect(draft(level: "Pro").isComplete(for: partyPass))
+        #expect(DoorSaleDraft(name: "Ana").isComplete(for: evening))
     }
 
     @Test("A level typed under one pass does not follow the buyer to another")
@@ -156,7 +187,7 @@ struct DoorSaleTests {
         )
         #expect(buyer.name == "Jana Novak")
         #expect(buyer.ticketType == TicketType.fullPass)
-        #expect(buyer.level == "Advanced")
+        #expect(buyer.level == "Intermediate")
         #expect(buyer.danceRole == "follower")
         #expect(buyer.country == "")
         #expect(buyer.balance == .zero)

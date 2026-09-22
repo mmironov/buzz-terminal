@@ -116,7 +116,13 @@ enum DanceRole: String, CaseIterable, Equatable, Sendable, Identifiable {
 struct DoorSaleDraft: Equatable, Sendable {
     var name: String = ""
     var danceRole: DanceRole?
-    var level: String = ""
+    /// Starts on the only level still on sale, rather than on nothing.
+    ///
+    /// With Advanced and Pro full, there is one answer left, and asking the desk
+    /// to tap it before every sale is asking them to confirm a foregone
+    /// conclusion. The box is still there, checked, so what is being recorded is
+    /// on screen rather than implied.
+    var level: String = DoorSaleDraft.defaultLevel
     var email: String = ""
 
     /// The levels a class actually runs at — three, not the Sheet's four.
@@ -132,6 +138,24 @@ struct DoorSaleDraft: Equatable, Sendable {
     /// and the importer keeps what it is given. This is about what the desk can
     /// choose, not about what exists.
     static let levels = ["Intermediate", "Advanced", "Pro"]
+
+    /// The classes with no places left.
+    ///
+    /// Shown on the screen rather than dropped from it, greyed and marked sold
+    /// out. A level that simply vanished would leave reception explaining an
+    /// empty space to somebody asking for Advanced; a level that is visibly
+    /// full answers them before they ask.
+    ///
+    /// A fact about this festival's ticket sales, so it lives here beside the
+    /// levels themselves and changes in one place if places open up again.
+    static let soldOutLevels: Set<String> = ["Advanced", "Pro"]
+
+    /// What a sale starts on: the one level still open.
+    static let defaultLevel = "Intermediate"
+
+    static func isSoldOut(_ level: String) -> Bool {
+        soldOutLevels.contains(level)
+    }
 
     /// The longest name `firestore.rules` accepts.
     static let maxName = 80
@@ -173,6 +197,10 @@ struct DoorSaleDraft: Equatable, Sendable {
         guard pass.kind != .evening else { return nil }
         if danceRole == nil { return "Choose leader or follower" }
         if pass.asksForLevel && level.isEmpty { return "Choose a level" }
+        // Unreachable from the screen, which does not let a full class be
+        // tapped. Here because a sale that records one is a person turning up to
+        // a class with no place for them, and that should fail at the desk.
+        if pass.asksForLevel && Self.isSoldOut(level) { return "\(level) is sold out" }
         if !emailLooksLikeAddress { return "Check the email address" }
         return nil
     }

@@ -82,6 +82,12 @@ struct DoorBuyerView: View {
                                     ChoiceBox(
                                         title: level,
                                         isSelected: model.doorSale.level == level,
+                                        // Shown, not hidden: a full class that
+                                        // vanished would leave reception
+                                        // explaining a gap to somebody asking
+                                        // for Advanced.
+                                        note: DoorSaleDraft.isSoldOut(level) ? "Sold out" : nil,
+                                        isEnabled: !DoorSaleDraft.isSoldOut(level),
                                         select: { model.doorSale.level = level }
                                     )
                                 }
@@ -151,24 +157,35 @@ struct DoorBuyerView: View {
 private struct ChoiceBox: View {
     let title: String
     let isSelected: Bool
+    /// A word under the title saying why this one cannot be chosen.
+    var note: String? = nil
+    var isEnabled: Bool = true
     let select: () -> Void
 
     var body: some View {
         Button(action: select) {
             HStack(spacing: SBSpace.x2) {
                 Rectangle()
-                    .stroke(isSelected ? Color.sbAccent : Color.sbInk(0.45), lineWidth: SBRule.hairline)
+                    .stroke(marker, lineWidth: SBRule.hairline)
                     .frame(width: 16, height: 16)
                     .overlay {
                         if isSelected {
                             Rectangle().fill(Color.sbAccent).frame(width: 8, height: 8)
                         }
                     }
-                Text(title)
-                    .font(.sbHeading(14, weight: .extrabold))
-                    .foregroundStyle(.sbInk)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.sbHeading(14, weight: .extrabold))
+                        .foregroundStyle(.sbInk(isEnabled ? 1 : 0.4))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if let note {
+                        Text(note)
+                            .font(.sbBody(10.5))
+                            .foregroundStyle(.sbInk(0.4))
+                            .lineLimit(1)
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, SBSpace.x3)
@@ -183,8 +200,16 @@ private struct ChoiceBox: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityLabel(title)
+        .accessibilityLabel(note.map { "\(title), \($0)" } ?? title)
+    }
+
+    /// The marker fades with the label, so a full class does not read as an
+    /// empty checkbox somebody has not got round to ticking.
+    private var marker: Color {
+        if isSelected { return .sbAccent }
+        return .sbInk(isEnabled ? 0.45 : 0.2)
     }
 }
 
