@@ -106,6 +106,81 @@ struct BraceletColourTests {
         #expect(levelled.colour(for: guest("Jazz Performance Track", level: "Pro")) == nil)
     }
 
+    // MARK: Nights
+
+    private func eveningGuest(_ evening: Evening, ticketType: String = "Evening Ticket") -> Participant {
+        Participant(
+            id: ParticipantID("evening-7"), ticketRef: "EV-FRIDAY-7", name: "Nina Kowalski",
+            ticketType: ticketType, country: "", source: .evening, evening: evening
+        )
+    }
+
+    /// The three evening wristbands are three colours, and all three nights are
+    /// sold as one pass type — so the night is the only thing that can tell them
+    /// apart, and matching on the pass type would give all three the same band.
+    private let nights = BraceletColourScheme([
+        BraceletColour(id: "evening-friday", passType: "Evening Ticket", evening: "friday",
+                       hex: "#6B4E9B", name: "Purple"),
+        BraceletColour(id: "evening-saturday", passType: "Evening Ticket", evening: "saturday",
+                       hex: "#E08A1E", name: "Orange"),
+        BraceletColour(id: "full-pass", passType: "Full Pass", hex: "#1E6BB8", name: "Sky Blue"),
+    ])
+
+    @Test("THE ONE THAT MATTERS: each night gets its own colour, from one pass type")
+    func nightDecidesTheColour() {
+        #expect(nights.colour(for: eveningGuest(.friday))?.name == "Purple")
+        #expect(nights.colour(for: eveningGuest(.saturday))?.name == "Orange")
+    }
+
+    @Test("A night with no colour is nothing, not the pass type's")
+    func uncolouredNight() {
+        // Sunday has no colour here. It does not borrow Friday's, and there is
+        // no "Evening Ticket" colour to fall back to either.
+        #expect(nights.colour(for: eveningGuest(.sunday)) == nil)
+    }
+
+    /// A leftover from before the nights were split: one colour on the pass
+    /// type. A night with its own colour ignores it; a night without one takes
+    /// it, which is the ordinary fallback rather than a special case.
+    @Test("The night wins over a colour set on the pass type")
+    func nightBeatsPassType() {
+        let both = BraceletColourScheme([
+            BraceletColour(id: "evening-ticket", passType: "Evening Ticket",
+                           hex: "#111111", name: "Old"),
+            BraceletColour(id: "evening-friday", passType: "Evening Ticket", evening: "friday",
+                           hex: "#6B4E9B", name: "Purple"),
+        ])
+        #expect(both.colour(for: eveningGuest(.friday))?.name == "Purple")
+        #expect(both.colour(for: eveningGuest(.sunday))?.name == "Old")
+    }
+
+    @Test("A night's colour never reaches somebody who is not there for the night")
+    func nightDoesNotLeak() {
+        #expect(nights.colour(for: guest("Full Pass"))?.name == "Sky Blue")
+        // Not even when the pass type is the evening one and no night is set,
+        // which is what a Sheet row with that ticket type would look like.
+        #expect(nights.colour(for: guest("Evening Ticket")) == nil)
+    }
+
+    @Test("A night is matched however it is cased")
+    func nightIsCaseInsensitive() {
+        let scheme = BraceletColourScheme([
+            BraceletColour(id: "x", passType: "Evening Ticket", evening: " FRIDAY ",
+                           hex: "#6B4E9B", name: "Purple"),
+        ])
+        #expect(scheme.colour(for: eveningGuest(.friday))?.name == "Purple")
+    }
+
+    @Test("Nights count towards whether anything is set at all")
+    func nightsAreNotEmpty() {
+        let onlyNights = BraceletColourScheme([
+            BraceletColour(id: "evening-friday", passType: "Evening Ticket", evening: "friday",
+                           hex: "#6B4E9B", name: "Purple"),
+        ])
+        #expect(onlyNights.isEmpty == false)
+        #expect(BraceletColourScheme().isEmpty)
+    }
+
     // MARK: Contrast
 
     /// The bigger bar writes the colour's name on top of it, so this decides

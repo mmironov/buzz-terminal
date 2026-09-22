@@ -174,4 +174,6 @@ made too.
 | `src/Participants.tsx` | the roster, search, and the block control |
 | `src/History.tsx` | one bracelet's ledger, and whether it reconciles |
 | `src/Bar.tsx` | the drinks catalogue |
+| `src/Bracelets.tsx` | the ten wristband colours — see `docs/bracelet-colours.md` |
+| `src/Passes.tsx` | what reception may sell at the door, and for how much |
 | `scripts/seed-history.mjs` | emulator fixtures, written through the rules |

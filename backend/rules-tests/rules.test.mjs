@@ -1674,6 +1674,32 @@ describe('bracelet colours', () => {
     }
   });
 
+  it('accepts a night, for the three wristbands that differ by night', async () => {
+    // All three evenings carry the same `ticketType`, so the night is the only
+    // thing that tells a Friday wristband from a Sunday one.
+    for (const evening of ['friday', 'saturday', 'sunday']) {
+      await assertSucceeds(
+        setDoc(ref(admin(), `evening-${evening}`), colour({ passType: 'Evening Ticket', evening }))
+      );
+    }
+    await assertSucceeds(setDoc(ref(admin()), colour({ evening: '' })));
+  });
+
+  it('refuses a night that is not one of the three', async () => {
+    for (const bad of ['monday', 'Friday', 'fri', 'friday evening']) {
+      await assertFails(setDoc(ref(admin()), colour({ evening: bad })));
+    }
+  });
+
+  /// A level says which class somebody is in and a night says which door they
+  /// came through. One document claiming both matches nobody.
+  it('refuses a document claiming both a level and a night', async () => {
+    await assertFails(setDoc(ref(admin()), colour({ level: 'Pro', evening: 'friday' })));
+    // Either one alone, with the other empty, is the ordinary case.
+    await assertSucceeds(setDoc(ref(admin()), colour({ level: 'Pro', evening: '' })));
+    await assertSucceeds(setDoc(ref(admin()), colour({ level: '', evening: 'friday' })));
+  });
+
   it('lets an organiser recolour and remove a mapping', async () => {
     await seed();
     await assertSucceeds(updateDoc(ref(admin()), { colour: '#C8A64B' }));

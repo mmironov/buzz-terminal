@@ -143,9 +143,16 @@ enum SampleData {
                        hex: "#C6453C", name: "Red"),
         BraceletColour(id: "party-pass-plus", passType: TicketType.partyPassPlus,
                        hex: "#2E7D52", name: "Green"),
+        // The three nights, which are one pass type and three wristbands. Matched
+        // on the night alone, so the fixture is what proves a Saturday ticket
+        // does not come out the colour of a Friday one.
+        BraceletColour(id: "evening-friday", passType: TicketType.eveningTicket,
+                       evening: "friday", hex: "#6B4E9B", name: "Purple"),
+        BraceletColour(id: "evening-saturday", passType: TicketType.eveningTicket,
+                       evening: "saturday", hex: "#E08A1E", name: "Orange"),
         // No spoken name: the screen falls back to the hex rather than a blank.
-        BraceletColour(id: "evening-ticket", passType: TicketType.eveningTicket,
-                       hex: "#6B4E9B", name: ""),
+        BraceletColour(id: "evening-sunday", passType: TicketType.eveningTicket,
+                       evening: "sunday", hex: "#3F8FA6", name: ""),
     ]
 
     /// The door catalogue, at the festival's real prices.

@@ -107,11 +107,23 @@ braceletColours/full-pass-pro
   passType:  "Full Pass"
   level:     "Pro"              // an override for one class track
   colour:    "#1B1B1B"
+
+braceletColours/evening-friday
+  passType:  "Evening Ticket"
+  evening:   "friday"           // matched on the night, not the pass type
+  colour:    "#6B4E9B"
 ```
 
-A participant's `level` is looked up first; if it has no document, the pass
-type's level-less one applies. `level` is one of `Intermediate`, `Advanced`,
-`Pro`, `Other`, pinned by the rules.
+**The night first, then the level, then the pass type.** All three evenings are
+sold as one pass type, so `evening` is the only thing that tells a Friday
+wristband from a Sunday one, and a colour naming a night is matched on the night
+alone. Otherwise a participant's `level` is looked up, and if that has no
+document the pass type's level-less one applies.
+
+`level` is one of `Intermediate`, `Advanced`, `Pro`, `Other` and `evening` one of
+`friday`, `saturday`, `sunday`, both pinned by the rules. A document carrying
+both is refused: a level says which class somebody is in and a night says which
+door they came through, and one claiming both would match nobody.
 
 **The apps match on `passType`, never on the document id.** The id is a slug
 derived for readability, and two long pass types could slug to the same key;

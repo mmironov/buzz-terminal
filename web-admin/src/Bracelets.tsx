@@ -5,81 +5,54 @@ import { db } from './firebase';
 import {
   BRACELET_COLOUR_FIELDS,
   COLLECTIONS,
-  LEVELS,
+  EVENING_LABELS,
   MAX_COLOUR_NAME,
+  WRISTBANDS,
   parseHexColour,
-  slugify,
-  splitsByLevel,
   toBraceletColour,
   toParticipant,
+  wristbandFor,
   type BraceletColour,
+  type Wristband,
 } from './schema';
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Which colour wristband each pass type gets, and where it matters, each
-//  level within it.
+//  Which colour wristband each pile at reception is.
 //
-//  The pass types are derived from the roster rather than hard-coded. The
-//  Sheet's pass types are free text — "Full Pass - 205 € (Upgrade from Party)"
-//  is a real value — and the importer keeps anything it does not recognise
-//  verbatim. A fixed list here would silently leave those people with no
-//  colour, and nobody would find out until somebody stood at the desk holding
-//  the wrong wristband.
+//  **Ten rows, written down, in the order the organisers gave them** — see
+//  WRISTBANDS in schema.ts. Flat: no fallback row, no level nested under a pass
+//  type, nothing that appears or disappears with the roster.
 //
-//  Most pass types get one row, "Any level", and that is the whole mapping.
-//  Full Pass and Full Pass Gold get a row per level instead — see
-//  SPLITS_BY_LEVEL — because every holder of those two has a level and their
-//  classes split by it.
+//  It used to be derived from whatever pass types people held, and both halves
+//  of that were wrong for the job. A pass type nobody had bought yet had no row
+//  at all, so the Jazz Performance Track could not be given a colour before the
+//  first person bought one; and the two pass types that split by level also had
+//  an "any level" row above them, which read as a second, competing answer —
+//  somebody's way out of it was to set Full Pass to white and call it "No
+//  color".
 //
-//  **They are not offered an "Any level" row of their own.** They had one, and
-//  it read as a second, competing answer to a question the level rows had
-//  already answered — one organiser's way out of it was to set Full Pass to
-//  white and call it "No color". The row now appears for those two pass types
-//  only while it is still deciding somebody's wristband: while a level in use
-//  has no colour, or while a leftover document from before this rule is still
-//  sitting in the database. It says how many people that is, and when it is
-//  nobody the only thing offered is Clear.
+//  What derivation bought was that nothing could be stranded. That is kept, in
+//  two places rather than by building the table out of the roster: a colour
+//  matching none of the ten is listed underneath so it can be cleared, and
+//  people matching none of the ten are counted so a free-text pass type in the
+//  Sheet cannot quietly leave somebody with no colour.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** A sensible starting colour for a combination nobody has coloured yet. */
+/** A sensible starting colour for a wristband nobody has coloured yet. */
 const DEFAULT_COLOUR = '#1E6BB8';
 
-/** What an empty `level` means in a document, and on screen. */
-const ANY_LEVEL = '';
-
 interface Row {
-  passType: string;
-  /** `''` for the pass type's fallback row, otherwise one of LEVELS. */
-  level: string;
-  /**
-   * How many people this row's colour actually reaches.
-   *
-   * For a level row, everybody at that level. For an "Any level" row, everybody
-   * with the pass type whose own level has no colour — which on a pass type
-   * that splits by level is the number that says what clearing it would cost.
-   */
+  band: Wristband;
+  /** How many people would be handed this wristband. */
   holders: number;
   colour: BraceletColour | null;
-  /**
-   * Whether this row may be given a colour.
-   *
-   * False on one row only: the "Any level" row of a pass type that splits by
-   * level, where every holder is already covered by their level. The document
-   * is a leftover and the only useful thing to do with it is clear it.
-   */
-  editable: boolean;
-  /**
-   * How many people would be left with no colour at all if this row were
-   * cleared — which is the one thing worth knowing before clearing it. Zero
-   * when something else still covers them: the pass type's "Any level" colour
-   * under a level row, or the level colours under an "Any level" row.
-   */
-  uncoveredIfCleared: number;
 }
 
 export function Bracelets() {
   const [colours, setColours] = useState<BraceletColour[] | null>(null);
   const [counts, setCounts] = useState<Map<string, number> | null>(null);
+  /** The pass types and levels nobody's wristband covers, with their counts. */
+  const [strays, setStrays] = useState<Map<string, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -98,148 +71,230 @@ export function Bracelets() {
   }, []);
 
   useEffect(() => {
-    // The whole roster, only to count pass types and levels. The Participants
+    // The whole roster, only to count who gets which wristband. The Participants
     // tab already loads it; a few thousand documents is the strategy this panel
     // settles on everywhere else.
     return onSnapshot(
       collection(db, COLLECTIONS.participants),
       (snapshot) => {
         const tally = new Map<string, number>();
+        const unmatched = new Map<string, number>();
         for (const entry of snapshot.docs) {
           const person = toParticipant(entry);
-          if (!person || !person.ticketType) continue;
-          const bump = (key: string) => tally.set(key, (tally.get(key) ?? 0) + 1);
-          bump(cellKey(person.ticketType, ANY_LEVEL));
-          if (person.level) bump(cellKey(person.ticketType, person.level));
+          if (!person || (!person.ticketType && !person.evening)) continue;
+          const bump = (map: Map<string, number>, key: string) =>
+            map.set(key, (map.get(key) ?? 0) + 1);
+          // The same decision the apps make, in the same order, so these counts
+          // are what the phones will do rather than a second opinion about it.
+          const band = wristbandFor(person);
+          if (band) bump(tally, band.id);
+          else bump(unmatched, [person.ticketType, person.level].filter(Boolean).join(' · '));
         }
         setCounts(tally);
+        setStrays(unmatched);
       },
       (cause) => setError(cause.message)
     );
   }, []);
 
-  const { rows, uncovered } = useMemo((): { rows: Row[]; uncovered: number } => {
-    if (!colours || !counts) return { rows: [], uncovered: 0 };
-    const byCell = new Map(colours.map((c) => [cellKey(c.passType, c.level), c]));
+  const { rows, leftovers } = useMemo((): {
+    rows: Row[];
+    leftovers: BraceletColour[];
+  } => {
+    if (!colours || !counts) return { rows: [], leftovers: [] };
 
-    // Every pass type anybody holds, plus any that only a mapping mentions — so
-    // a colour set before the first import does not vanish from the table.
-    const passTypes = new Set<string>();
-    for (const key of counts.keys()) passTypes.add(splitKey(key).passType);
-    for (const entry of colours) passTypes.add(entry.passType);
-
-    const holders = (passType: string, level: string) =>
-      counts.get(cellKey(passType, level)) ?? 0;
-
-    let uncovered = 0;
-
-    const rows = [...passTypes]
-      .sort((a, b) => holders(b, ANY_LEVEL) - holders(a, ANY_LEVEL) || a.localeCompare(b))
-      .flatMap((passType): Row[] => {
-        const splits = splitsByLevel(passType);
-        const general = byCell.get(cellKey(passType, ANY_LEVEL)) ?? null;
-
-        // Levels are offered for Full Pass and Full Pass Gold only — the two
-        // whose classes split. A level already coloured is still listed
-        // whatever its pass type, so a mapping made before this rule existed
-        // can still be seen and cleared rather than being stranded.
-        const levels = LEVELS.filter(
-          (level) => byCell.has(cellKey(passType, level)) || (splits && holders(passType, level) > 0)
-        );
-
-        // Everybody the level colours do not reach: the levels with no colour of
-        // their own, and anyone whose level is blank, who no level row can cover.
-        // This is what the "Any level" row is for, and the number it is worth.
-        const withoutLevelColour =
-          holders(passType, ANY_LEVEL) -
-          LEVELS.filter((level) => byCell.has(cellKey(passType, level))).reduce(
-            (total, level) => total + holders(passType, level),
-            0
-          );
-        if (!general) uncovered += withoutLevelColour;
-
-        const levelRows = levels.map((level) => ({
-          passType,
-          level,
-          holders: holders(passType, level),
-          colour: byCell.get(cellKey(passType, level)) ?? null,
-          editable: true,
-          uncoveredIfCleared: general ? 0 : holders(passType, level),
-        }));
-
-        // A pass type that splits by level is shown its "Any level" row only
-        // while that row still does something: somebody uncovered, or a
-        // document left over from before it stopped being offered.
-        if (splits && withoutLevelColour === 0 && !general) return levelRows;
-
-        return [
-          {
-            passType,
-            level: ANY_LEVEL,
-            holders: withoutLevelColour,
-            colour: general,
-            editable: !splits || withoutLevelColour > 0,
-            uncoveredIfCleared: withoutLevelColour,
-          },
-          ...levelRows,
-        ];
+    // A colour is filed under the wristband it would colour, by its fields and
+    // never by its document id: the id is derived, and one that disagreed with
+    // its contents would land the colour on the wrong pile here while matching
+    // somebody else entirely on a phone.
+    const byBand = new Map<string, BraceletColour>();
+    const leftovers: BraceletColour[] = [];
+    for (const colour of colours) {
+      const band = wristbandFor({
+        ticketType: colour.passType,
+        level: colour.level,
+        evening: colour.evening,
       });
+      // `wristbandFor` answers with the *fallback* row for a pass type when the
+      // level does not match one, which is right for a person and wrong for a
+      // colour: a `Full Pass · Other` colour is not the Full Pass INT row.
+      const exact =
+        band &&
+        (colour.evening
+          ? band.evening === colour.evening.trim().toLowerCase()
+          : (band.level ?? '').toLowerCase() === colour.level.trim().toLowerCase());
+      if (band && exact) byBand.set(band.id, colour);
+      else leftovers.push(colour);
+    }
 
-    return { rows, uncovered };
+    return {
+      rows: WRISTBANDS.map((band) => ({
+        band,
+        holders: counts.get(band.id) ?? 0,
+        colour: byBand.get(band.id) ?? null,
+      })),
+      leftovers,
+    };
   }, [colours, counts]);
 
   if (error) return <p className="empty">Could not read the colours: {error}</p>;
-  if (!colours || !counts) return <p className="empty">Reading pass types…</p>;
+  if (!colours || !counts) return <p className="empty">Reading the roster…</p>;
+
+  const set = rows.filter((row) => row.colour).length;
+  // People whose own wristband has no colour yet. Not the same as the strays
+  // below, who have no wristband at all.
+  const waiting = rows
+    .filter((row) => !row.colour)
+    .reduce((total, row) => total + row.holders, 0);
 
   return (
     <div className="stack">
       <div className="toolbar">
         <span className="count">
-          {colours.length} colour{colours.length === 1 ? '' : 's'} set
-          {uncovered > 0
-            ? ` · ${uncovered} ${uncovered === 1 ? 'person' : 'people'} without one`
+          {set} of {rows.length} coloured
+          {waiting > 0
+            ? ` · ${waiting} ${waiting === 1 ? 'person' : 'people'} waiting on one`
             : ''}
         </span>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="empty">
-          No pass types yet. They appear here as soon as the roster is imported.
-        </p>
-      ) : (
-        <table className="table table--colours">
-          <colgroup>
-            <col />
-            <col style={{ width: '90px' }} />
-            <col style={{ width: '190px' }} />
-            <col style={{ width: '180px' }} />
-            <col style={{ width: '230px' }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Pass type &amp; level</th>
-              <th className="num">People</th>
-              <th>Colour</th>
-              <th>Called</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <ColourRow key={cellKey(row.passType, row.level)} row={row} onError={setError} />
-            ))}
-          </tbody>
-        </table>
-      )}
+      <table className="table table--colours">
+        <colgroup>
+          <col />
+          <col style={{ width: '90px' }} />
+          <col style={{ width: '190px' }} />
+          <col style={{ width: '180px' }} />
+          <col style={{ width: '230px' }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Wristband</th>
+            <th className="num">People</th>
+            <th>Colour</th>
+            <th>Called</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <ColourRow key={row.band.id} row={row} onError={setError} />
+          ))}
+        </tbody>
+      </table>
+
+      <Strays strays={strays} />
+      <Leftovers leftovers={leftovers} onError={setError} />
 
       <p className="note">
-        <strong>Full Pass and Full Pass Gold are coloured by level</strong>, because
-        those are the passes whose classes split and every holder of one has a
-        level. The other pass types get a single <strong>Any level</strong> colour,
-        which covers everybody holding one. Paste a hex straight into the box beside
-        the swatch, with or without the <span className="mono">#</span>. A row left
-        without a colour simply shows no colour on a phone; nothing breaks, and
-        nobody is told the wrong wristband.
+        One row per pile of wristbands, and nothing else. Paste a hex into the box
+        beside the swatch, with or without the <span className="mono">#</span>.
+        A row left without a colour simply shows no colour on a phone; nothing
+        breaks, and nobody is told the wrong wristband. The three evening rows are
+        matched on the night — all three are sold as one pass type, so the night is
+        the only thing that tells them apart.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * People no wristband covers: a Full Pass with no level, or one of the Sheet's
+ * free-text pass types like `Full Pass - 205 € (Upgrade from Party)`.
+ *
+ * This is what a table built out of the roster gave for free, and it is the one
+ * thing worth keeping from it. Left unsaid, the first anybody would know is
+ * somebody standing at the desk with no colour on their screen.
+ */
+function Strays({ strays }: { strays: Map<string, number> | null }) {
+  if (!strays || strays.size === 0) return null;
+  const total = [...strays.values()].reduce((sum, count) => sum + count, 0);
+
+  return (
+    <p className="note note--warn">
+      <strong>
+        {total} {total === 1 ? 'person matches' : 'people match'} none of these rows
+      </strong>{' '}
+      and will show no colour at the desk:{' '}
+      {[...strays.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([what, count]) => `${what || '(no pass type)'} — ${count}`)
+        .join(', ')}
+      . Either their pass type is written differently in the Sheet, or they have no
+      level where the wristband needs one.
+    </p>
+  );
+}
+
+/**
+ * Colours that match none of the ten: a mapping made before this list existed,
+ * or a level colour on a pass type that is no longer split by level.
+ *
+ * They are shown rather than hidden because a document nobody can see is still
+ * deciding somebody's colour on a phone — that is exactly how `Full Pass` ended
+ * up white and called "No color".
+ */
+function Leftovers({
+  leftovers,
+  onError,
+}: {
+  leftovers: BraceletColour[];
+  onError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  if (leftovers.length === 0) return null;
+
+  async function clear(id: string) {
+    setBusy(id);
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.braceletColours, id));
+    } catch (cause) {
+      onError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="stack">
+      <h2 className="card__title">Colours matching no wristband</h2>
+      <table className="table">
+        <tbody>
+          {leftovers.map((colour) => (
+            <tr key={colour.id} className="is-off">
+              <td>
+                {[colour.passType, colour.level, colour.evening].filter(Boolean).join(' · ')}
+                <div className="sub mono">{colour.id}</div>
+              </td>
+              <td style={{ width: '190px' }}>
+                <div className="colour">
+                  <span
+                    className="swatch"
+                    style={{ background: colour.colour }}
+                    aria-hidden="true"
+                  />
+                  <span className="mono">{colour.colour}</span>
+                </div>
+              </td>
+              <td style={{ width: '180px' }}>{colour.name}</td>
+              <td style={{ width: '230px' }}>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy === colour.id}
+                  title="The terminals stop using this colour for anybody"
+                  onClick={() => clear(colour.id)}
+                >
+                  Clear
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="note">
+        These are still live: the apps read every colour document, so one of these
+        can be what somebody is shown even though no row above claims it. Clearing
+        them is safe once the rows above say what they should.
       </p>
     </div>
   );
@@ -280,59 +335,38 @@ function ColourRow({ row, onError }: { row: Row; onError: (message: string) => v
     }
   }
 
-  // Derived from the pass type and level, and only ever a key. The apps match on
-  // the fields inside, so a slug collision between two long pass types shows up
-  // here as one row overwriting another rather than as a participant quietly
-  // getting somebody else's colour.
-  const id = row.colour?.id ?? slugify(`${row.passType} ${row.level}`);
-  const isBase = row.level === ANY_LEVEL;
-  const splits = splitsByLevel(row.passType);
-  // What this row is, in words, for the screen reader and for every tooltip.
-  const what = `${row.passType}${isBase ? '' : `, ${row.level}`}`;
+  const { band } = row;
+  // Written under the label because the label is what the desk calls the pile —
+  // "Full Pass INT" is nobody's `ticketType`, and this line is the rule that
+  // decides who actually gets it.
+  const matches = [band.passType, band.level, band.evening && EVENING_LABELS[band.evening]]
+    .filter(Boolean)
+    .join(' · ');
+  // The id an existing colour lives under, so a document is never duplicated;
+  // the wristband's own id when this row is coloured for the first time.
+  const id = row.colour?.id ?? band.id;
 
   return (
     <tr className={row.colour ? '' : 'is-off'}>
       <td>
-        {splits ? (
-          // No pass-type row to sit under: these rows are the mapping, so each
-          // one names the whole combination rather than relying on the row above.
-          <>
-            {row.passType} <span className="sub">· {isBase ? 'any level' : row.level}</span>
-            <div className="sub mono">{id}</div>
-            {!row.editable ? (
-              <div className="sub">Left over — this pass type is coloured by level</div>
-            ) : null}
-          </>
-        ) : isBase ? (
-          <>
-            {row.passType}
-            <div className="sub mono">{id}</div>
-          </>
-        ) : (
-          // Indented, because it is an override of the row above rather than a
-          // pass type of its own.
-          <div style={{ paddingLeft: 18 }}>
-            <span className="sub">↳ </span>
-            {row.level}
-            <div className="sub mono">{id}</div>
-          </div>
-        )}
+        <span className="name">{band.label}</span>
+        {/* Only when it says something the label does not: "Full Pass INT" is
+            nobody's ticketType, while "Party Pass" is exactly its own row. */}
+        {matches === band.label ? null : <div className="sub">{matches}</div>}
       </td>
       <td className="num">{row.holders}</td>
       <td>
         <div className="colour">
           <input
-            aria-label={`Colour for ${what}`}
+            aria-label={`Colour for ${band.label}`}
             type="color"
             value={swatch}
-            disabled={!row.editable}
             onChange={(event) => setTyped(event.target.value.toUpperCase())}
           />
           <input
             className="hex mono"
-            aria-label={`Hex colour for ${what}`}
+            aria-label={`Hex colour for ${band.label}`}
             value={typed}
-            disabled={!row.editable}
             spellCheck={false}
             // No maxLength: a hex pasted out of an email arrives with a space or
             // a newline around it often enough, and 7 characters would cut a
@@ -341,60 +375,56 @@ function ColourRow({ row, onError }: { row: Row; onError: (message: string) => v
             onChange={(event) => setTyped(event.target.value)}
           />
         </div>
-        {row.editable && parsed === null ? (
+        {parsed === null ? (
           <div className="field__hint field__hint--bad">Not a colour — try #1E6BB8</div>
         ) : null}
       </td>
       <td>
         <input
-          aria-label={`What staff call the colour for ${what}`}
+          aria-label={`What staff call the colour for ${band.label}`}
           value={name}
           maxLength={MAX_COLOUR_NAME}
-          disabled={!row.editable}
           placeholder="Sky Blue"
           onChange={(event) => setName(event.target.value)}
         />
       </td>
       <td>
         <div className="actions">
-          {row.editable ? (
-            <button
-              className="btn btn--primary"
-              type="button"
-              disabled={busy || !valid || !dirty}
-              onClick={() =>
-                run(async () => {
-                  // Unreachable — the button is disabled until the hex is a
-                  // colour — and here so that half a hex can never be written.
-                  if (parsed === null) return;
-                  // `setDoc`, not `updateDoc`: this row may be the first mapping
-                  // for a combination, in which case there is no document yet.
-                  await setDoc(doc(db, COLLECTIONS.braceletColours, id), {
-                    [BRACELET_COLOUR_FIELDS.passType]: row.passType,
-                    [BRACELET_COLOUR_FIELDS.colour]: parsed,
-                    ...(row.level ? { [BRACELET_COLOUR_FIELDS.level]: row.level } : {}),
-                    ...(trimmed ? { [BRACELET_COLOUR_FIELDS.name]: trimmed } : {}),
-                  });
-                })
-              }
-            >
-              {row.colour ? 'Save' : 'Set colour'}
-            </button>
-          ) : null}
+          <button
+            className="btn btn--primary"
+            type="button"
+            disabled={busy || !valid || !dirty}
+            onClick={() =>
+              run(async () => {
+                // Unreachable — the button is disabled until the hex is a
+                // colour — and here so that half a hex can never be written.
+                if (parsed === null) return;
+                // `setDoc`, not `updateDoc`: this row may never have been
+                // coloured, in which case there is no document yet.
+                await setDoc(doc(db, COLLECTIONS.braceletColours, id), {
+                  [BRACELET_COLOUR_FIELDS.passType]: band.passType,
+                  [BRACELET_COLOUR_FIELDS.colour]: parsed,
+                  ...(band.level ? { [BRACELET_COLOUR_FIELDS.level]: band.level } : {}),
+                  ...(band.evening ? { [BRACELET_COLOUR_FIELDS.evening]: band.evening } : {}),
+                  ...(trimmed ? { [BRACELET_COLOUR_FIELDS.name]: trimmed } : {}),
+                });
+              })
+            }
+          >
+            {row.colour ? 'Save' : 'Set colour'}
+          </button>
           {row.colour ? (
             <button
               className="btn"
               type="button"
               disabled={busy}
-              aria-label={`Clear the colour for ${what}`}
+              aria-label={`Clear the colour for ${band.label}`}
               title={
-                row.uncoveredIfCleared > 0
-                  ? `${row.uncoveredIfCleared} ${
-                      row.uncoveredIfCleared === 1 ? 'person is' : 'people are'
+                row.holders > 0
+                  ? `${row.holders} ${
+                      row.holders === 1 ? 'person is' : 'people are'
                     } shown this colour and would be left with none`
-                  : isBase
-                    ? 'Nobody is shown this colour; the level rows cover them all'
-                    : 'These people fall back to the pass type’s colour'
+                  : 'Nobody is shown this colour yet'
               }
               onClick={() => run(() => deleteDoc(doc(db, COLLECTIONS.braceletColours, id)))}
             >
@@ -405,14 +435,4 @@ function ColourRow({ row, onError }: { row: Row; onError: (message: string) => v
       </td>
     </tr>
   );
-}
-
-/** A key for one (pass type, level) cell. The separator cannot occur in either. */
-function cellKey(passType: string, level: string): string {
-  return `${passType} ${level}`;
-}
-
-function splitKey(key: string): { passType: string; level: string } {
-  const [passType = '', level = ''] = key.split(' ');
-  return { passType, level };
 }

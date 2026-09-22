@@ -74,6 +74,8 @@ export const BRACELET_COLOUR_FIELDS = {
   passType: 'passType',
   /** One of `LEVELS`, or `''` meaning "any level". */
   level: 'level',
+  /** One of `EVENINGS`, for the three wristbands that differ by night. */
+  evening: 'evening',
   colour: 'colour',
   name: 'name',
 } as const;
@@ -88,30 +90,78 @@ export const BRACELET_COLOUR_FIELDS = {
 export const LEVELS = ['Intermediate', 'Advanced', 'Pro', 'Other'] as const;
 
 /**
- * The pass types whose colour may differ by level.
+ * The wristbands the festival prints, in the order the organisers listed them.
  *
- * Only these two: they are the ones whose classes actually split by level. On
- * every other pass type the Sheet's answer is mostly `Other` — the form's way
- * of saying "not applicable" — so offering four level rows there would be four
- * rows of noise per pass type in a table an organiser has to scan.
+ * **A written-down list, not something derived from the roster.** The table
+ * used to be built from whatever pass types people held, which meant a pass
+ * type nobody had bought yet had no row — the Jazz Performance Track could not
+ * be given a colour before the first person bought one — and the two that split
+ * by level grew a fallback row nobody could tell apart from the level rows.
+ * These ten are the piles of wristbands on the table at reception. There is one
+ * row per pile, and it is here rather than in a component because it is a fact
+ * about the festival.
  *
- * The same rule lives on `Participant.levelForDisplay` in the iOS app, which
- * decides whether to print the level at the desk. Two copies, like every other
- * field name here, and for the same reason: this one is a decision about the
- * festival and belongs written down on both sides rather than inferred.
+ * `passType` matches a participant's `ticketType` verbatim, case- and
+ * whitespace-insensitively. `level` narrows it to one dance level. `evening`
+ * matches the night instead: Friday, Saturday and Sunday are sold as one pass
+ * type, so the night is the only thing that tells those three apart, and a
+ * colour naming one is matched on the night alone.
+ *
+ * Anybody the list does not cover — a Full Pass with no level, one of the
+ * Sheet's free-text upgrade strings — simply has no colour, and the tab says
+ * how many such people there are rather than leaving it to be discovered at the
+ * desk.
  */
-export const SPLITS_BY_LEVEL = ['Full Pass', 'Full Pass Gold'] as const;
+export interface Wristband {
+  /** The document id used when this row is first given a colour. */
+  id: string;
+  /** What the desk calls this pile. */
+  label: string;
+  /** The `ticketType` it matches. */
+  passType: string;
+  /** One of `LEVELS`, when this row is one level of a pass type. */
+  level?: string;
+  /** One of `EVENINGS`, for the three that differ by night. */
+  evening?: EveningName;
+}
+
+export const WRISTBANDS: Wristband[] = [
+  { id: 'full-pass-intermediate', label: 'Full Pass INT', passType: 'Full Pass', level: 'Intermediate' },
+  { id: 'full-pass-advanced', label: 'Full Pass ADV', passType: 'Full Pass', level: 'Advanced' },
+  { id: 'full-pass-pro', label: 'Full Pass PRO', passType: 'Full Pass', level: 'Pro' },
+  { id: 'full-pass-gold', label: 'Full Pass Gold', passType: 'Full Pass Gold' },
+  { id: 'party-pass', label: 'Party Pass', passType: 'Party Pass' },
+  { id: 'party-pass-plus', label: 'Party Pass Plus', passType: 'Party Pass Plus' },
+  { id: 'jazz-performance-track', label: 'Jazz Performance Track', passType: 'Jazz Performance Track' },
+  { id: 'evening-friday', label: 'Friday Evening', passType: 'Evening Ticket', evening: 'friday' },
+  { id: 'evening-saturday', label: 'Saturday Evening', passType: 'Evening Ticket', evening: 'saturday' },
+  { id: 'evening-sunday', label: 'Sunday Evening', passType: 'Evening Ticket', evening: 'sunday' },
+];
 
 /**
- * Whether this pass type's colour may differ by level.
+ * Which wristband somebody gets — the same decision the apps make, in the same
+ * order, so the panel's **People** counts are what the phones will actually do.
  *
- * Case- and whitespace-insensitive: `ticketType` comes from a hand-maintained
- * Sheet, and `"Full Pass "` failing to match would silently cost an organiser
- * the rows they came here for.
+ * The night first, because it is the only thing that can decide an evening
+ * ticket. Then the pass type with the level, then the pass type on its own.
  */
-export function splitsByLevel(passType: string): boolean {
+export function wristbandFor(person: {
+  ticketType: string;
+  level: string;
+  evening: string;
+}): Wristband | null {
   const clean = (value: string) => value.trim().toLowerCase();
-  return SPLITS_BY_LEVEL.map(clean).includes(clean(passType));
+  if (person.evening) {
+    return WRISTBANDS.find((band) => band.evening === clean(person.evening)) ?? null;
+  }
+  const sameType = WRISTBANDS.filter(
+    (band) => !band.evening && clean(band.passType) === clean(person.ticketType)
+  );
+  return (
+    sameType.find((band) => band.level && clean(band.level) === clean(person.level)) ??
+    sameType.find((band) => !band.level) ??
+    null
+  );
 }
 
 /** The most characters `firestore.rules` accepts in a block reason. */
@@ -145,6 +195,9 @@ export interface Participant {
   source: string;
   /** `'leader'`, `'follower'`, or `''` for everyone from the Sheet. */
   danceRole: string;
+  /** `'friday'`, `'saturday'`, `'sunday'` — which night an evening ticket is
+   *  for, and `''` for everybody else. It decides their wristband colour. */
+  evening: string;
   /** `null` until reception pairs a chip. Permanent once set. */
   braceletId: string | null;
   checkedInAt: Date | null;
@@ -211,6 +264,9 @@ export interface BraceletColour {
   /** One of `LEVELS`, or `''` for "any level" — the fallback every pass type
    *  uses until somebody splits it by level. */
   level: string;
+  /** One of `EVENINGS`, or `''`. Set on the three colours that are about a
+   *  night rather than a pass type, and matched on the night alone. */
+  evening: string;
   /** `#RRGGBB`, upper case. The rules pin the format; see `isWellFormedColour`. */
   colour: string;
   /** What staff call it out loud. May be empty. */
@@ -298,6 +354,7 @@ export function toParticipant(doc: Doc): Participant | null {
     level: str(data[PARTICIPANT_FIELDS.level]),
     source: str(data[PARTICIPANT_FIELDS.source], 'sheet'),
     danceRole: str(data[PARTICIPANT_FIELDS.danceRole]),
+    evening: str(data[PARTICIPANT_FIELDS.evening]),
     braceletId: str(data[PARTICIPANT_FIELDS.braceletId]) || null,
     checkedInAt: date(data[PARTICIPANT_FIELDS.checkedInAt]),
     balance,
@@ -366,6 +423,7 @@ export function toBraceletColour(doc: Doc): BraceletColour | null {
     id: doc.id,
     passType,
     level: str(data[BRACELET_COLOUR_FIELDS.level]),
+    evening: str(data[BRACELET_COLOUR_FIELDS.evening]),
     colour,
     name: str(data[BRACELET_COLOUR_FIELDS.name]),
   };

@@ -17,6 +17,13 @@ struct BraceletColour: Equatable, Sendable, Identifiable {
     /// Only Full Pass and Full Pass Gold split in practice, but nothing here
     /// knows that — it is a fact about the festival's classes, not about code.
     var level: String = ""
+    /// `friday`, `saturday`, `sunday` — or empty for a colour that is about a
+    /// pass type rather than a night.
+    ///
+    /// The three evening wristbands are different colours, and all three nights
+    /// are sold as the same `ticketType`, so the night is the only thing that
+    /// tells them apart. A colour naming one is matched on the night alone.
+    var evening: String = ""
     /// `#RRGGBB`, upper case. The security rules pin the format.
     let hex: String
     /// What staff call it out loud. Empty when nobody has named it.
@@ -66,30 +73,45 @@ struct BraceletColour: Equatable, Sendable, Identifiable {
 /// decides whether somebody is handed the right wristband.
 struct BraceletColourScheme: Equatable, Sendable {
     private let byCell: [String: BraceletColour]
+    private let byEvening: [String: BraceletColour]
 
     init(_ colours: [BraceletColour] = []) {
         // Keyed on pass type and level, not the id. Last one wins if two
         // documents claim the same cell, which the panel makes hard but not
         // impossible — two long pass types can slug to the same key.
         byCell = Dictionary(
-            colours.map { (Self.key($0.passType, $0.level), $0) },
+            colours.filter { $0.evening.isEmpty }.map { (Self.key($0.passType, $0.level), $0) },
+            uniquingKeysWith: { _, later in later }
+        )
+        // A night's colour is kept out of `byCell` on purpose. All three nights
+        // are sold as one pass type, so filing them by pass type would leave
+        // whichever loaded last colouring every evening ticket there is.
+        byEvening = Dictionary(
+            colours.filter { !$0.evening.isEmpty }.map { (Self.clean($0.evening), $0) },
             uniquingKeysWith: { _, later in later }
         )
     }
 
     /// The colour for a participant, or nil when nothing covers them.
     ///
-    /// **Level first, then the pass type's fallback.** An organiser colours
-    /// `Full Pass` once and everybody with one gets that colour; colouring
-    /// `Full Pass · Pro` as well overrides it for the people in that track.
-    /// Only Full Pass and Full Pass Gold split in practice, and that stays a
-    /// fact about the festival rather than a rule in here.
+    /// **The night first, then the level, then the pass type's fallback.**
+    ///
+    /// The night comes first because it is the only thing that can decide an
+    /// evening ticket: Friday, Saturday and Sunday are sold as one pass type and
+    /// differ only in which door somebody came through. Then an organiser
+    /// colours `Full Pass` once and everybody with one gets that colour;
+    /// colouring `Full Pass · Pro` as well overrides it for that track. Only
+    /// Full Pass splits by level in practice, and that stays a fact about the
+    /// festival rather than a rule in here.
     ///
     /// Nil is an ordinary outcome, not an error: a festival can colour the four
     /// pass types that matter and leave the one-off upgrade strings alone. The
     /// screen shows nothing, which is the honest answer — better than a default
     /// colour somebody hands over a wristband on the strength of.
     func colour(for participant: Participant) -> BraceletColour? {
+        if let evening = participant.evening, let night = byEvening[Self.clean(evening.rawValue)] {
+            return night
+        }
         if !participant.level.isEmpty,
            let exact = byCell[Self.key(participant.ticketType, participant.level)] {
             return exact
@@ -97,16 +119,17 @@ struct BraceletColourScheme: Equatable, Sendable {
         return byCell[Self.key(participant.ticketType, "")]
     }
 
-    var isEmpty: Bool { byCell.isEmpty }
+    var isEmpty: Bool { byCell.isEmpty && byEvening.isEmpty }
 
     /// Case- and whitespace-insensitive, because these strings come from a
     /// hand-maintained Sheet on one side and a text field on the other, and
     /// "Full Pass " failing to match "Full Pass" would be invisible.
     private static func key(_ passType: String, _ level: String) -> String {
-        let clean = { (value: String) in
-            value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        }
-        return "\(clean(passType))\u{0}\(clean(level))"
+        "\(clean(passType))\u{0}\(clean(level))"
+    }
+
+    private static func clean(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 

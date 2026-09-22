@@ -6,64 +6,77 @@ Organisers set the mapping; the terminals read it.
 
 ---
 
-## One document per pass type, and per level where it matters
+## Ten wristbands, written down
+
+The festival prints ten piles of wristbands, and the Bracelets tab has one row
+per pile, in this order:
 
 ```
-braceletColours/full-pass
-  passType:  "Full Pass"        // verbatim, as it appears on a participant
-  level:     absent             // the fallback: anyone with this pass type
-  colour:    "#1E6BB8"          // #RRGGBB, upper case
-  name:      "Sky Blue"         // what staff call it out loud. Optional.
-
-braceletColours/full-pass-pro
-  passType:  "Full Pass"
-  level:     "Pro"              // an override, for that class track only
-  colour:    "#1B1B1B"
-  name:      "Black"
+Full Pass INT            Full Pass, Intermediate
+Full Pass ADV            Full Pass, Advanced
+Full Pass PRO            Full Pass, Pro
+Full Pass Gold           Full Pass Gold, any level
+Party Pass               Party Pass
+Party Pass Plus          Party Pass Plus
+Jazz Performance Track   Jazz Performance Track
+Friday Evening           an evening ticket sold for the Friday
+Saturday Evening         …the Saturday
+Sunday Evening           …the Sunday
 ```
 
-**Level first, then the pass type's fallback.** Colour `Full Pass` once and
-everybody with one is covered; add `Full Pass · Pro` and that track gets its own
-band while everybody else keeps the first. That is the lookup, and it has not
-changed — what changed is which rows the panel offers.
+**Flat: no fallback row, no level nested under a pass type, nothing that appears
+or disappears with the roster.** The list lives in `WRISTBANDS` in
+`web-admin/src/schema.ts`, because it is a fact about the festival rather than
+about code.
 
-**Only Full Pass and Full Pass Gold split by level**, because those are the
-passes whose classes do — `SPLITS_BY_LEVEL` in `web-admin/src/schema.ts`, and
-`Participant.levelForDisplay` in the app, which is the same decision about the
-festival written down on both sides. Every other pass type records a level too,
-but it is mostly `Other` — the form's way of saying "not applicable" — and four
-level rows apiece would be noise in a table an organiser has to scan.
-
-**Those two are not offered an "Any level" row.** Every Full Pass and Full Pass
-Gold holder in the roster has a level, so the general row was a second, competing
-answer to a question the level rows had already answered: the panel showed
-`Full Pass` and `Full Pass · Advanced` one above the other with no way to tell
-which one a wristband would come from. The way out somebody found was to set
+It used to be derived from whatever pass types people held, and both halves of
+that were wrong for the job. A pass type nobody had bought yet had no row at
+all, so the Jazz Performance Track could not be given a colour before the first
+person bought one. And the pass types that split by level *also* had an "any
+level" row above them, which read as a second, competing answer to a question
+the level rows had already answered — somebody's way out of it was to set
 `Full Pass` to white and call it "No color", which is the shape of a control
 nobody could use.
 
-It is not hidden, because hiding it would leave the document underneath still
-deciding somebody's colour. It appears exactly while it is still doing work:
+What derivation bought was that nothing could be stranded, and that is kept, in
+two places rather than by building the table out of the roster:
 
-- **Somebody is uncovered** — a level in use has no colour of its own, or a
-  holder's level is blank. The row is offered, and its **People** count is those
-  people and nobody else. Colour their level and the row turns into the next
-  case by itself.
-- **A leftover document** from before this rule, covering nobody. The row shows
-  greyed, says *Left over — this pass type is coloured by level*, and offers
-  **Clear** and nothing else.
+- **A colour matching none of the ten** is listed underneath, with its fields and
+  its document id, and can be cleared. Not hidden: the apps read every colour
+  document, so one nobody can see is still deciding somebody's colour on a phone.
+- **People matching none of the ten** are counted and named — a Full Pass with no
+  level, or one of the Sheet's free-text pass types like `Full Pass - 205 €
+  (Upgrade from Party)`. Left unsaid, the first anybody would know is somebody
+  standing at the desk with no colour on their screen.
 
-Clear it and the row goes. Clear a level colour and it comes back, because
-somebody is uncovered again. Every **Clear** says on hover how many people would
-be left with no colour at all.
+```
+braceletColours/full-pass-pro
+  passType:  "Full Pass"        // verbatim, as it appears on a participant
+  level:     "Pro"              // one of the four, or absent for any level
+  colour:    "#1B1B1B"          // #RRGGBB, upper case
+  name:      "Black"            // what staff call it out loud. Optional.
 
-A level colour that already exists on some other pass type is still listed, so a
-mapping made before that rule can be seen and cleared rather than stranded in the
-database with no way to reach it.
+braceletColours/evening-friday
+  passType:  "Evening Ticket"
+  evening:   "friday"           // matched on the night, not the pass type
+  colour:    "#6B4E9B"
+  name:      "Purple"
+```
 
-The four levels are `Intermediate`, `Advanced`, `Pro` and `Other`, pinned by the
-rules. A fifth would match nobody and look like a colour that silently does
-nothing.
+**The night first, then the level, then the pass type.** Friday, Saturday and
+Sunday are sold as one pass type and differ only in which door somebody came
+through, so the night is the only thing that can tell those three wristbands
+apart — a colour naming one is matched on the night alone and is deliberately
+kept out of the pass-type lookup, where whichever loaded last would otherwise
+colour every evening ticket there is. Then a level colour, then the pass type's
+level-less one. `BraceletColourScheme.colour(for:)` holds the rule, and
+`wristbandFor` in the panel makes the same decision in the same order, so the
+**People** counts are what the phones will do rather than a second opinion.
+
+The four levels are `Intermediate`, `Advanced`, `Pro` and `Other`, and the three
+nights `friday`, `saturday`, `sunday`, all pinned by the rules. A fifth level or
+a fourth night would match nobody and look like a colour that silently does
+nothing, and a document claiming both a level and a night is refused outright.
 
 ```
 allow read:            if canRead();     // every role, the bar included
@@ -107,18 +120,19 @@ phone number.
 `Level` in this Sheet is **not** a permission, exactly as `Role` in this Sheet is
 the dance role and not `StaffRole`. Same trap, two columns apart.
 
-## The pass-type list is derived, not hard-coded
-
-The Bracelets tab reads the roster and counts the distinct `ticketType` values
-actually in use, most people first. It does not work from a fixed list. Beneath
-the two that split by level, it lists the levels anybody actually holds.
+## The cost of a written-down list, and what pays it
 
 The Sheet's pass types are free text — `Full Pass - 205 € (Upgrade from Party -
 135€ + 70€)` is a real value — and the importer keeps anything it does not
-recognise verbatim rather than dropping it. A fixed list would silently leave
-those people with no colour, and nobody would find out until somebody was at the
-desk holding the wrong wristband. A pass type with a colour but nobody holding it
-is still listed, so a mapping made before the first import does not vanish.
+recognise verbatim rather than dropping it. Ten written-down rows cannot cover a
+string like that, and the old derived table could.
+
+What pays for it is the count beside every row and the warning under the table.
+Each row says how many people would be handed that wristband, computed by the
+same rule the phones use, so a row reading **0** where you expected thirty is
+visible in the tab rather than at the desk. Underneath, anybody the ten rows do
+not cover is counted and named with their pass type and level. Nothing is
+silent; it is just said in the panel instead of being implied by a row appearing.
 
 ## `#RRGGBB`, upper case, or nothing
 
@@ -182,13 +196,16 @@ wristband colours — which is a fine way to teach staff to dismiss alerts.
 
 ## Verified
 
-- **102 iOS tests**, including the one that matters — `Full Pass Gold` starts with
+- **141 iOS tests**, including the one that matters — `Full Pass Gold` starts with
   `Full Pass`, and anything doing prefix matching files every Gold holder under
   the wrong colour — plus the level fallback, levels not leaking across pass
-  types, the contrast flip, and which pass types show a level at all.
-- **94 rules tests**: every role can read, only an organiser can write, the
-  `#RRGGBB` shape is enforced (`red`, `#f00` and lower case all refused), and a
-  level outside the four is refused.
+  types, each night getting its own colour from one pass type, a night never
+  reaching somebody who is not there for the night, the contrast flip, and which
+  pass types show a level at all.
+- **148 rules tests**: every role can read, only an organiser can write, the
+  `#RRGGBB` shape is enforced (`red`, `#f00` and lower case all refused), a
+  level outside the four is refused, a night outside the three is refused, and a
+  document claiming both a level and a night is refused.
 - **60 importer tests**, including that the level arrives as one word and the
   Sheet's paragraph never does.
 - **End to end against the emulator**, 2026-09-20. Set `Full Pass` to `#1e6bb8`
@@ -198,27 +215,38 @@ wristband colours — which is a fine way to teach staff to dismiss alerts.
   showed Karol Chrząszcz (Full Pass, Pro) a **black** band and Amélie Roux
   (Full Pass, Advanced) a **sky blue** one — the override and the fallback, from
   the same pass type.
-- **The level-only rows and the hex box, end to end against the emulator**,
-  2026-09-22, with the colours production actually holds — including
-  `full-pass` set to white and called "No color". `Full Pass` showed as a
-  leftover covering nobody, greyed, Clear only; `Full Pass Gold` stayed offered
-  because its one Intermediate — Pro, in the fixtures — had no colour, and
-  flipped to a leftover the moment that level was given one. Clearing a level
-  colour brought the row back with the uncovered person counted on it.
-  `73ff4d` pasted into the hex box was written through the real rules as
-  `#73FF4D`; `#fff` expanded to `#FFFFFF`; `red`, `#12345` and `#GG0011` left
-  **Save** disabled with the swatch still on the last real colour.
+- **The hex box, against the emulator**, 2026-09-22. `73ff4d` pasted was written
+  through the real rules as `#73FF4D`; `#fff` expanded to `#FFFFFF`; `red`,
+  `#12345` and `#GG0011` left **Save** disabled with the swatch still showing the
+  last real colour.
+- **The ten rows, end to end from the panel to a phone**, 2026-09-22, against the
+  emulator seeded with the colours production actually holds — including
+  `full-pass` set to `#FFFFFF` and called "No color". The tab showed the ten in
+  order; `full-pass`, `full-pass-gold-advanced` and `full-pass-gold-pro` fell
+  into **Colours matching no wristband** and cleared from there; the Full Pass
+  Gold row counted both Gold holders whatever their level; and the two people who
+  match nothing — a Full Pass with no level, and `Full Pass - 205 EUR (Upgrade
+  from Party)` — were named in the warning rather than left to the desk.
+  `6b4e9b` "Purple" saved on **Friday Evening** wrote
+  `{ passType: "Evening Ticket", evening: "friday" }`, and the iOS app then showed
+  Ana Ivanova, a Friday ticket, a **PURPLE BRACELET** — while Boris Petrov, a
+  Saturday ticket with no colour yet, showed **no band at all**, which is the
+  failure the night-keyed lookup exists to prevent.
 
 ## Still open
 
-- **Two rows in production are waiting for somebody.** Read back on 2026-09-22:
-  nine colours set, every participant carrying a level. `full-pass` is
-  `#FFFFFF` "No color" and now covers nobody — the leftover the panel offers to
-  clear. `full-pass-gold` is yellow and still covers **one** person, the single
-  Gold Intermediate, who has no colour of their own; give that level a colour
-  and the general row becomes clearable too. Neither is urgent and neither is
-  wrong, but until both are done the database still holds a general colour for a
-  pass type the panel says is coloured by level.
+- **Four of the ten are uncoloured in production, and three leftovers are
+  waiting to be cleared.** Read back on 2026-09-22: Full Pass INT, ADV and PRO,
+  Full Pass Gold, Party Pass and Party Pass Plus all carry a colour, and the
+  Jazz Performance Track and the three evenings do not. `full-pass` (`#FFFFFF`,
+  "No color"), `full-pass-gold-advanced` and `full-pass-gold-pro` match no row
+  any more and sit under **Colours matching no wristband** — the last two are
+  still live, so a Gold Advanced or Gold Pro is shown one of those yellows
+  rather than the Gold row's until they are cleared.
+- **The evening colours need a new iOS build to show.** The night is read by
+  `BraceletColourScheme`, which TestFlight build 89 does not have: it was built
+  before this change, so a Friday wristband set in the panel today shows nothing
+  on the phones until the next release.
 - **Android has none of this.**
 - **Nobody checks the wristbands actually match.** The app reports what an
   organiser typed; whether the Gold pile is really gold is a question for the

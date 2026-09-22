@@ -38,6 +38,9 @@ enum Fire {
         static let passType = "passType"
         /// One of the four dance levels, or absent for "any level".
         static let level = "level"
+        /// `friday`, `saturday` or `sunday` — the three wristbands that differ
+        /// by night rather than by pass type. Absent on everything else.
+        static let evening = "evening"
         static let colour = "colour"
         static let name = "name"
     }
@@ -282,6 +285,7 @@ extension BraceletColour {
             id: document.documentID,
             passType: passType,
             level: data[Fire.BraceletColour.level] as? String ?? "",
+            evening: data[Fire.BraceletColour.evening] as? String ?? "",
             hex: hex,
             name: data[Fire.BraceletColour.name] as? String ?? ""
         )

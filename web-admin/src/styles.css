@@ -619,6 +619,14 @@ select {
   cursor: pointer;
 }
 
+/* A colour that is only being shown, not edited — a leftover on its way out.
+   Same 36px slot as the picker, so the two tables line up. */
+.swatch {
+  display: block;
+  height: 30px;
+  border: var(--rule-hairline) solid var(--color-divider);
+}
+
 /* `min-width: 0` for the same reason the night prices need it: a grid item sets
    its track's minimum, and without it the box would push the cell wider than
    its column. Upper case on the way in, because that is what gets stored. */
@@ -652,6 +660,15 @@ select {
   color: var(--ink-55);
   font-size: 12px;
   max-width: 62ch;
+}
+
+/* A note about somebody who will be standing at the desk with no colour on the
+   screen. Loud enough to be read, quiet enough not to look like a failure —
+   nothing is broken, somebody just has not been given a wristband row. */
+.note--warn {
+  color: var(--accent-700);
+  border-left: 3px solid var(--color-accent);
+  padding-left: var(--space-3);
 }
 
 /* ── Sign-in ───────────────────────────────────────────────────────────────── */
