@@ -50,32 +50,30 @@ rename shows up as two rows rather than as history quietly changing.
 
 ## The catalogue
 
-The two classes are rows in `doorPasses`, the same collection reception sells
-passes from, with `kind: "session"`:
+A collection of its own, and this is the part that was wrong first time round:
 
 ```
-doorPasses/jazz-patrik
+specialSessions/jazz-patrik
   name:      "Jazz with Patrik"
   price:     2500
-  kind:      "session"
+  sortOrder: 1
   isActive:  true
-  sortOrder: 7
 ```
 
-One catalogue rather than two, so the price and the wording are an organiser's to
-change in the panel they already use — the Door passes tab edits these rows like
-any other, and marks them *extra class* under the id.
+**A class is not a pass.** It admits nobody, creates no participant, and is never
+sold at the door. It lived in `doorPasses` behind a `kind` for one afternoon, and
+everything that followed from that was work spent keeping two different things
+apart in one list: filtering the door picker, a rule stopping a class being sold
+as a ticket, and a row in the panel's *Door passes* tab labelled "not a pass". A
+separate collection deletes all three.
 
-`kind` is a behaviour, not a label, exactly as it is for the evening ticket:
+Owned by organisers in the panel's **Sessions** tab — add, rename, reprice,
+withdraw, delete — like every other price list, and read by reception only: the
+bar neither shows the classes nor sells them.
 
-- the door picker filters them out, because a class is not a ticket and nobody
-  is admitted by one;
-- `firestore.rules` **refuses a door sale pointing at one**, so a terminal that
-  somehow offered it could not mint a participant called "Jazz with Patrik";
-- a session sale checks the other way: the catalogue row must exist, its name
-  must match what is being recorded, and its `kind` must be `session`. Reception
-  sells the classes the festival runs, at the names an organiser gave them, and
-  cannot invent a 200 € private lesson.
+The sale checks against it: the class must exist and its name must match what is
+being recorded, which is the same protection a door pass gets against
+`doorPasses`, and the reason reception cannot invent a 200 € private lesson.
 
 ## At the desk
 
@@ -95,23 +93,26 @@ there is nothing to hang a class off.
 
 ## In the panel
 
-**Special sessions sold**, under the door catalogue: one row per class, the
-number sold, cash against card, and a total. It is a collection-group read across
-every participant's `sessions`, which needs **its own rule** —
-`match /{path=**}/sessions/{sessionId}` — because a nested `match` does not
-authorise a collection-group query. That is asserted by a test, since the failure
-is silent: the table simply never appears.
+The **Sessions** tab: the classes at the top, with what they cost, and **Sold so
+far** underneath — one row per class, the number sold, cash against card, and a
+total. It is a collection-group read across every participant's `sessions`, which
+needs **its own rule** — `match /{path=**}/sessions/{sessionId}` — because a
+nested `match` does not authorise a collection-group query. That is asserted by a
+test, since the failure is silent: the table simply never appears.
 
 ## Verified
 
-- **167 rules tests**, including: **a second class is refused**, a sale written
+- **172 rules tests**, including: **a second class is refused**, a sale written
   anywhere but `booked` is refused, the bar can neither read nor sell one, a
   class the organisers never listed is refused, a name that disagrees with the
   catalogue is refused, an ordinary pass cannot be sold as a session, a session
   cannot be sold as a door pass, the method and the price are mandatory and
   bounded, `soldAt`/`soldBy` are the server's and the operator's, and a sale
-  cannot be updated or deleted once written.
-- **155 iOS tests**, including that a session is never something the door sells
+  cannot be updated or deleted once written; and, on the catalogue itself, that
+  an organiser writes it and reception does not, the bar cannot read it, and a
+  `kind: session` row is refused in `doorPasses` so the two cannot drift back
+  together.
+- **156 iOS tests**, including that a session is never something the door sells
   and that the name and price on a sale do not follow the catalogue afterwards.
 - **End to end against the emulator**, 2026-09-22. Sold *Lindy Hop with Sakarias
   & Elice* by card from Amélie Roux's screen: the write landed through the real
@@ -123,10 +124,10 @@ is silent: the table simply never appears.
 
 ## Still open
 
-- **Nothing is in production yet.** The two catalogue rows have to be written
-  there before the desk can sell anything: `DEFAULT_DOOR_PASSES` has them for a
-  fresh project, but `npm run seed-passes` rewrites every price it knows about,
-  so production wants a targeted write of just these two rows instead.
+- **Nothing is in production yet.** The two classes have to be written to
+  `specialSessions` before the desk can sell anything. `DEFAULT_SPECIAL_SESSIONS`
+  and `seedSpecialSessions` are there for a fresh project; production wants the
+  same two documents written once, after which the Sessions tab owns them.
 - **No undo, and no second class.** Both deliberate, and both mean a mis-tap
   needs an organiser with the database open — including picking the wrong class
   of the two. If that turns out to be common, the narrow fix is an admin-only

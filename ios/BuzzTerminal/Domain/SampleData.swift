@@ -179,13 +179,16 @@ enum SampleData {
                  price: Money(euros: 259), sortOrder: 4),
         DoorPass(id: "jazz-performance-track", name: TicketType.jazzPerformanceTrack,
                  price: Money(euros: 185), sortOrder: 5),
-        // The extra classes. Same catalogue, sold from a participant's screen
-        // rather than at the door — the fixture that proves the door picker
-        // filters them out and the participant screen picks them up.
-        DoorPass(id: "lindy-sakarias-elice", name: "Lindy Hop with Sakarias & Elice",
-                 price: Money(euros: 25), sortOrder: 6, kind: .session),
-        DoorPass(id: "jazz-patrik", name: "Jazz with Patrik",
-                 price: Money(euros: 25), sortOrder: 7, kind: .session),
+    ]
+
+    /// The extra classes, which are not passes and are not in the catalogue
+    /// above: one is added to somebody who is already here, from their screen.
+    static let specialSessions: [SpecialSession] = [
+        SpecialSession(id: "lindy-sakarias-elice",
+                       name: "Lindy Hop with Sakarias & Elice",
+                       price: Money(euros: 25), sortOrder: 0),
+        SpecialSession(id: "jazz-patrik", name: "Jazz with Patrik",
+                       price: Money(euros: 25), sortOrder: 1),
     ]
 
     /// Preordered merch, keyed by participant. Only a minority of the roster

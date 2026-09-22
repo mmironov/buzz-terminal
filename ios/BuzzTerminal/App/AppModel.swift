@@ -174,14 +174,11 @@ final class AppModel {
     /// Which pass is being sold right now.
     var selectedPass: DoorPass?
 
-    /// What the door flow may actually sell.
+    /// The extra classes on sale, as organisers priced them.
     ///
-    /// The catalogue also holds the extra classes, which are sold from a
-    /// participant's screen and create nobody — offering one here would mint a
-    /// participant called "Jazz with Patrik", which `firestore.rules` refuses
-    /// anyway. Filtered rather than fetched separately: one read, one list,
-    /// two audiences.
-    var passesForTheDoor: [DoorPass] { doorPasses.filter { !$0.isSession } }
+    /// Their own collection, read on its own: a class is not a pass, so it is
+    /// not in the door catalogue and cannot be offered at the door by accident.
+    private(set) var specialSessions: [SpecialSession] = []
 
     /// True while the participant screen is showing a door sale that has not
     /// happened yet.
@@ -376,6 +373,7 @@ final class AppModel {
         sessionSale = nil
         sessionChoice = nil
         sessionMethod = nil
+        specialSessions = []
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -642,13 +640,6 @@ final class AppModel {
     private(set) var sessionChoice: String?
     private(set) var sessionMethod: PaymentMethod?
 
-    /// The extra classes on sale, in the order organisers arranged them.
-    ///
-    /// Out of the same catalogue the door sells from — `kind: session` — so the
-    /// price and the wording are an organiser's to change, and this list is
-    /// empty until they have added one.
-    var specialSessions: [DoorPass] { doorPasses.filter(\.isSession) }
-
     /// Show a participant, and start loading what they are owed.
     ///
     /// One funnel for both routes to the screen — a scan and a name off the
@@ -661,6 +652,7 @@ final class AppModel {
         sessionSale = nil
         sessionChoice = nil
         sessionMethod = nil
+        specialSessions = []
         merchUnavailable = false
         screen = .participant
         Task { await loadMerch(for: guest) }
@@ -670,9 +662,14 @@ final class AppModel {
 
     private func loadSessions(for guest: Participant) async {
         do {
+            // The catalogue rides along with the sale: two small reads on the
+            // one screen that needs either, rather than a list loaded at sign-in
+            // that is stale by the time an organiser adds a class.
+            let classes = try await repository.specialSessions()
             let sale = try await repository.sessionSale(for: guest)
             // The operator may have moved on while this was in flight.
             guard participant?.id == guest.id else { return }
+            specialSessions = classes
             sessionSale = sale
         } catch {
             // Folded into the same warning the merch read raises: both are
@@ -685,7 +682,7 @@ final class AppModel {
     }
 
     /// Pick which class is being bought. One each, so this replaces the last.
-    func chooseSession(_ session: DoorPass) {
+    func chooseSession(_ session: SpecialSession) {
         sessionChoice = session.id
     }
 
@@ -695,7 +692,7 @@ final class AppModel {
     }
 
     /// The class the desk has picked, if it is still on sale.
-    var chosenSession: DoorPass? {
+    var chosenSession: SpecialSession? {
         specialSessions.first { $0.id == sessionChoice }
     }
 
@@ -852,6 +849,7 @@ final class AppModel {
         sessionSale = nil
         sessionChoice = nil
         sessionMethod = nil
+        specialSessions = []
         merchUnavailable = false
         search = ""
         screen = .assign
@@ -983,6 +981,7 @@ final class AppModel {
         sessionSale = nil
         sessionChoice = nil
         sessionMethod = nil
+        specialSessions = []
         merchUnavailable = false
         bracelet = nil
         selectedPass = nil
@@ -1040,6 +1039,7 @@ final class AppModel {
         sessionSale = nil
         sessionChoice = nil
         sessionMethod = nil
+        specialSessions = []
         merchUnavailable = false
         isPendingDoorSale = true
         screen = .participant
@@ -1240,6 +1240,7 @@ final class AppModel {
         sessionSale = nil
         sessionChoice = nil
         sessionMethod = nil
+        specialSessions = []
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -1268,6 +1269,7 @@ final class AppModel {
         sessionSale = nil
         sessionChoice = nil
         sessionMethod = nil
+        specialSessions = []
         merchUnavailable = false
         paymentDecision = nil
     }

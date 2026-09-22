@@ -253,9 +253,35 @@ export const DEFAULT_DOOR_PASSES = [
   { id: 'full-pass', name: 'Full Pass', price: 20500 },
   { id: 'full-pass-gold', name: 'Full Pass Gold', price: 25900 },
   { id: 'jazz-performance-track', name: 'Jazz Performance Track', price: 18500 },
-  // The extra classes. Same catalogue, different behaviour: `kind: 'session'`
-  // is sold from a participant's screen to somebody already here, never at the
-  // door, and `firestore.rules` refuses a door sale pointing at one.
-  { id: 'lindy-sakarias-elice', name: 'Lindy Hop with Sakarias & Elice', price: 2500, kind: 'session' },
-  { id: 'jazz-patrik', name: 'Jazz with Patrik', price: 2500, kind: 'session' },
 ];
+
+/**
+ * The extra classes, which are **not** passes.
+ *
+ * A collection of their own because a class admits nobody, creates no
+ * participant and is never sold at the door: it is added to somebody who is
+ * already here, from their own screen.
+ */
+export const DEFAULT_SPECIAL_SESSIONS = [
+  { id: 'lindy-sakarias-elice', name: 'Lindy Hop with Sakarias & Elice', price: 2500 },
+  { id: 'jazz-patrik', name: 'Jazz with Patrik', price: 2500 },
+];
+
+/** Write the class list, leaving anything an organiser added alone. */
+export async function seedSpecialSessions(db, sessions) {
+  const batch = db.batch();
+  sessions.forEach((session, index) => {
+    batch.set(
+      db.collection('specialSessions').doc(session.id),
+      {
+        name: session.name,
+        price: session.price,
+        sortOrder: index,
+        isActive: true,
+      },
+      { merge: true }
+    );
+  });
+  await batch.commit();
+  return { written: sessions.length };
+}

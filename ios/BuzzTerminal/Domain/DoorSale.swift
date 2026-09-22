@@ -34,10 +34,6 @@ struct DoorPass: Identifiable, Equatable, Sendable {
         case pass
         /// The numbered ticket: a name and a night, nothing else.
         case evening
-        /// An extra class added to somebody who is already here. It creates no
-        /// participant and appears nowhere in the door flow: it is sold from the
-        /// participant screen, to a person who already has a wristband.
-        case session
 
         /// Read what the catalogue says, falling back to an ordinary pass.
         ///
@@ -47,14 +43,11 @@ struct DoorPass: Identifiable, Equatable, Sendable {
         init(wire: String?) {
             self = Kind(rawValue: wire ?? "") ?? .pass
         }
-    }
 
-    /// Whether this row is an extra class rather than something sold at the door.
-    ///
-    /// The door flow filters these out and `firestore.rules` refuses a door sale
-    /// pointing at one — a session is not a ticket, and minting a participant
-    /// called "Jazz with Patrik" is the failure this prevents.
-    var isSession: Bool { kind == .session }
+        /// Every kind there is. Here so a test can assert the list rather than
+        /// trusting that nothing has crept back into it.
+        static let allCasesForTesting: [Kind] = [.pass, .evening]
+    }
 
     /// What this costs on a given night. Nil means "not sold by the night", so
     /// the flat price applies.

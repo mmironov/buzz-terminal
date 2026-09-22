@@ -423,6 +423,13 @@ actor FirebaseTerminalRepository: TerminalRepository {
         }
     }
 
+    func specialSessions() async throws -> [SpecialSession] {
+        let snapshot = try await db.collection(Fire.Collection.specialSessions)
+            .order(by: Fire.SpecialSession.sortOrder)
+            .getDocuments()
+        return snapshot.documents.compactMap(SpecialSession.init(document:))
+    }
+
     func sessionSale(for participant: Participant) async throws -> SessionSale? {
         do {
             let document = try await sessionDocument(participant.id).getDocument()
@@ -444,7 +451,7 @@ actor FirebaseTerminalRepository: TerminalRepository {
     }
 
     func sellSession(
-        _ session: DoorPass,
+        _ session: SpecialSession,
         method: PaymentMethod,
         to participant: Participant
     ) async throws -> SessionSale {

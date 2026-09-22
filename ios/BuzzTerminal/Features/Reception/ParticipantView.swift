@@ -261,7 +261,7 @@ struct ParticipantView: View {
                         SBChoiceBox(
                             title: session.name,
                             isSelected: model.sessionChoice == session.id,
-                            note: session.priceLabel(),
+                            note: session.priceLabel,
                             select: { model.chooseSession(session) }
                         )
                     }

@@ -203,13 +203,18 @@ actor InMemoryTerminalRepository: TerminalRepository {
         return shirt
     }
 
+    func specialSessions() async throws -> [SpecialSession] {
+        await simulateNetwork()
+        return SampleData.specialSessions
+    }
+
     func sessionSale(for participant: Participant) async throws -> SessionSale? {
         await simulateNetwork()
         return sessions[participant.id]
     }
 
     func sellSession(
-        _ session: DoorPass,
+        _ session: SpecialSession,
         method: PaymentMethod,
         to participant: Participant
     ) async throws -> SessionSale {

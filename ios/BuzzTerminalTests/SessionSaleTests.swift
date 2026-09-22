@@ -14,24 +14,25 @@ import Testing
 @Suite("Special sessions")
 struct SessionSaleTests {
 
-    private let jazz = DoorPass(
-        id: "jazz-patrik", name: "Jazz with Patrik", price: Money(euros: 25), kind: .session
-    )
-    private let fullPass = DoorPass(
-        id: "full-pass", name: TicketType.fullPass, price: Money(euros: 205)
-    )
-    private let evening = DoorPass(
-        id: "evening-ticket", name: TicketType.eveningTicket, price: .zero, kind: .evening
+    private let jazz = SpecialSession(
+        id: "jazz-patrik", name: "Jazz with Patrik", price: Money(euros: 25)
     )
 
-    @Test("THE ONE THAT MATTERS: a class is never something the door sells")
-    func sessionsAreNotDoorPasses() {
-        // `firestore.rules` refuses a door sale pointing at one, because it
-        // would mint a participant called "Jazz with Patrik". The catalogue is
-        // shared, so this is the flag both sides read.
-        #expect(jazz.isSession)
-        #expect(fullPass.isSession == false)
-        #expect(evening.isSession == false)
+    @Test("THE ONE THAT MATTERS: a class is not a pass, and has its own catalogue")
+    func sessionsAreNotPasses() {
+        // It shared `doorPasses` for one afternoon, behind a `kind`, and
+        // everything that followed — filtering the door picker, a rule stopping
+        // a class being sold as a ticket — was work spent keeping two different
+        // things apart in one list. They are separate types now, so a class
+        // cannot reach the door flow at all: it is not a `DoorPass`.
+        #expect(DoorPass.Kind.allCasesForTesting == [.pass, .evening])
+        #expect(DoorPass.Kind(wire: "session") == .pass)
+    }
+
+    @Test("An unpriced class says so rather than reading 0.00 €")
+    func unpriced() {
+        #expect(jazz.priceLabel == "25.00 €")
+        #expect(SpecialSession(id: "x", name: "y", price: .zero).priceLabel == "No price set")
     }
 
     @Test("A sale says what it was, what it cost and how it was paid")
@@ -85,9 +86,8 @@ struct SessionSaleTests {
             sessionId: catalogue.id, name: catalogue.name, price: catalogue.price,
             method: .cash, soldAt: .now, soldBy: "uid"
         )
-        catalogue = DoorPass(
-            id: "jazz-patrik", name: "Jazz with Patrik (Sunday)",
-            price: Money(euros: 30), kind: .session
+        catalogue = SpecialSession(
+            id: "jazz-patrik", name: "Jazz with Patrik (Sunday)", price: Money(euros: 30)
         )
         #expect(sale.name == "Jazz with Patrik")
         #expect(sale.price == Money(euros: 25))

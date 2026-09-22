@@ -55,6 +55,12 @@ drink() {  # id, name, cents, order
     \"sortOrder\":{\"integerValue\":\"$4\"},\"isActive\":{\"booleanValue\":true}}}" >/dev/null
 }
 
+session() {  # id, name, cents, order
+  curl -s -X PATCH "$FS/specialSessions/$1" "${OWNER[@]}" -d "{\"fields\":{
+    \"name\":{\"stringValue\":\"$2\"},\"price\":{\"integerValue\":\"$3\"},
+    \"sortOrder\":{\"integerValue\":\"$4\"},\"isActive\":{\"booleanValue\":true}}}" >/dev/null
+}
+
 doorpass() {  # id, name, cents, order, kind
   curl -s -X PATCH "$FS/doorPasses/$1" "${OWNER[@]}" -d "{\"fields\":{
     \"name\":{\"stringValue\":\"$2\"},\"price\":{\"integerValue\":\"$3\"},
@@ -86,9 +92,10 @@ echo "door passes:"
                       doorpass full-pass "Full Pass" 20500 3
                       doorpass full-pass-gold "Full Pass Gold" 25900 4
                       doorpass jazz-performance-track "Jazz Performance Track" 18500 5
-                      # The two extra classes: same catalogue, sold from a
-                      # participant's screen rather than at the door.
-                      doorpass lindy-sakarias-elice "Lindy Hop with Sakarias & Elice" 2500 6 session
-                      doorpass jazz-patrik "Jazz with Patrik" 2500 7 session
-                      echo "  6 passes and 2 special sessions"
+
+                      echo "  6 passes"
+# The extra classes: a catalogue of their own, because a class is not a pass.
+echo "sessions:";     session lindy-sakarias-elice "Lindy Hop with Sakarias & Elice" 2500 0
+                      session jazz-patrik "Jazz with Patrik" 2500 1
+                      echo "  2 special sessions"
 echo "done."

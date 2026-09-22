@@ -113,8 +113,9 @@ Written once — `update` and `delete` are both refused — because a sale that 
 be rewritten is one nobody can count a cash box against, and because that refusal
 is also what limits everybody to one class.
 
-The catalogue rows live in `doorPasses` with `kind: "session"`; the door flow
-filters them out and the rules refuse a door sale pointing at one. See
+The classes themselves live in `specialSessions/{id}` — `name`, `price`,
+`sortOrder`, `isActive` — a collection of their own, because a class is not a
+pass: it admits nobody, creates no participant and is never sold at the door. See
 `docs/special-sessions.md`.
 
 ## `braceletColours/{passTypeSlug}`

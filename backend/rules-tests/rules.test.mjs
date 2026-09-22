@@ -154,14 +154,13 @@ beforeEach(async () => {
     await setDoc(doc(db, 'doorPasses', 'party-pass'), {
       name: 'Party Pass', price: 12000, sortOrder: 0, isActive: true, kind: 'pass',
     });
-    // An extra class. Same catalogue, different behaviour: it is sold from a
-    // participant's screen and creates nobody.
-    await setDoc(doc(db, 'doorPasses', 'jazz-patrik'), {
-      name: 'Jazz with Patrik', price: 2500, sortOrder: 9, isActive: true, kind: 'session',
+    // The extra classes, in a collection of their own: a class is not a pass,
+    // admits nobody, and is never sold at the door.
+    await setDoc(doc(db, 'specialSessions', 'jazz-patrik'), {
+      name: 'Jazz with Patrik', price: 2500, sortOrder: 1, isActive: true,
     });
-    await setDoc(doc(db, 'doorPasses', 'lindy-hop'), {
-      name: 'Lindy Hop with Sakarias & Elice',
-      price: 2500, sortOrder: 8, isActive: true, kind: 'session',
+    await setDoc(doc(db, 'specialSessions', 'lindy-hop'), {
+      name: 'Lindy Hop with Sakarias & Elice', price: 2500, sortOrder: 0, isActive: true,
     });
   });
 });
@@ -1145,10 +1144,10 @@ describe('selling a pass at the door', () => {
     );
   });
 
-  it('THE CHANGE: refuses selling a special session as a pass', async () => {
-    // The extra classes live in the same catalogue. Selling one here would mint
-    // a participant called "Jazz with Patrik" holding a 25 € "pass" — so the
-    // rule checks the kind as well as the name.
+  it('THE CHANGE: a special session cannot be sold as a pass', async () => {
+    // The classes are not in this catalogue at all, so a door sale pointing at
+    // one fails on "that pass does not exist" — which is the protection that
+    // used to need a rule of its own when the two shared a collection.
     await assertFails(
       sellPass(reception(), {
         passId: 'jazz-patrik',
@@ -1680,6 +1679,49 @@ describe('the free shirt', () => {
   });
 });
 
+describe('the special-session catalogue', () => {
+  const ref = (db, id = 'jazz-patrik') => doc(db, 'specialSessions', id);
+  const session = (overrides = {}) => ({
+    name: 'Jazz with Patrik', price: 2500, sortOrder: 1, isActive: true, ...overrides,
+  });
+
+  it('is read by the terminals and written by an organiser', async () => {
+    await assertSucceeds(getDoc(ref(reception())));
+    await assertSucceeds(setDoc(ref(admin()), session({ price: 3000 })));
+    await assertFails(setDoc(ref(reception()), session({ price: 3000 })));
+  });
+
+  it('is not the bar\u2019s business — it neither shows nor sells a class', async () => {
+    await assertFails(getDoc(ref(bar())));
+    await assertFails(setDoc(ref(bar()), session()));
+  });
+
+  it('refuses nonsense in a name or a price', async () => {
+    await assertFails(setDoc(ref(admin()), session({ name: '' })));
+    await assertFails(setDoc(ref(admin()), session({ name: 'x'.repeat(101) })));
+    await assertFails(setDoc(ref(admin()), session({ price: '25.00' })));
+    await assertFails(setDoc(ref(admin()), session({ price: -1 })));
+    await assertFails(setDoc(ref(admin()), session({ price: 200001 })));
+    await assertFails(setDoc(ref(admin()), { ...session(), kind: 'session' }));
+  });
+
+  it('THE SPLIT: a class is not a door pass, and cannot be written as one', async () => {
+    // They shared `doorPasses` behind a `kind` for one afternoon. The catalogue
+    // refuses that kind now, so the two cannot drift back together.
+    await assertFails(
+      setDoc(doc(admin(), 'doorPasses', 'jazz-patrik'), {
+        name: 'Jazz with Patrik', price: 2500, sortOrder: 9, isActive: true, kind: 'session',
+      })
+    );
+  });
+
+  it('lets an organiser withdraw one and delete it', async () => {
+    await assertSucceeds(setDoc(ref(admin()), session({ isActive: false })));
+    await assertSucceeds(deleteDoc(ref(admin())));
+    await assertFails(deleteDoc(ref(reception())));
+  });
+});
+
 // ───────────────────────────────────────────────────────────────────────────
 //  Special sessions
 //
@@ -1760,8 +1802,8 @@ describe('special sessions', () => {
   });
 
   it('refuses selling an ordinary pass as a session', async () => {
-    // `full-pass` is in the same collection but is not a class. Selling one
-    // here would record a 205 € pass as an add-on and put nobody on the roster.
+    // `full-pass` is a door pass, and the classes are a different collection
+    // entirely — so this fails on "no such class" rather than on a kind check.
     await assertFails(
       setDoc(ref(reception()), sale({ sessionId: 'full-pass', name: 'Full Pass', price: 20500 }))
     );

@@ -390,8 +390,10 @@ the sale is written. The price is read out at the desk and charged by nothing, b
 how it was paid **is** recorded on the sale, and the tab totals cash against card
 underneath the catalogue; see `docs/door-sales.md`.
 
-The same tab holds the **special sessions** — the extra classes, `kind: session`,
-sold from a participant's screen rather than at the door and totalled separately.
+**Sessions.** The extra classes — Lindy Hop with Sakarias & Elice, Jazz with
+Patrik — which are **not** passes: a class admits nobody and is added to somebody
+who is already here, from their own screen, one each. Add, rename, reprice or
+withdraw them here; what the desk took for them is totalled underneath.
 `docs/special-sessions.md`.
 
 **Bracelets.** Which colour wristband each pile gets: ten written-down rows —

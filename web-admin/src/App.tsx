@@ -4,11 +4,12 @@ import { Bar } from './Bar';
 import { Bracelets } from './Bracelets';
 import { Participants } from './Participants';
 import { Passes } from './Passes';
+import { Sessions } from './Sessions';
 import { SignIn } from './SignIn';
 import { usingEmulator } from './firebase';
 import { useAuth } from './useAuth';
 
-type Tab = 'participants' | 'bar' | 'bracelets' | 'passes';
+type Tab = 'participants' | 'bar' | 'bracelets' | 'passes' | 'sessions';
 
 export function App() {
   const { state, signIn, leave } = useAuth();
@@ -112,6 +113,14 @@ export function App() {
         >
           Door passes
         </button>
+        <button
+          className="tab"
+          role="tab"
+          aria-selected={tab === 'sessions'}
+          onClick={() => setTab('sessions')}
+        >
+          Sessions
+        </button>
       </nav>
 
       <main className="page">
@@ -119,6 +128,7 @@ export function App() {
         {tab === 'bar' ? <Bar /> : null}
         {tab === 'bracelets' ? <Bracelets /> : null}
         {tab === 'passes' ? <Passes /> : null}
+        {tab === 'sessions' ? <Sessions /> : null}
       </main>
     </div>
   );

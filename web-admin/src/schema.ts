@@ -14,8 +14,10 @@
 
 export const COLLECTIONS = {
   participants: 'participants',
-  /** A participant's extra classes: one document per class bought. */
+  /** A participant's extra class: one document, at a fixed id. */
   sessions: 'sessions',
+  /** The extra classes on sale. Not passes: see `docs/special-sessions.md`. */
+  specialSessions: 'specialSessions',
   transactions: 'transactions',
   bracelets: 'bracelets',
   drinks: 'drinks',
@@ -67,6 +69,13 @@ export const DOOR_PASS_FIELDS = {
   isActive: 'isActive',
   /** `'pass'` asks for a buyer; `'evening'` is the anonymous numbered ticket. */
   kind: 'kind',
+} as const;
+
+export const SPECIAL_SESSION_FIELDS = {
+  name: 'name',
+  price: 'price',
+  sortOrder: 'sortOrder',
+  isActive: 'isActive',
 } as const;
 
 export const CONTACT_FIELDS = {
@@ -256,10 +265,9 @@ export interface DoorPass {
   isActive: boolean;
   /**
    * `'evening'` routes the terminal to the anonymous numbered flow — no name, no
-   * email, pick a night. `'pass'` asks for the buyer's details. `'session'` is
-   * an extra class, sold from a participant's screen and never at the door.
+   * email, pick a night. `'pass'` asks for the buyer's details.
    */
-  kind: 'pass' | 'evening' | 'session';
+  kind: 'pass' | 'evening';
 }
 
 export interface Drink {
@@ -325,6 +333,36 @@ export interface Transaction {
 }
 
 export type PaymentMethod = 'cash' | 'card';
+
+/**
+ * One extra class an organiser runs, as they priced it.
+ *
+ * Not a `DoorPass`: a class admits nobody, creates no participant and is never
+ * sold at the door. It has its own collection for that reason.
+ */
+export interface SpecialSession {
+  id: string;
+  name: string;
+  /** Cents. */
+  price: number;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export function toSpecialSession(doc: Doc): SpecialSession | null {
+  const data = doc.data();
+  const name = data[SPECIAL_SESSION_FIELDS.name];
+  const price = int(data[SPECIAL_SESSION_FIELDS.price]);
+  if (typeof name !== 'string' || price === null) return null;
+
+  return {
+    id: doc.id,
+    name,
+    price,
+    sortOrder: int(data[SPECIAL_SESSION_FIELDS.sortOrder]) ?? 0,
+    isActive: data[SPECIAL_SESSION_FIELDS.isActive] !== false,
+  };
+}
 
 /** One extra class somebody bought at the desk, and what they paid for it. */
 export interface SessionSale {
@@ -459,12 +497,7 @@ export function toDoorPass(doc: Doc): DoorPass | null {
     // Anything unrecognised is an ordinary pass. A terminal that met a `kind` it
     // did not know and refused to sell would be worse than one that asks for a
     // name it did not strictly need.
-    kind:
-      data[DOOR_PASS_FIELDS.kind] === 'evening'
-        ? 'evening'
-        : data[DOOR_PASS_FIELDS.kind] === 'session'
-          ? 'session'
-          : 'pass',
+    kind: data[DOOR_PASS_FIELDS.kind] === 'evening' ? 'evening' : 'pass',
   };
 }
 

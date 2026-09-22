@@ -28,6 +28,9 @@ enum Fire {
         static let braceletColours = "braceletColours"
         /// What reception may sell at the desk, priced in the admin panel.
         static let doorPasses = "doorPasses"
+        /// The extra classes, priced in the admin panel. A collection of their
+        /// own: a class is not a pass and is never sold at the door.
+        static let specialSessions = "specialSessions"
         /// A subcollection of a participant holding one document: the buyer's
         /// email. Reception and the organiser panel only — see `docs/door-sales.md`.
         static let contact = "contact"
@@ -35,6 +38,13 @@ enum Fire {
         /// bought at the desk, keyed by the catalogue id. Reception and the
         /// panel only, like merch — what somebody bought, and what they paid.
         static let sessions = "sessions"
+    }
+
+    enum SpecialSession {
+        static let name = "name"
+        static let price = "price"
+        static let sortOrder = "sortOrder"
+        static let isActive = "isActive"
     }
 
     enum SessionSale {
@@ -81,8 +91,6 @@ enum Fire {
 
         static let kindPass = "pass"
         static let kindEvening = "evening"
-        /// An extra class, sold from a participant's screen and never at the door.
-        static let kindSession = "session"
     }
 
     enum Contact {
@@ -301,6 +309,29 @@ extension Drink {
     }
 }
 
+extension SpecialSession {
+    /// Build from `specialSessions/{slug}`.
+    ///
+    /// A withdrawn class is dropped here rather than filtered later: a terminal
+    /// that never holds one cannot offer it by accident, and the rules would
+    /// refuse the sale anyway — after somebody had been told a price.
+    init?(document: DocumentSnapshot) {
+        guard let data = document.data(),
+              let name = data[Fire.SpecialSession.name] as? String,
+              !name.isEmpty,
+              let cents = data[Fire.SpecialSession.price] as? Int,
+              data[Fire.SpecialSession.isActive] as? Bool ?? true
+        else { return nil }
+
+        self.init(
+            id: document.documentID,
+            name: name,
+            price: Money(cents: cents),
+            sortOrder: data[Fire.SpecialSession.sortOrder] as? Int ?? 0
+        )
+    }
+}
+
 extension SessionSale {
     /// Build from `participants/{id}/sessions/{sessionId}`.
     ///
@@ -327,7 +358,7 @@ extension SessionSale {
 
     /// The document a sale writes. Written once and never updated.
     static func document(
-        _ session: DoorPass,
+        _ session: SpecialSession,
         method: PaymentMethod,
         soldBy staffUid: String
     ) -> [String: Any] {

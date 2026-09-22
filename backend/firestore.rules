@@ -97,6 +97,9 @@ service cloud.firestore {
     function passRef(passId) {
       return /databases/$(database)/documents/doorPasses/$(passId);
     }
+    function sessionRef(sessionId) {
+      return /databases/$(database)/documents/specialSessions/$(sessionId);
+    }
 
     // ── Participants ───────────────────────────────────────────────────────
 
@@ -223,11 +226,6 @@ service cloud.firestore {
           && d.passId is string
           && exists(passRef(d.passId))
           && get(passRef(d.passId)).data.name == d.ticketType
-          // …and it must be something the door actually sells. A special
-          // session is in the same catalogue but is an extra class bought by
-          // somebody who is already here; selling one as a pass would mint a
-          // participant called "Jazz with Patrik".
-          && get(passRef(d.passId)).data.get('kind', 'pass') != 'session'
           // A real name. Bounded and nothing more.
           //
           // This said `d.nameLower == d.name.lower()` for about an hour, which
@@ -301,11 +299,11 @@ service cloud.firestore {
             // because the id is what makes "one each" true.
             && d.sessionId is string
             // Only a class an organiser has actually put up for sale, and only
-            // under the name they gave it — the same check a door pass gets, and
-            // the reason reception cannot invent a 200 € private lesson.
-            && exists(passRef(d.sessionId))
-            && get(passRef(d.sessionId)).data.name == d.name
-            && get(passRef(d.sessionId)).data.get('kind', 'pass') == 'session'
+            // under the name they gave it — the same check a door pass gets
+            // against its own catalogue, and the reason reception cannot invent
+            // a 200 € private lesson.
+            && exists(sessionRef(d.sessionId))
+            && get(sessionRef(d.sessionId)).data.name == d.name
             // A snapshot of the price, bounded like every other. Deliberately
             // not pinned to the catalogue's current value: a phone holding a
             // five-minute-old price would otherwise have the sale refused with
@@ -809,10 +807,7 @@ service cloud.firestore {
           // night — instead of the full buyer form. It is a behaviour, not a
           // label, which is why it is a field the rules know about rather than
           // a name match.
-          // `session` is an extra class, sold from a participant's screen
-          // rather than at the door: it creates nobody, and the door-sale rule
-          // below refuses a pass pointing at one.
-          && d.kind in ['pass', 'evening', 'session']
+          && d.kind in ['pass', 'evening']
           && pricesPerNightAreSane(d);
       }
 
@@ -839,6 +834,35 @@ service cloud.firestore {
       function nightIsSane(prices, night) {
         return !(night in prices)
           || (prices[night] is int && prices[night] >= 0 && prices[night] <= 200000);
+      }
+    }
+
+    // ── The special-session catalogue ────────────────────────────────────
+    //
+    // The extra classes an organiser runs: Lindy Hop with Sakarias & Elice,
+    // Jazz with Patrik. **Not passes**, and deliberately not in `doorPasses`
+    // with them: a class admits nobody, creates no participant and is never
+    // sold at the door. It is only ever added to somebody who is already here.
+    //
+    // Same ownership as every other price list: organisers write, terminals
+    // read. Reception rather than everybody, because the bar neither shows the
+    // classes nor sells them.
+    match /specialSessions/{sessionId} {
+      allow read: if isReception();
+      allow create, update: if isAdmin() && isWellFormedSession();
+      allow delete: if isAdmin();
+
+      function isWellFormedSession() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['name', 'price', 'sortOrder', 'isActive'])
+          && d.keys().hasAll(['name', 'price', 'sortOrder', 'isActive'])
+          // Written onto the sale verbatim, so it is bounded the same way a
+          // pass name is — and checked against the sale as it is written.
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 100
+          // Cents, with the same typo ceiling the drinks and passes have.
+          && d.price is int && d.price >= 0 && d.price <= 200000
+          && d.sortOrder is int && d.sortOrder >= 0
+          && d.isActive is bool;
       }
     }
 

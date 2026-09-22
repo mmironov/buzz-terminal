@@ -137,6 +137,13 @@ protocol TerminalRepository: Sendable {
         for participant: Participant
     ) async throws -> FreeShirt
 
+    /// The extra classes on sale, in the order organisers arranged them,
+    /// withdrawn ones already dropped.
+    ///
+    /// Its own collection, not a corner of the door catalogue: a class is not a
+    /// pass, admits nobody and is never sold at the door.
+    func specialSessions() async throws -> [SpecialSession]
+
     /// The extra class this person has bought, or nil for almost everybody.
     ///
     /// One each: the sale lives at a fixed document id, so this is a point read
@@ -151,7 +158,7 @@ protocol TerminalRepository: Sendable {
     /// name and price are snapshotted from the catalogue entry passed in, so
     /// renaming a class later cannot rewrite what was sold.
     func sellSession(
-        _ session: DoorPass,
+        _ session: SpecialSession,
         method: PaymentMethod,
         to participant: Participant
     ) async throws -> SessionSale
