@@ -590,6 +590,43 @@ select {
   outline-offset: -2px;
 }
 
+.table td input:disabled {
+  background: var(--neutral-100);
+  color: var(--ink-55);
+  cursor: not-allowed;
+}
+
+/* Narrower than this and the browser starts taking the difference out of the
+   hex box, which clips `#FFFFFF` to `#FFF` — the one string in the row somebody
+   is here to read. The page scrolls sideways instead. */
+.table--colours {
+  min-width: 900px;
+}
+
+/* The swatch and the hex beside it, on a wristband colour. Two ways into one
+   value: the picker for choosing, the box for pasting what the supplier wrote
+   in their email — which is how these colours actually arrive. */
+.colour {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.colour input[type='color'] {
+  height: 30px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+/* `min-width: 0` for the same reason the night prices need it: a grid item sets
+   its track's minimum, and without it the box would push the cell wider than
+   its column. Upper case on the way in, because that is what gets stored. */
+.colour input.hex {
+  min-width: 0;
+  text-transform: uppercase;
+}
+
 .drink-form {
   display: grid;
   grid-template-columns: minmax(0, 2fr) 110px auto;

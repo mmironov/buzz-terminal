@@ -24,7 +24,8 @@ braceletColours/full-pass-pro
 
 **Level first, then the pass type's fallback.** Colour `Full Pass` once and
 everybody with one is covered; add `Full Pass · Pro` and that track gets its own
-band while everybody else keeps the first.
+band while everybody else keeps the first. That is the lookup, and it has not
+changed — what changed is which rows the panel offers.
 
 **Only Full Pass and Full Pass Gold split by level**, because those are the
 passes whose classes do — `SPLITS_BY_LEVEL` in `web-admin/src/schema.ts`, and
@@ -32,6 +33,29 @@ passes whose classes do — `SPLITS_BY_LEVEL` in `web-admin/src/schema.ts`, and
 festival written down on both sides. Every other pass type records a level too,
 but it is mostly `Other` — the form's way of saying "not applicable" — and four
 level rows apiece would be noise in a table an organiser has to scan.
+
+**Those two are not offered an "Any level" row.** Every Full Pass and Full Pass
+Gold holder in the roster has a level, so the general row was a second, competing
+answer to a question the level rows had already answered: the panel showed
+`Full Pass` and `Full Pass · Advanced` one above the other with no way to tell
+which one a wristband would come from. The way out somebody found was to set
+`Full Pass` to white and call it "No color", which is the shape of a control
+nobody could use.
+
+It is not hidden, because hiding it would leave the document underneath still
+deciding somebody's colour. It appears exactly while it is still doing work:
+
+- **Somebody is uncovered** — a level in use has no colour of its own, or a
+  holder's level is blank. The row is offered, and its **People** count is those
+  people and nobody else. Colour their level and the row turns into the next
+  case by itself.
+- **A leftover document** from before this rule, covering nobody. The row shows
+  greyed, says *Left over — this pass type is coloured by level*, and offers
+  **Clear** and nothing else.
+
+Clear it and the row goes. Clear a level colour and it comes back, because
+somebody is uncovered again. Every **Clear** says on hover how many people would
+be left with no colour at all.
 
 A level colour that already exists on some other pass type is still listed, so a
 mapping made before that rule can be seen and cleared rather than stranded in the
@@ -102,6 +126,16 @@ The rules pin the format with a regex, the panel normalises what the browser's
 colour input returns (lower case) before writing, and both apps refuse anything
 else.
 
+**Two ways into the same value: the picker, and a box to paste a hex into.**
+Wristbands are ordered by hex and the supplier writes it in an email, so the
+picker was the wrong end of the tool — matching `1E6BB8` by eye in a colour
+wheel is not a thing anybody should be asked to do. `parseHexColour` takes it
+with or without the `#`, in either case, with whitespace around it, and expands
+`#fff` the way CSS does. Anything else is not a colour: the box says so and
+**Save** stays disabled, rather than a guess being written. While the hex is
+half-typed the swatch keeps showing the last colour it was, because a swatch is
+what somebody compares against a physical wristband.
+
 There is **no fallback colour anywhere**. A swatch of the wrong colour is worse
 than no swatch, because somebody hands over a wristband on the strength of it. A
 pass type with no mapping simply shows nothing, which is an ordinary outcome: a
@@ -164,16 +198,27 @@ wristband colours — which is a fine way to teach staff to dismiss alerts.
   showed Karol Chrząszcz (Full Pass, Pro) a **black** band and Amélie Roux
   (Full Pass, Advanced) a **sky blue** one — the override and the fallback, from
   the same pass type.
+- **The level-only rows and the hex box, end to end against the emulator**,
+  2026-09-22, with the colours production actually holds — including
+  `full-pass` set to white and called "No color". `Full Pass` showed as a
+  leftover covering nobody, greyed, Clear only; `Full Pass Gold` stayed offered
+  because its one Intermediate — Pro, in the fixtures — had no colour, and
+  flipped to a leftover the moment that level was given one. Clearing a level
+  colour brought the row back with the uncovered person counted on it.
+  `73ff4d` pasted into the hex box was written through the real rules as
+  `#73FF4D`; `#fff` expanded to `#FFFFFF`; `red`, `#12345` and `#GG0011` left
+  **Save** disabled with the swatch still on the last real colour.
 
 ## Still open
 
-- **Nothing is deployed or set in production.** The rules change is not live and
-  no colour has been assigned, so every participant currently shows no band.
-- **No production participant has a `level` yet.** It was an excluded column
-  until now, so the 105 imported people have no such field. Until the roster is
-  re-imported, every level lookup misses and everybody falls back to their pass
-  type's colour — which is a safe failure and an invisible one, so it is worth
-  doing the re-import in the same sitting as the deploy.
+- **Two rows in production are waiting for somebody.** Read back on 2026-09-22:
+  nine colours set, every participant carrying a level. `full-pass` is
+  `#FFFFFF` "No color" and now covers nobody — the leftover the panel offers to
+  clear. `full-pass-gold` is yellow and still covers **one** person, the single
+  Gold Intermediate, who has no colour of their own; give that level a colour
+  and the general row becomes clearable too. Neither is urgent and neither is
+  wrong, but until both are done the database still holds a general colour for a
+  pass type the panel says is coloured by level.
 - **Android has none of this.**
 - **Nobody checks the wristbands actually match.** The app reports what an
   organiser typed; whether the Gold pile is really gold is a question for the

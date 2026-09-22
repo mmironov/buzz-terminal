@@ -377,14 +377,28 @@ export function isHexColour(value: string): boolean {
 }
 
 /**
- * What an `<input type="color">` produces, in the shape the rules accept.
+ * A colour out of whatever somebody typed or pasted, or `null` when it is not a
+ * colour at all.
  *
- * Browsers return lower case; the rules demand upper. Normalising here rather
- * than loosening the rule keeps one spelling in the database, so two organisers
- * picking the same colour cannot produce two different strings.
+ * Two jobs in one function. The first is what an `<input type="color">`
+ * produces: browsers return lower case and the rules demand upper, and
+ * normalising here rather than loosening the rule keeps one spelling in the
+ * database, so two organisers picking the same colour cannot produce two
+ * different strings. The second is a paste — the wristbands are ordered by hex
+ * and the supplier's mail says `1E6BB8`, so the hash is optional and `#fff` is
+ * expanded the way CSS expands it.
+ *
+ * `null` rather than a guess for anything else. There is no partial credit on a
+ * colour: somebody hands over a wristband on the strength of the swatch.
  */
-export function normaliseHexColour(value: string): string {
-  return value.trim().toUpperCase();
+export function parseHexColour(input: string): string | null {
+  const digits = input.trim().replace(/^#/, '').toUpperCase();
+  // `#FFF` → `#FFFFFF`, the CSS expansion. A supplier's swatch list is as likely
+  // to be written short as long, and both name exactly one colour.
+  if (/^[0-9A-F]{3}$/.test(digits)) {
+    return `#${[...digits].map((digit) => digit + digit).join('')}`;
+  }
+  return /^[0-9A-F]{6}$/.test(digits) ? `#${digits}` : null;
 }
 
 export function toTransaction(doc: Doc): Transaction | null {
