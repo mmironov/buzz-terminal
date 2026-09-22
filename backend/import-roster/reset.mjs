@@ -10,8 +10,21 @@
 //   * Firebase Auth accounts and their role claims. Staff keep their logins.
 //   * the drinks menu, unless --drinks is passed explicitly.
 
-/** Participants the terminals created rather than the importer. */
-const isDoorSale = (data) => data.source === 'evening';
+/**
+ * Participants the terminals created rather than the importer.
+ *
+ * **Both sources, and the second one was missed for a day.** When the door
+ * started selling full passes as well as evening tickets, this predicate still
+ * only knew `evening` — so a `test-data` reset deleted the evening tickets and
+ * *reset* the door passes instead, leaving people who were never in the Sheet
+ * sitting in the roster with no bracelet, indistinguishable from somebody
+ * awaiting check-in. Two of them were found in production.
+ *
+ * Anything a terminal minted belongs here. If a third source ever appears, this
+ * line is one of the two places that has to learn about it — the other is
+ * `findOrphans`.
+ */
+const isDoorSale = (data) => data.source === 'evening' || data.source === 'door';
 
 /**
  * Decide what a reset does, from what is currently in Firestore.

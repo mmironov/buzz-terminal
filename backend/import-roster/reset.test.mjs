@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { planReset, isNoOp, checkConfirmation, summariseLedger } from './reset.mjs';
 
 const sheetPerson = (id) => ({ id, data: { source: 'sheet', name: 'Someone', balance: 1200 } });
-const doorSale = (id) => ({ id, data: { source: 'evening', name: 'Evening #3', balance: 500 } });
+const doorSale = (id) => ({ id, data: { source: 'evening', name: 'Petar Dimitrov', balance: 500 } });
+/** The other thing the door sells: a full pass, with a buyer on it. */
+const doorPass = (id) => ({ id, data: { source: 'door', name: 'Jana Novak', balance: 0 } });
 
 test('test-data scope keeps the imported roster and deletes the door sales', () => {
   const plan = planReset({
@@ -89,4 +91,20 @@ test('the summary tolerates a malformed entry rather than reporting NaN money', 
   assert.equal(money.topUps, 0);
   assert.equal(money.net, -400);
   assert.ok(Number.isFinite(money.net));
+});
+
+test('THE ONE THAT BIT: a door-sold PASS is deleted, not reset', () => {
+  // It only knew about evening tickets for a day, and a `test-data` reset in
+  // production left two door-sold people sitting in the roster with no
+  // bracelet — indistinguishable from somebody who had merely not checked in
+  // yet, and reported as an orphan by every import afterwards.
+  const plan = planReset({
+    participants: [
+      { id: 'tkt-1', data: { source: 'sheet' } },
+      doorPass('door-7'),
+      doorSale('ev-friday-3'),
+    ],
+  });
+  assert.deepEqual(plan.deleteParticipants.sort(), ['door-7', 'ev-friday-3']);
+  assert.deepEqual(plan.resetParticipants, ['tkt-1']);
 });
