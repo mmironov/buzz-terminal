@@ -1155,8 +1155,9 @@ final class AppModel {
             goToMenu()
             self.receipt = nil
         case .topUp:
-            self.receipt = nil
-            beginScan(for: .identify)
+            // The top-up receipt's one button is Done. It used to be "Read next
+            // bracelet", which began a scan from this screen.
+            goHome()
         case .checkIn:
             self.receipt = nil
             goToTopUp()

@@ -741,3 +741,31 @@ struct LevelForDisplayTests {
         #expect(guest("Saturday Party - 50 €", level: "Pro").levelForDisplay == nil)
     }
 }
+
+// MARK: - What a receipt offers next
+
+@Suite("Receipt actions")
+struct ReceiptActionTests {
+
+    private func receipt(_ kind: Receipt.Kind) -> Receipt {
+        Receipt(kind: kind, title: "t", note: "n", rows: [], balance: .zero)
+    }
+
+    @Test("THE ONE THAT MATTERS: a top-up offers one button, and it is Done")
+    func topUpHasNoSecondAction() {
+        // It used to offer "Read next bracelet" above Done, which started a scan
+        // from this screen — directly under the thumb that had just confirmed
+        // the amount. Reception's home screen is a scan, so the shortcut saved
+        // one tap and cost a wrong one.
+        #expect(receipt(.topUp).primaryActionLabel == "Done")
+        #expect(receipt(.topUp).secondaryActionLabel == nil)
+    }
+
+    @Test("The other two still offer what comes next, and a way out under it")
+    func othersKeepBoth() {
+        #expect(receipt(.payment).primaryActionLabel == "New order")
+        #expect(receipt(.payment).secondaryActionLabel == "Back to menu")
+        #expect(receipt(.checkIn).primaryActionLabel == "Top up now")
+        #expect(receipt(.checkIn).secondaryActionLabel == "Done")
+    }
+}

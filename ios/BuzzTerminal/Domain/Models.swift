@@ -492,15 +492,28 @@ struct Receipt: Hashable, Sendable {
         }
     }
 
+    /// The big button at the bottom: what somebody is most likely to do next.
+    ///
+    /// **A top-up offers nothing but Done.** It used to offer "Read next
+    /// bracelet", which started a fresh scan from here — but reading a bracelet
+    /// is what reception's home screen already is, so the button saved one tap
+    /// and sat directly under the thumb that had just confirmed the amount.
+    /// Money had changed hands; the next thing on the desk is the next guest,
+    /// not another scan started by accident.
     var primaryActionLabel: String {
         switch kind {
         case .payment: "New order"
-        case .topUp: "Read next bracelet"
+        case .topUp: "Done"
         case .checkIn: "Top up now"
         }
     }
 
-    var secondaryActionLabel: String {
-        kind == .payment ? "Back to menu" : "Done"
+    /// The quieter button under it, or nil when there is only one way onward.
+    var secondaryActionLabel: String? {
+        switch kind {
+        case .payment: "Back to menu"
+        case .topUp: nil
+        case .checkIn: "Done"
+        }
     }
 }

@@ -79,10 +79,12 @@ struct ReceiptView: View {
             }
             .buttonStyle(.sbBlock(.primary, minHeight: 48, fontSize: 15))
 
-            Button(receipt.secondaryActionLabel) {
-                model.goHome()
+            if let secondary = receipt.secondaryActionLabel {
+                Button(secondary) {
+                    model.goHome()
+                }
+                .buttonStyle(.sbBlock(.secondary, minHeight: 42, fontSize: 14))
             }
-            .buttonStyle(.sbBlock(.secondary, minHeight: 42, fontSize: 14))
         }
     }
 }
