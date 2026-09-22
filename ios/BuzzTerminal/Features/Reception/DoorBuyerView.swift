@@ -7,7 +7,7 @@ import SwiftUI
 ///
 ///   · **Name** — a Full Pass is a weekend-long thing and a lost wristband has to
 ///     be traceable to somebody. This is the field that separates a door pass
-///     from the anonymous evening ticket.
+///     from an evening ticket, which asks for a name and nothing else.
 ///   · **Dance role** — leader or follower, which is what class lists are built
 ///     from. Stored as `danceRole`, never `role`; that name belongs to the staff
 ///     claim the security rules read.

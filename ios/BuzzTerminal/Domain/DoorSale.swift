@@ -3,7 +3,7 @@ import Foundation
 // ═══════════════════════════════════════════════════════════════════════════
 //  Selling a pass at the desk.
 //
-//  Until now the door sold one thing: an anonymous evening ticket. It now sells
+//  Until now the door sold one thing: a numbered evening ticket. It now sells
 //  the whole catalogue — Party Pass, Full Pass Gold, whatever organisers have
 //  priced in the admin panel — and those buyers have names.
 //
@@ -26,7 +26,7 @@ struct DoorPass: Identifiable, Equatable, Sendable {
     enum Kind: String, Equatable, Sendable {
         /// Ask for the buyer: name, dance role, level where it applies.
         case pass
-        /// The anonymous numbered ticket. Pick a night, nothing else.
+        /// The numbered ticket: a name and a night, nothing else.
         case evening
     }
 
@@ -129,8 +129,12 @@ struct DoorSaleDraft: Equatable, Sendable {
     /// A disabled button that does not explain itself is the thing somebody
     /// stands at a desk tapping.
     func blocker(for pass: DoorPass) -> String? {
-        if trimmedName.isEmpty { return "Enter the buyer’s name" }
+        if trimmedName.isEmpty { return "Enter the guest’s name" }
         if trimmedName.count > Self.maxName { return "That name is too long" }
+        // An evening ticket asks for a name and nothing else. It is one night at
+        // a door with a queue behind it — no class list to build, so no dance
+        // role, no level, and nowhere to send an email.
+        guard pass.kind != .evening else { return nil }
         if danceRole == nil { return "Choose leader or follower" }
         if pass.asksForLevel && level.isEmpty { return "Choose a level" }
         if !emailLooksLikeAddress { return "Check the email address" }

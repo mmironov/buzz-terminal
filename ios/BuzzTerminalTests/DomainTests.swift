@@ -318,15 +318,15 @@ struct ParticipantLifecycleTests {
 
 // MARK: - Evening tickets
 
-/// Door-sold tickets. Anonymous by design: no name, no country, and organisers
-/// freeze them by hand after their evening rather than the app expiring them.
+/// Door-sold tickets. A name and a night, nothing else — organisers freeze them
+/// by hand after their evening rather than the app expiring them.
 @Suite("Evening tickets")
 struct EveningTicketTests {
 
     @Test("The id encodes the sequence, which is what makes it collision-proof")
     func identity() {
         let ticket = Participant.eveningTicket(
-            evening: .friday, number: 14, bracelet: SampleData.braceletE
+            evening: .friday, number: 14, name: "Petar Dimitrov", bracelet: SampleData.braceletE
         )
         // Two reception desks selling at once both try `ev-friday-14`; Firestore's
         // `create` lets exactly one win, and the loser retries with 15. No counter
@@ -335,21 +335,30 @@ struct EveningTicketTests {
         #expect(ticket.ticketRef == "EV-FRIDAY-14")
     }
 
-    @Test("It carries no personal data")
-    func anonymous() {
+    @Test("It carries the guest's name, and still nothing else")
+    func nameAndNothingElse() {
+        // These used to be anonymous, with `name` set to "Evening #3". The
+        // festival decided it wants to know who holds one; everything else it
+        // decided not to ask stayed unasked, which is what this pins.
         let ticket = Participant.eveningTicket(
-            evening: .saturday, number: 3, bracelet: SampleData.braceletE
+            evening: .saturday, number: 3, name: "  Petar Dimitrov  ",
+            bracelet: SampleData.braceletE
         )
-        #expect(ticket.name == "Evening #3")   // a label, not a person
+        #expect(ticket.name == "Petar Dimitrov")   // trimmed, as the desk typed it
         #expect(ticket.country.isEmpty)
+        #expect(ticket.level.isEmpty)
+        #expect(ticket.danceRole.isEmpty)
         #expect(ticket.source == .evening)
         #expect(ticket.isEveningTicket)
+        // The number it is reconciled by did not go anywhere.
+        #expect(ticket.eveningNumber == 3)
+        #expect(ticket.ticketRef == "EV-SATURDAY-3")
     }
 
     @Test("It is created already paired and with nothing on it")
     func pairedAndEmpty() {
         let ticket = Participant.eveningTicket(
-            evening: .sunday, number: 1, bracelet: SampleData.braceletE
+            evening: .sunday, number: 1, name: "Petar Dimitrov", bracelet: SampleData.braceletE
         )
         // The ticket price is cash to the festival, not credit on the bracelet.
         #expect(ticket.balance == .zero)
@@ -361,7 +370,8 @@ struct EveningTicketTests {
     @Test("The screen says which evening it was sold for")
     func description() {
         let evening = Participant.eveningTicket(
-            evening: .friday, number: 14, bracelet: SampleData.braceletE
+            evening: .friday, number: 14, name: "Petar Dimitrov",
+            bracelet: SampleData.braceletE
         )
         #expect(evening.ticketDescription == "Evening ticket · Friday")
         #expect(evening.ticketType == TicketType.eveningTicket)
@@ -371,14 +381,19 @@ struct EveningTicketTests {
         #expect(imported.isEveningTicket == false)
     }
 
-    @Test("Search finds an evening ticket by number or by evening")
+    @Test("Search finds an evening ticket by name, by number and by evening")
     func searchable() {
         let ticket = Participant.eveningTicket(
-            evening: .friday, number: 14, bracelet: SampleData.braceletE
+            evening: .friday, number: 14, name: "Petar Dimitrov", bracelet: SampleData.braceletE
         )
+        #expect(ticket.matches(query: "Petar"))
         #expect(ticket.matches(query: "evening"))
-        #expect(ticket.matches(query: "#14"))
         #expect(ticket.matches(query: "Evening Ticket"))
+        // The number moved: it used to be searchable because the name WAS
+        // "Evening #14". It is now only in the ticket reference, which is why
+        // `matches` looks there — the field has always said "or ticket".
+        #expect(ticket.matches(query: "14"))
+        #expect(ticket.matches(query: "EV-FRIDAY-14"))
         #expect(ticket.matches(query: "Marta") == false)
     }
 

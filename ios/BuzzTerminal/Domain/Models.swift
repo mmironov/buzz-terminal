@@ -66,7 +66,7 @@ enum Screen: Hashable, Sendable {
     case doorPass
     /// Who is buying it: name, dance role, level, email.
     case doorBuyer
-    /// Selling an evening ticket — the anonymous branch of the same flow.
+    /// Selling an evening ticket: which night, and who for.
     case assignEvening
     case participant
     case blocked
@@ -213,7 +213,7 @@ struct Participant: Identifiable, Hashable, Sendable {
     enum Source: String, Hashable, Sendable {
         /// Imported from the registrations Sheet. Roster fields are import-only.
         case sheet
-        /// Sold at the door by reception. Anonymous; there is no Sheet row.
+        /// An evening ticket sold at the door: a name and a night, no Sheet row.
         case evening
         /// A pass sold at the door with a buyer on it — name, dance role, and a
         /// level where the pass type has one. Also has no Sheet row.
@@ -224,8 +224,9 @@ struct Participant: Identifiable, Hashable, Sendable {
     var id: ParticipantID
     /// As printed on their ticket, or `EV-FRIDAY-14` for a door sale.
     var ticketRef: String
-    /// For an evening ticket this is the generated label, e.g. "Evening #14" —
-    /// not a person's name. Evening tickets are anonymous by design.
+    /// The guest's name, for everybody — including evening tickets, which used
+    /// to carry a generated "Evening #14" label instead. The number they are
+    /// reconciled by still lives in `ticketRef` and `eveningNumber`.
     var name: String
     /// One of `TicketType.all`, or whatever the Sheet said.
     var ticketType: String
@@ -334,14 +335,14 @@ extension Participant {
     static func eveningTicket(
         evening: Evening,
         number: Int,
+        name: String,
         bracelet: BraceletID,
         checkedInAt: Date = .now
     ) -> Participant {
-        let label = "Evening #\(number)"
-        return Participant(
+        Participant(
             id: ParticipantID("ev-\(evening.rawValue)-\(number)"),
             ticketRef: "EV-\(evening.rawValue.uppercased())-\(number)",
-            name: label,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             ticketType: TicketType.eveningTicket,
             country: "",
             source: .evening,
@@ -397,7 +398,14 @@ extension Participant {
 
         guard !trimmed.isEmpty else { return true }
 
-        return name.localizedCaseInsensitiveContains(trimmed) || ticketType.localizedCaseInsensitiveContains(trimmed)
+        return name.localizedCaseInsensitiveContains(trimmed)
+            || ticketType.localizedCaseInsensitiveContains(trimmed)
+            // The field has said "participant or ticket" since the first
+            // iteration and only ever searched the first two. It became load
+            // bearing when evening tickets stopped being called "Evening #14":
+            // the number they are reconciled by now lives only here, in
+            // `EV-FRIDAY-14` and `TKT-10432`.
+            || ticketRef.localizedCaseInsensitiveContains(trimmed)
     }
 }
 

@@ -60,7 +60,7 @@ none yet:
 | `04:B4:2F:11` | Marta, 23.50 € → top-up and successful payment |
 | `04:C8:5D:03` | Jonas, 2.00 € → declined payment (insufficient funds) |
 | `04:D2:0B:6A` | Elena, blocked → blocked screens |
-| `04:E7:3A:2C` | Evening #14 (Friday) → an anonymous door sale |
+| `04:E7:3A:2C` | Petar Dimitrov, Friday evening ticket → a door sale |
 
 ### Jumping straight to a screen
 

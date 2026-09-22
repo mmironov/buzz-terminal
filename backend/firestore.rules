@@ -113,8 +113,9 @@ service cloud.firestore {
       //
       // Two shapes, and only these two:
       //
-      //   · an ANONYMOUS EVENING TICKET, numbered per evening, no name at all;
-      //   · a DOOR PASS, which does carry a name, a dance role and a level.
+      //   · an EVENING TICKET, numbered per evening, carrying a name and the
+      //     night and nothing else;
+      //   · a DOOR PASS, which also carries a dance role and a level.
       //
       // The door pass widens this hole on purpose, and it is worth naming what
       // was given up: this rule used to say reception "cannot invent a Full Pass
@@ -152,9 +153,20 @@ service cloud.firestore {
           // what stop the id and the contents drifting apart.
           && pid == 'ev-' + d.evening + '-' + string(d.eveningNumber)
           && d.ticketRef == 'EV-' + d.evening.upper() + '-' + string(d.eveningNumber)
-          && d.name == 'Evening #' + string(d.eveningNumber)
-          // Anonymous. The name above is a label; there is nowhere to put a
-          // person's details even if a terminal wanted to send them.
+          // The guest's name. These used to be anonymous, with `name` pinned to
+          // the generated label "Evening #14"; the festival decided it wants to
+          // know who holds one. The number they are reconciled by is still the
+          // id and `ticketRef`, both of which are still pinned above.
+          //
+          // Bounded and nothing more — `nameLower` is deliberately not checked
+          // against it, for the reason written out under the door pass below:
+          // rules' `.lower()` is ASCII-only, and most of this roster is not.
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 80
+          && d.nameLower is string && d.nameLower.size() <= 80
+          && d.searchTokens is list && d.searchTokens.size() <= 12
+          // A name and the night, and still nothing else. No country, and — as
+          // the `hasOnly` above enforces — no email, no phone, no level, no
+          // dance role. One night at a door asks one question.
           && d.country == ''
           // The ticket price is cash to the festival, not credit on the bracelet.
           && d.balance == 0

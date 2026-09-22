@@ -42,7 +42,7 @@ struct DoorSaleTests {
 
     @Test("Every missing field names itself, in the order the screen is filled in")
     func blockers() {
-        #expect(draft(name: "  ").blocker(for: fullPass) == "Enter the buyer’s name")
+        #expect(draft(name: "  ").blocker(for: fullPass) == "Enter the guest’s name")
         #expect(draft(role: nil).blocker(for: fullPass) == "Choose leader or follower")
         #expect(draft(level: "").blocker(for: fullPass) == "Choose a level")
         #expect(draft(email: "not an address").blocker(for: fullPass) == "Check the email address")
@@ -77,6 +77,25 @@ struct DoorSaleTests {
     func matchingIsForgiving() {
         #expect(DoorPass(id: "x", name: "  full pass  ", price: .zero).asksForLevel)
         #expect(DoorPass(id: "x", name: "FULL PASS GOLD", price: .zero).asksForLevel)
+    }
+
+    @Test("THE CHANGE: an evening ticket needs a name, and asks nothing else")
+    func eveningWantsOnlyAName() {
+        // It used to ask for nothing at all. Now the name is the one required
+        // field — no dance role, no level, and the email is not even on screen.
+        #expect(DoorSaleDraft().blocker(for: evening) == "Enter the guest’s name")
+        #expect(DoorSaleDraft(name: "Petar Dimitrov").isComplete(for: evening))
+        // …while the same empty draft fails a Full Pass for three more reasons.
+        #expect(DoorSaleDraft(name: "Petar Dimitrov").isComplete(for: fullPass) == false)
+    }
+
+    @Test("An evening ticket records the name and drops the rest")
+    func eveningKeepsOnlyTheName() {
+        // A buyer form filled in for a Full Pass, then switched to an evening
+        // ticket: the level must not follow, exactly as it does not follow to a
+        // Party Pass.
+        let carried = draft(level: "Pro")
+        #expect(carried.level(for: evening) == "")
     }
 
     // MARK: The email

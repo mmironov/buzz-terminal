@@ -491,7 +491,11 @@ actor FirebaseTerminalRepository: TerminalRepository {
 
     // MARK: - Door sales
 
-    func createEveningTicket(evening: Evening, bracelet: BraceletID) async throws -> Participant {
+    func createEveningTicket(
+        evening: Evening,
+        name: String,
+        bracelet: BraceletID
+    ) async throws -> Participant {
         let uid = try requireStaffUid()
         var number = try await seedEveningNumber(for: evening)
 
@@ -500,7 +504,9 @@ actor FirebaseTerminalRepository: TerminalRepository {
         // Bounded, because an unbounded retry against a genuine rules violation
         // would spin forever writing nothing.
         for _ in 0..<25 {
-            let ticket = Participant.eveningTicket(evening: evening, number: number, bracelet: bracelet)
+            let ticket = Participant.eveningTicket(
+                evening: evening, number: number, name: name, bracelet: bracelet
+            )
             let batch = db.batch()
             batch.setData(
                 ticket.eveningTicketDocument(createdBy: uid),

@@ -71,9 +71,12 @@ struct ScanOverlayView: View {
             guard let pass = model.selectedPass else { return Self.genericSubtitle }
             // Everything is decided by now, so this can name it — and naming it
             // is the last chance to notice the wrong wristband is in hand.
+            // Named on both branches now that an evening ticket has a guest on
+            // it — this is the last screen before the pairing is permanent.
+            let who = model.doorSale.trimmedName
             return pass.kind == .evening
-                ? "It becomes an evening ticket for \(model.eveningSelection.label)"
-                : "It becomes \(model.doorSale.trimmedName)’s \(pass.name)"
+                ? "It becomes \(who)’s ticket for \(model.eveningSelection.label)"
+                : "It becomes \(who)’s \(pass.name)"
         case .identify, .payment:
             return Self.genericSubtitle
         }

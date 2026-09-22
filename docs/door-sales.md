@@ -32,14 +32,30 @@ There are two shapes, and the catalogue decides which one a sale takes.
 
 | | Evening ticket | Door pass |
 |---|---|---|
-| Who | Anonymous — "Evening #14" | A named buyer |
-| Asked for | Which night | Name, dance role, level, email |
+| Who | A named guest | A named buyer |
+| Asked for | Name and which night | Name, dance role, level, email |
 | Then | Scan the wristband | Scan the wristband |
 | Document id | `ev-friday-14` | `door-7` |
 | `source` | `evening` | `door` |
 | Lives for | That evening | The whole festival |
 
-The evening ticket is unchanged; the door pass is the new half.
+### The evening ticket used to be anonymous
+
+It carried a generated label — `name: "Evening #14"` — and the rules pinned that
+string, so there was nowhere to put a person even if a terminal had tried. The
+festival decided it wants to know who holds one, so `name` is now the guest's and
+the rules bound it rather than dictate it.
+
+Nothing else was reopened. The `hasOnly` list still refuses a country, an email, a
+phone, a dance role and a level on an evening ticket, and a rules test asserts each
+of those refusals beside the name that is now allowed. One night at a door asks one
+question.
+
+The number the night is reconciled by did not go anywhere: it is still the document
+id (`ev-friday-14`) and still `ticketRef` (`EV-FRIDAY-14`), both pinned. What did
+change is where the desk can find it — searching "14" used to match because the
+*name* contained it, so `Participant.matches` now also searches `ticketRef`, which
+is what the search field has claimed to do since the first iteration.
 
 ## The catalogue
 
@@ -62,8 +78,9 @@ nobody has said what it costs; the panel shows "No price set" beside it and the
 terminal shows the same in place of a number, rather than reading "0.00 €" to
 somebody holding cash.
 
-`kind` is a behaviour, not a label. `evening` routes the terminal to the anonymous
-numbered flow; anything else asks for a buyer. Matching on the name instead would
+`kind` is a behaviour, not a label. `evening` routes the terminal to the numbered
+flow, which asks for a name and a night; anything else asks for the full buyer
+details. Matching on the name instead would
 break the moment somebody renamed a row.
 
 ### The price is shown, never charged

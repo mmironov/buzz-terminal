@@ -127,7 +127,7 @@ private struct PassLabel: View {
                     .font(.sbHeading(17, weight: .extrabold))
                     .multilineTextAlignment(.leading)
                 if pass.kind == .evening {
-                    Text("Anonymous · pick the night")
+                    Text("Name and night only")
                         .font(.sbBody(10.5))
                         .foregroundStyle(.sbInk(0.5))
                 }

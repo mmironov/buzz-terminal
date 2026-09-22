@@ -81,7 +81,7 @@ button would have been unreachable and door sales would have quietly vanished
 from the app — worth stating, because nothing would have failed loudly.
 
 A chip that already belongs to somebody is refused during that scan, by name.
-Minting an anonymous ticket onto an owned wristband would either be refused by
+Minting an evening ticket onto an owned wristband would either be refused by
 the rules or, worse, hand a guest's balance to a door sale.
 
 ## A chip that belongs to somebody else
@@ -133,7 +133,8 @@ Driven through the real UI on the Simulator against fixtures, 2026-09-19:
 4. **Reading an unpaired chip** showed *Not assigned · Nobody has this bracelet*
    with the chip id and a single *Done*. **No list, no check-in.**
 5. **Door sale.** Home → *Sell evening ticket* → fresh chip → evening picker with
-   Saturday preselected → *Assign · Saturday* → receipt: `Evening #1`, valid
+   Saturday preselected → *Scan bracelet · Saturday* → the guest's participant
+   screen, valid
    Saturday, on that bracelet.
 6. **Refusal on a door sale.** Presenting Marta's chip was refused by name and
    returned to home with nothing in hand.

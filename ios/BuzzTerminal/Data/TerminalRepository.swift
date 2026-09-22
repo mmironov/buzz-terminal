@@ -75,7 +75,14 @@ protocol TerminalRepository: Sendable {
     /// retry: the participant id encodes the number (`ev-friday-14`), so two
     /// reception desks selling simultaneously collide and the loser must try the
     /// next one. That belongs here rather than in a view.
-    func createEveningTicket(evening: Evening, bracelet: BraceletID) async throws -> Participant
+    ///
+    /// `name` is the guest's, and it is the only thing asked of them. The number
+    /// the night is reconciled by is still in the id and in `ticketRef`.
+    func createEveningTicket(
+        evening: Evening,
+        name: String,
+        bracelet: BraceletID
+    ) async throws -> Participant
 
     /// Sell a catalogue pass at the door and pair it to a bracelet, in one write.
     ///

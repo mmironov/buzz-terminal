@@ -830,7 +830,7 @@ describe('the admin panel', () => {
     const batch = writeBatch(db);
     batch.set(doc(db, 'participants', 'ev-friday-14'), {
       source: 'evening', ticketType: 'Evening Ticket', evening: 'friday', eveningNumber: 14,
-      ticketRef: 'EV-FRIDAY-14', name: 'Evening #14', nameLower: 'evening #14',
+      ticketRef: 'EV-FRIDAY-14', name: 'Petar Dimitrov', nameLower: 'petar dimitrov',
       searchTokens: [], country: '', braceletId: '04:E7:3A:2C',
       checkedInAt: serverTimestamp(), balance: 0, lastTxId: null,
       isBlocked: false, blockReason: null, createdBy: ADMIN_UID,
@@ -899,6 +899,8 @@ describe('selling an evening ticket at the door', () => {
 
   /** The batch reception sends: the ticket and its reverse lookup, together. */
   function sell(db, { evening = 'friday', number = 14, chip = EV_CHIP, uid = RECEPTION_UID, overrides = {} } = {}) {
+    // Named since the festival decided it wants to know who holds one. The
+    // number it is reconciled by is still the id and the ticket reference.
     const pid = `ev-${evening}-${number}`;
     const batch = writeBatch(db);
     batch.set(doc(db, 'participants', pid), {
@@ -907,9 +909,9 @@ describe('selling an evening ticket at the door', () => {
       evening,
       eveningNumber: number,
       ticketRef: `EV-${evening.toUpperCase()}-${number}`,
-      name: `Evening #${number}`,
-      nameLower: `evening #${number}`,
-      searchTokens: ['evening', `#${number}`, evening],
+      name: 'Petar Dimitrov',
+      nameLower: 'petar dimitrov',
+      searchTokens: ['petar', 'dimitrov', 'evening', evening],
       country: '',
       braceletId: chip,
       checkedInAt: serverTimestamp(),
@@ -952,11 +954,22 @@ describe('selling an evening ticket at the door', () => {
     await assertFails(sell(reception(), { overrides: { balance: 50000 } }));
   });
 
-  it('refuses to attach personal data', async () => {
+  it('takes a name, and nothing else about the person', async () => {
+    // These used to be anonymous: `name` was pinned to "Evening #14" and this
+    // test asserted that a real one was refused. The festival changed its mind
+    // about the name; it did not change its mind about anything else, and the
+    // `hasOnly` list is what holds that line.
+    await assertSucceeds(sell(reception(), { overrides: { name: 'Рosица Попова' } }));
     await assertFails(sell(reception(), { overrides: { country: 'Bulgaria' } }));
-    await assertFails(sell(reception(), { overrides: { name: 'Rossitsa Popova' } }));
     await assertFails(sell(reception(), { overrides: { email: 'someone@example.com' } }));
     await assertFails(sell(reception(), { overrides: { phone: '+359000000' } }));
+    await assertFails(sell(reception(), { overrides: { danceRole: 'leader' } }));
+    await assertFails(sell(reception(), { overrides: { level: 'Advanced' } }));
+  });
+
+  it('refuses a nameless one, and an absurdly long name', async () => {
+    await assertFails(sell(reception(), { overrides: { name: '' } }));
+    await assertFails(sell(reception(), { overrides: { name: 'x'.repeat(81) } }));
   });
 
   it('refuses a document id that disagrees with its contents', async () => {
@@ -968,7 +981,7 @@ describe('selling an evening ticket at the door', () => {
       source: 'evening', ticketType: 'Evening Ticket',
       evening: 'saturday',              // ← disagrees with the id
       eveningNumber: 14,
-      ticketRef: 'EV-SATURDAY-14', name: 'Evening #14', nameLower: 'evening #14',
+      ticketRef: 'EV-SATURDAY-14', name: 'Petar Dimitrov', nameLower: 'petar dimitrov',
       searchTokens: [], country: '', braceletId: EV_CHIP,
       checkedInAt: serverTimestamp(), balance: 0, lastTxId: null,
       isBlocked: false, blockReason: null, createdBy: RECEPTION_UID,
@@ -999,7 +1012,7 @@ describe('selling an evening ticket at the door', () => {
     const batch = writeBatch(db);
     batch.set(doc(db, 'participants', 'ev-friday-14'), {
       source: 'evening', ticketType: 'Evening Ticket', evening: 'friday', eveningNumber: 14,
-      ticketRef: 'EV-FRIDAY-14', name: 'Evening #14', nameLower: 'evening #14',
+      ticketRef: 'EV-FRIDAY-14', name: 'Petar Dimitrov', nameLower: 'petar dimitrov',
       searchTokens: [], country: '', braceletId: EV_CHIP,
       checkedInAt: serverTimestamp(), balance: 0, lastTxId: null,
       isBlocked: false, blockReason: null, createdBy: RECEPTION_UID,

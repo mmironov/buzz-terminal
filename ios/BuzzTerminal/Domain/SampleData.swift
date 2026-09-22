@@ -36,7 +36,7 @@ enum SampleData {
         SimulatedBracelet(id: braceletB, hint: "Marta Lindqvist — 23.50 € on account"),
         SimulatedBracelet(id: braceletC, hint: "Jonas Bergström — 2.00 € on account"),
         SimulatedBracelet(id: braceletD, hint: "Elena Novak — blocked in admin panel"),
-        SimulatedBracelet(id: braceletE, hint: "Evening #14 (Friday) — door sale, anonymous"),
+        SimulatedBracelet(id: braceletE, hint: "Petar Dimitrov (Friday evening) — door sale"),
     ]
 
     // MARK: Roster
@@ -94,11 +94,13 @@ enum SampleData {
         Participant(id: ParticipantID("tkt-10437"), ticketRef: "TKT-10437", name: "Hannah Vos", ticketType: TicketType.partyPass, country: "Netherlands"),
     ]
 
-    /// Door-sold evening tickets. Anonymous, minted at reception, never in the
-    /// Sheet — so `source` is `.evening` and the importer leaves them alone.
+    /// Door-sold evening tickets. Minted at reception, never in the Sheet — so
+    /// `source` is `.evening` and the importer leaves them alone. They carry a
+    /// name now, and still nothing else.
     static let eveningTickets: [Participant] = [
         Participant.eveningTicket(
-            evening: .friday, number: 14, bracelet: braceletE, checkedInAt: earlier(2)
+            evening: .friday, number: 14, name: "Petar Dimitrov",
+            bracelet: braceletE, checkedInAt: earlier(2)
         )
     ]
 

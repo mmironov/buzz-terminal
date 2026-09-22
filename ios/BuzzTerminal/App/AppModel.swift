@@ -121,9 +121,9 @@ final class AppModel {
             /// about to become theirs. A chip that belongs to somebody else is
             /// refused here rather than resolved.
             case assignToSelected
-            /// A door sale: mint a pass — anonymous evening ticket or a full
-            /// pass with a buyer — onto a fresh chip. A chip that already
-            /// belongs to somebody is refused.
+            /// A door sale: mint a pass — an evening ticket or a full pass —
+            /// onto a fresh chip, for the buyer already named on screen. A chip
+            /// that already belongs to somebody is refused.
             case doorSale
             case payment
         }
@@ -415,7 +415,7 @@ final class AppModel {
             // hardware it is the last thing anybody sees before a pass becomes
             // permanent — and the last chance to notice it is the wrong one.
             let who = pass.kind == .evening
-                ? "an evening ticket for \(eveningSelection.label)"
+                ? "\(doorSale.trimmedName) an evening ticket for \(eveningSelection.label)"
                 : "a \(pass.name) for \(doorSale.trimmedName)"
             let price = pass.price.isPositive ? " · take \(pass.price)" : ""
             return "Hold a fresh bracelet to the top of the phone to sell \(who)\(price)."
@@ -822,7 +822,7 @@ final class AppModel {
     /// from the wrong pile costs one more tap rather than the buyer's details.
     func scanForDoorSale() {
         guard let pass = selectedPass else { return }
-        guard pass.kind == .evening || doorSale.isComplete(for: pass) else { return }
+        guard doorSale.isComplete(for: pass) else { return }
         bracelet = nil
         beginScan(for: .doorSale)
     }
@@ -862,6 +862,7 @@ final class AppModel {
             if pass.kind == .evening {
                 buyer = try await repository.createEveningTicket(
                     evening: eveningSelection,
+                    name: doorSale.trimmedName,
                     bracelet: scanned
                 )
             } else {

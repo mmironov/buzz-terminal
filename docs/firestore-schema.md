@@ -256,7 +256,7 @@ participants/ev-friday-14
   evening:       "friday"
   eveningNumber: 14
   ticketRef:     "EV-FRIDAY-14"
-  name:          "Evening #14"      // a label, not a person
+  name:          "Petar Dimitrov"   // the guest; anonymous until 22 Sep 2026
   country:       ""
   braceletId:    "04:E7:3A:2C"      // paired at the moment of sale
   checkedInAt:   <server timestamp>
@@ -278,8 +278,10 @@ another pass type, carry a name, or start with 500 € on it. (Reception *can* n
 sell a Full Pass at the door — that is the separate door-pass shape below, with a
 buyer on it.)
 
-**Anonymous by construction.** There is nowhere to put personal data even if a
-terminal tried; `name` is the generated label.
+**A name, and nothing else about them.** These were anonymous until the festival
+asked for a name; `hasOnly` still refuses a country, an email, a phone, a dance
+role and a level, so the one field that was opened is the only one. See
+`docs/door-sales.md`.
 
 Validity is **not enforced anywhere.** A Friday ticket presented on Saturday still
 works, and organisers freeze it by hand from the admin panel using the same
