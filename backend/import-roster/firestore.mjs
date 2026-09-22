@@ -187,3 +187,47 @@ export const DEFAULT_DRINKS = [
   { id: 'beer', name: 'Beer', price: 400 },
   { id: 'gt', name: 'Gin & Tonic', price: 600 },
 ];
+
+/**
+ * Write the door-sale catalogue, the same way `seedDrinks` writes the menu:
+ * merged, so re-running it never clears a price an organiser has since edited
+ * on purpose — it only puts the row back if somebody deleted it.
+ *
+ * Nothing is retired here. A pass missing from this list is one an organiser
+ * added in the panel, and a seed script is the wrong thing to be withdrawing it.
+ */
+export async function seedDoorPasses(db, passes) {
+  const batch = db.batch();
+  passes.forEach((pass, index) => {
+    batch.set(
+      db.collection('doorPasses').doc(pass.id),
+      {
+        name: pass.name,
+        price: pass.price,
+        sortOrder: index,
+        isActive: true,
+        kind: pass.kind ?? 'pass',
+      },
+      { merge: true }
+    );
+  });
+  await batch.commit();
+  return { written: passes.length };
+}
+
+/**
+ * What the festival sells at the door, at the prices the organisers gave.
+ *
+ * The evening ticket is in the list because it IS a door sale — it is the one
+ * the terminals have always sold — but its price is deliberately left at zero
+ * rather than guessed. The panel shows "No price set" beside it, which is the
+ * honest state until somebody types the number.
+ */
+export const DEFAULT_DOOR_PASSES = [
+  { id: 'evening-ticket', name: 'Evening Ticket', price: 0, kind: 'evening' },
+  { id: 'party-pass', name: 'Party Pass', price: 12000 },
+  { id: 'party-pass-plus', name: 'Party Pass Plus', price: 15500 },
+  { id: 'full-pass', name: 'Full Pass', price: 20500 },
+  { id: 'full-pass-gold', name: 'Full Pass Gold', price: 25900 },
+  { id: 'jazz-performance-track', name: 'Jazz Performance Track', price: 18500 },
+];

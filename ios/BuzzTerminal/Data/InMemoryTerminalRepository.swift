@@ -108,6 +108,29 @@ actor InMemoryTerminalRepository: TerminalRepository {
         return ticket
     }
 
+    func createDoorPass(
+        _ pass: DoorPass,
+        draft: DoorSaleDraft,
+        bracelet: BraceletID
+    ) async throws -> Participant {
+        await simulateNetwork()
+        guard participant(pairedTo: bracelet) == nil else { throw TerminalError.braceletAlreadyPaired }
+
+        let highest = roster.values.compactMap(\.doorNumber).max() ?? 0
+        let buyer = Participant.doorPass(
+            pass,
+            number: highest + 1,
+            draft: draft,
+            bracelet: bracelet
+        )
+        guard roster[buyer.id] == nil else { throw TerminalError.doorSequenceExhausted }
+        roster[buyer.id] = buyer
+        // The email goes unrecorded, like the payment method on a top-up: this
+        // fixture keeps people, not subcollections, and half a store is worse
+        // than none.
+        return buyer
+    }
+
     func assignBracelet(_ bracelet: BraceletID, to participant: Participant) async throws -> Participant {
         await simulateNetwork()
         guard var updated = roster[participant.id] else { throw TerminalError.unknownAccount }
@@ -122,6 +145,11 @@ actor InMemoryTerminalRepository: TerminalRepository {
     func braceletColours() async throws -> [BraceletColour] {
         await simulateNetwork()
         return SampleData.braceletColours
+    }
+
+    func doorPasses() async throws -> [DoorPass] {
+        await simulateNetwork()
+        return SampleData.doorPasses
     }
 
     // MARK: Merch

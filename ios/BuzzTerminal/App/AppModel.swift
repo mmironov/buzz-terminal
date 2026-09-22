@@ -121,9 +121,10 @@ final class AppModel {
             /// about to become theirs. A chip that belongs to somebody else is
             /// refused here rather than resolved.
             case assignToSelected
-            /// A door sale: mint an anonymous evening ticket onto a fresh chip.
-            /// A chip that already belongs to somebody is refused.
-            case eveningTicket
+            /// A door sale: mint a pass — anonymous evening ticket or a full
+            /// pass with a buyer — onto a fresh chip. A chip that already
+            /// belongs to somebody is refused.
+            case doorSale
             case payment
         }
         var purpose: Purpose
@@ -159,6 +160,17 @@ final class AppModel {
     /// Which evening a door sale is for. Preselected to tonight when tonight is
     /// one of the three — a convenience, never a validation.
     var eveningSelection: Evening = Evening.today ?? .friday
+
+    /// What the desk may sell, as organisers priced it in the admin panel.
+    ///
+    /// Loaded with the rest of the catalogue at sign-in. An empty list is a real
+    /// state — nobody has set the passes up — and the picker says so rather than
+    /// showing a blank screen somebody taps at.
+    var doorPasses: [DoorPass] = []
+    /// Which pass is being sold right now.
+    var selectedPass: DoorPass?
+    /// What has been typed about the buyer.
+    var doorSale = DoorSaleDraft()
 
     // MARK: Bar
 
@@ -206,6 +218,15 @@ final class AppModel {
                 braceletColours = BraceletColourScheme(try await repository.braceletColours())
             } catch {
                 Self.log.error("bracelet colours failed to load: \(error.localizedDescription, privacy: .public)")
+            }
+            // Same treatment, one step less cosmetic: with no catalogue the desk
+            // cannot sell at the door at all, and the picker says exactly that.
+            // Still not worth failing sign-in over — check-in and the bar are
+            // what most of a festival is.
+            do {
+                doorPasses = try await repository.doorPasses()
+            } catch {
+                Self.log.error("door passes failed to load: \(error.localizedDescription, privacy: .public)")
             }
             // Logged because "the list is empty" has two very different causes —
             // an empty roster, or a read the rules refused — and they look
@@ -410,7 +431,7 @@ final class AppModel {
                 // Handled above, before `participant` was replaced.
                 break
 
-            case .eveningTicket:
+            case .doorSale:
                 if let found {
                     // Minting a ticket onto an owned chip would either be
                     // refused by the rules or, worse, hand a guest's balance to
@@ -422,8 +443,12 @@ final class AppModel {
                     ScanFeedback.shared.problem()
                     errorMessage = "This bracelet already belongs to \(found.name). Use a fresh one."
                 } else {
+                    // Which pass comes next, because the catalogue decides
+                    // whether this sale needs a buyer at all.
                     eveningSelection = Evening.today ?? .friday
-                    screen = .assignEvening
+                    doorSale = DoorSaleDraft()
+                    selectedPass = nil
+                    screen = .doorPass
                     ScanFeedback.shared.success()
                 }
 
@@ -660,12 +685,76 @@ final class AppModel {
     /// Chip first because an evening ticket is *minted onto* a bracelet in a
     /// single write — there is no ticket to sell until there is a wristband to
     /// put it on. The evening is chosen afterwards, on `AssignEveningTicketView`.
-    func beginEveningTicketSale() {
+    func beginDoorSale() {
         participant = nil
         merch = nil
         merchUnavailable = false
         bracelet = nil
-        beginScan(for: .eveningTicket)
+        selectedPass = nil
+        doorSale = DoorSaleDraft()
+        beginScan(for: .doorSale)
+    }
+
+    /// A pass was picked from the catalogue. Where that leads depends on the
+    /// pass: an evening ticket needs a night, anything else needs a buyer.
+    func select(pass: DoorPass) {
+        selectedPass = pass
+        if pass.kind == .evening {
+            eveningSelection = Evening.today ?? .friday
+            screen = .assignEvening
+        } else {
+            // Kept rather than cleared, so picking the wrong pass and coming
+            // back does not cost somebody their typing. The level is the one
+            // thing that can go stale — a Party Pass has none — and
+            // `DoorSaleDraft.level(for:)` drops it at the point of sale.
+            screen = .doorBuyer
+        }
+    }
+
+    /// Back from the buyer form to the list of passes.
+    func backToPassPicker() {
+        screen = .doorPass
+    }
+
+    /// Sell the chosen pass to the buyer on screen.
+    func confirmDoorSale() async {
+        guard let bracelet, let pass = selectedPass else { return }
+        guard doorSale.isComplete(for: pass) else { return }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let buyer = try await repository.createDoorPass(
+                pass,
+                draft: doorSale,
+                bracelet: bracelet
+            )
+            participant = buyer
+            receipt = Receipt(
+                kind: .checkIn,
+                title: "\(pass.name) sold",
+                // The price is on the receipt because the desk has to collect
+                // it, and nothing else in the app will ever mention it again.
+                note: pass.price.isPositive
+                    ? "Take \(pass.price) at the desk. The bracelet is paired to \(buyer.name) for the whole festival."
+                    : "This pass has no price set in the admin panel. The bracelet is paired to \(buyer.name).",
+                rows: [
+                    .init(key: "Buyer", value: buyer.name),
+                    .init(key: "Pass", value: pass.name),
+                    .init(key: "To collect", value: pass.priceLabel),
+                    .init(key: "Dances", value: buyer.danceRoleForDisplay ?? "—"),
+                ]
+                + (buyer.levelForDisplay.map { [Receipt.Row(key: "Level", value: $0)] } ?? [])
+                + [.init(key: "Bracelet", value: bracelet.rawValue)],
+                balance: buyer.balance
+            )
+            selectedPass = nil
+            doorSale = DoorSaleDraft()
+            screen = .receipt
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// Sell an evening ticket on the bracelet that was just scanned.

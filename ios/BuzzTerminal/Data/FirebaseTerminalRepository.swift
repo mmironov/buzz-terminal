@@ -48,6 +48,10 @@ actor FirebaseTerminalRepository: TerminalRepository {
     /// `create` and we simply try the next one — see `createEveningTicket`.
     private var nextEveningNumber: [Evening: Int] = [:]
 
+    /// The next door-pass number to try, across the whole festival. Same
+    /// collide-and-retry arrangement as `nextEveningNumber` — see `seedDoorNumber`.
+    private var nextDoorNumber: Int?
+
     init(
         db: Firestore = .firestore(),
         auth: Auth = .auth(),
@@ -280,6 +284,18 @@ actor FirebaseTerminalRepository: TerminalRepository {
         return snapshot.documents.compactMap(BraceletColour.init(document:))
     }
 
+    func doorPasses() async throws -> [DoorPass] {
+        // Ordered here rather than in the app: the panel's arrows set
+        // `sortOrder`, and the desk's list should be the one an organiser
+        // arranged. Withdrawn passes are dropped by `DoorPass.init(document:)`
+        // rather than by a `where` clause, so a document that predates
+        // `isActive` still appears instead of vanishing from the desk.
+        let snapshot = try await db.collection(Fire.Collection.doorPasses)
+            .order(by: Fire.DoorPass.sortOrder)
+            .getDocuments()
+        return snapshot.documents.compactMap(DoorPass.init(document:))
+    }
+
     // MARK: - Bracelets
 
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant? {
@@ -454,6 +470,71 @@ actor FirebaseTerminalRepository: TerminalRepository {
         throw TerminalError.eveningSequenceExhausted
     }
 
+    /// Sell a catalogue pass at the door, to somebody with a name.
+    ///
+    /// Same collide-and-retry numbering as the evening ticket, one sequence for
+    /// the whole festival. The buyer's email goes into `contact/details` **in the
+    /// same batch**: an address that landed while the sale did not would be a
+    /// record of somebody who was never sold anything.
+    func createDoorPass(
+        _ pass: DoorPass,
+        draft: DoorSaleDraft,
+        bracelet: BraceletID
+    ) async throws -> Participant {
+        let uid = try requireStaffUid()
+        var number = try await seedDoorNumber()
+
+        for _ in 0..<25 {
+            let buyer = Participant.doorPass(pass, number: number, draft: draft, bracelet: bracelet)
+            let batch = db.batch()
+            batch.setData(
+                buyer.doorPassDocument(createdBy: uid),
+                forDocument: participantDocument(buyer.id)
+            )
+            batch.setData([
+                Fire.Bracelet.participantId: buyer.id.rawValue,
+                Fire.Bracelet.staffUid: uid,
+                Fire.Bracelet.pairedAt: FieldValue.serverTimestamp(),
+            ], forDocument: braceletDocument(bracelet))
+
+            // Written even when blank, so "asked, and they declined" and "never
+            // asked" are the same absence of a useful value rather than two
+            // states somebody has to tell apart later.
+            batch.setData([
+                Fire.Contact.email: draft.trimmedEmail,
+                Fire.Contact.addedBy: uid,
+                Fire.Contact.addedAt: FieldValue.serverTimestamp(),
+            ], forDocument: contactDocument(buyer.id))
+
+            do {
+                try await batch.commit()
+                nextDoorNumber = number + 1
+                return try await reload(buyer.id)
+            } catch {
+                number += 1
+                nextDoorNumber = number
+            }
+        }
+        throw TerminalError.doorSequenceExhausted
+    }
+
+    /// The next free door number, seeded once per run from what is already there.
+    ///
+    /// One query per app launch rather than a counter document: no extra
+    /// collection to secure and no contention point, exactly as with evenings.
+    private func seedDoorNumber() async throws -> Int {
+        if let cached = nextDoorNumber { return cached }
+        let snapshot = try await db.collection(Fire.Collection.participants)
+            .whereField(Fire.Participant.source, isEqualTo: Participant.Source.door.rawValue)
+            .getDocuments()
+        let highest = snapshot.documents
+            .compactMap { $0.data()[Fire.Participant.doorNumber] as? Int }
+            .max() ?? 0
+        let next = highest + 1
+        nextDoorNumber = next
+        return next
+    }
+
     /// One query per evening per app run, then local increments.
     ///
     /// A single-field equality query, so it needs no composite index. Reading the
@@ -595,6 +676,12 @@ actor FirebaseTerminalRepository: TerminalRepository {
 
     private func braceletDocument(_ bracelet: BraceletID) -> DocumentReference {
         db.collection(Fire.Collection.bracelets).document(bracelet.rawValue)
+    }
+
+    private func contactDocument(_ id: ParticipantID) -> DocumentReference {
+        participantDocument(id)
+            .collection(Fire.Collection.contact)
+            .document(Fire.Contact.documentId)
     }
 
     private func merchDocument(_ id: ParticipantID) -> DocumentReference {

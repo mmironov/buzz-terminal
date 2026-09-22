@@ -57,7 +57,7 @@ struct ScanOverlayView: View {
     private var title: String {
         switch state.purpose {
         case .assignToSelected: "Pair a bracelet"
-        case .eveningTicket: "Fresh bracelet"
+        case .doorSale: "Fresh bracelet"
         case .identify, .payment: "Hold the bracelet"
         }
     }
@@ -67,8 +67,11 @@ struct ScanOverlayView: View {
         case .assignToSelected:
             guard let guest = model.participant else { return Self.genericSubtitle }
             return "This bracelet becomes \(guest.name)’s for the whole festival"
-        case .eveningTicket:
-            return "It will be sold as tonight’s door ticket"
+        case .doorSale:
+            // Which pass has not been chosen yet — the chip is read first,
+            // because there is nothing to sell until there is a wristband to
+            // sell it on.
+            return "A pass will be sold on this bracelet"
         case .identify, .payment:
             return Self.genericSubtitle
         }

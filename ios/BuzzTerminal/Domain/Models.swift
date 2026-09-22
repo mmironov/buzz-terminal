@@ -62,7 +62,11 @@ enum Screen: Hashable, Sendable {
     /// "whose is this?", and the answer "nobody's" ends there. Pairing one is
     /// its own flow, started deliberately from the home screen.
     case unassignedBracelet
-    /// Selling a door ticket, on a bracelet that has just been scanned.
+    /// Which pass is being sold, on a bracelet that has just been scanned.
+    case doorPass
+    /// Who is buying it: name, dance role, level, email.
+    case doorBuyer
+    /// Selling an evening ticket — the anonymous branch of the same flow.
     case assignEvening
     case participant
     case blocked
@@ -211,6 +215,9 @@ struct Participant: Identifiable, Hashable, Sendable {
         case sheet
         /// Sold at the door by reception. Anonymous; there is no Sheet row.
         case evening
+        /// A pass sold at the door with a buyer on it — name, dance role, and a
+        /// level where the pass type has one. Also has no Sheet row.
+        case door
     }
 
     // ── Roster ──
@@ -231,11 +238,23 @@ struct Participant: Identifiable, Hashable, Sendable {
     /// stays in the Sheet.
     var level: String = ""
 
+    /// Which side they dance: `leader`, `follower`, or empty for everybody from
+    /// the Sheet, which does not ask in a form this app can trust.
+    ///
+    /// Never `role`. That name belongs to the staff claim the security rules
+    /// read, and conflating the two is the trap this project has walked around
+    /// since the Sheet turned out to have a "Role" column meaning this.
+    var danceRole: String = ""
+
     var source: Source = .sheet
     /// Set only on door-sold tickets.
     var evening: Evening?
     /// The nth evening ticket sold that evening. Drives `name`.
     var eveningNumber: Int?
+    /// The nth pass sold at the door, across the whole festival. Drives the id.
+    var doorNumber: Int?
+    /// Which catalogue entry was sold, for a door pass. Only ever a key.
+    var passId: String?
 
     // ── Festival state: owned by the terminals ──
     /// `nil` until reception pairs a chip. Permanent once set.
@@ -273,6 +292,13 @@ struct Participant: Identifiable, Hashable, Sendable {
     }
 
     var isEveningTicket: Bool { source == .evening }
+    /// Sold at the desk rather than imported: an evening ticket or a door pass.
+    var isDoorSale: Bool { source == .evening || source == .door }
+
+    /// `"Follower"`, or nil for somebody the Sheet never asked.
+    var danceRoleForDisplay: String? {
+        DanceRole(rawValue: danceRole)?.label
+    }
 
     /// `"Evening ticket · Friday"` for a door sale, otherwise the pass type.
     var ticketDescription: String {
@@ -321,6 +347,38 @@ extension Participant {
             source: .evening,
             evening: evening,
             eveningNumber: number,
+            braceletId: bracelet,
+            checkedInAt: checkedInAt,
+            balance: .zero
+        )
+    }
+
+    /// Mint a pass sold at the door, already paired to a bracelet.
+    ///
+    /// Same deduplication as `eveningTicket`: the id encodes the sequence, so two
+    /// desks selling at once collide on `door-7` and the loser retries with 8.
+    /// One sequence for the whole festival rather than one per pass type — the
+    /// number is an identifier, not a count of Full Passes, and per-type
+    /// sequences would mean a second one to seed for every row an organiser adds
+    /// to the catalogue.
+    static func doorPass(
+        _ pass: DoorPass,
+        number: Int,
+        draft: DoorSaleDraft,
+        bracelet: BraceletID,
+        checkedInAt: Date = .now
+    ) -> Participant {
+        Participant(
+            id: ParticipantID("door-\(number)"),
+            ticketRef: "DOOR-\(number)",
+            name: draft.trimmedName,
+            ticketType: pass.name,
+            country: "",
+            level: draft.level(for: pass),
+            danceRole: draft.danceRole?.wire ?? "",
+            source: .door,
+            doorNumber: number,
+            passId: pass.id,
             braceletId: bracelet,
             checkedInAt: checkedInAt,
             balance: .zero

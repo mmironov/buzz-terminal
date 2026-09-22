@@ -26,6 +26,11 @@ enum Fire {
         static let merch = "merch"
         /// Pass type → wristband colour, one document per pass type.
         static let braceletColours = "braceletColours"
+        /// What reception may sell at the desk, priced in the admin panel.
+        static let doorPasses = "doorPasses"
+        /// A subcollection of a participant holding one document: the buyer's
+        /// email. Reception and the organiser panel only — see `docs/door-sales.md`.
+        static let contact = "contact"
     }
 
     enum BraceletColour {
@@ -35,6 +40,28 @@ enum Fire {
         static let level = "level"
         static let colour = "colour"
         static let name = "name"
+    }
+
+    enum DoorPass {
+        static let name = "name"
+        /// Cents, like every other price.
+        static let price = "price"
+        static let sortOrder = "sortOrder"
+        static let isActive = "isActive"
+        /// `"pass"` or `"evening"`. Decides which flow the terminal runs.
+        static let kind = "kind"
+
+        static let kindPass = "pass"
+        static let kindEvening = "evening"
+    }
+
+    enum Contact {
+        /// One document per person, at a fixed path — a point read, like merch.
+        static let documentId = "details"
+
+        static let email = "email"
+        static let addedBy = "addedBy"
+        static let addedAt = "addedAt"
     }
 
     enum Merch {
@@ -61,8 +88,14 @@ enum Fire {
         static let country = "country"
         /// The DANCE level. Never a permission — see `Participant.level`.
         static let level = "level"
+        /// The DANCE role: leader or follower. Never `role`, which is the staff
+        /// claim the security rules read.
+        static let danceRole = "danceRole"
         static let evening = "evening"
         static let eveningNumber = "eveningNumber"
+        /// Door passes: the sequence in the id, and which catalogue entry it was.
+        static let doorNumber = "doorNumber"
+        static let passId = "passId"
         static let braceletId = "braceletId"
         static let checkedInAt = "checkedInAt"
         static let balance = "balance"
@@ -156,14 +189,44 @@ extension Participant {
             ticketType: data[Fire.Participant.ticketType] as? String ?? "",
             country: data[Fire.Participant.country] as? String ?? "",
             level: data[Fire.Participant.level] as? String ?? "",
+            danceRole: data[Fire.Participant.danceRole] as? String ?? "",
             source: (data[Fire.Participant.source] as? String).flatMap(Source.init(rawValue:)) ?? .sheet,
             evening: (data[Fire.Participant.evening] as? String).flatMap(Evening.init(rawValue:)),
             eveningNumber: data[Fire.Participant.eveningNumber] as? Int,
+            doorNumber: data[Fire.Participant.doorNumber] as? Int,
+            passId: data[Fire.Participant.passId] as? String,
             braceletId: (data[Fire.Participant.braceletId] as? String).map(BraceletID.init),
             checkedInAt: (data[Fire.Participant.checkedInAt] as? Timestamp)?.dateValue(),
             balance: Money(cents: balanceCents),
             isBlocked: data[Fire.Participant.isBlocked] as? Bool ?? false,
             blockReason: data[Fire.Participant.blockReason] as? String
+        )
+    }
+}
+
+extension DoorPass {
+    /// Build from `doorPasses/{slug}`.
+    ///
+    /// An inactive pass is dropped here rather than filtered later: a terminal
+    /// that never holds a withdrawn pass cannot offer one by accident, and the
+    /// rules would refuse the sale anyway — after the guest had been told a price.
+    init?(document: DocumentSnapshot) {
+        guard let data = document.data(),
+              let name = data[Fire.DoorPass.name] as? String,
+              !name.isEmpty,
+              let priceCents = data[Fire.DoorPass.price] as? Int,
+              data[Fire.DoorPass.isActive] as? Bool ?? true
+        else { return nil }
+
+        self.init(
+            id: document.documentID,
+            name: name,
+            price: Money(cents: priceCents),
+            sortOrder: data[Fire.DoorPass.sortOrder] as? Int ?? 0,
+            // Anything unrecognised is an ordinary pass. Refusing to sell
+            // something because of a `kind` this build has not heard of would be
+            // a worse failure than asking for a name that was not needed.
+            kind: data[Fire.DoorPass.kind] as? String == Fire.DoorPass.kindEvening ? .evening : .pass
         )
     }
 }
@@ -246,6 +309,43 @@ extension Participant {
             Fire.Participant.nameLower: name.lowercased(),
             Fire.Participant.searchTokens: Self.searchTokens(name: name, ticketType: TicketType.eveningTicket),
             Fire.Participant.country: "",
+            Fire.Participant.braceletId: braceletId.rawValue,
+            Fire.Participant.checkedInAt: FieldValue.serverTimestamp(),
+            Fire.Participant.balance: 0,
+            Fire.Participant.lastTxId: NSNull(),
+            Fire.Participant.isBlocked: false,
+            Fire.Participant.blockReason: NSNull(),
+            Fire.Participant.createdBy: staffUid,
+        ]
+    }
+
+    /// The document for a pass sold at the door, with a buyer on it.
+    ///
+    /// The email is **not** here. It goes to `contact/details`, which the bar
+    /// cannot read — see `isWellFormedDoorPass` in `firestore.rules`, which
+    /// refuses this document outright if an address is attached to it.
+    func doorPassDocument(createdBy staffUid: String) -> [String: Any] {
+        precondition(source == .door, "only door sales are client-created")
+        guard let doorNumber, let passId, let braceletId else {
+            preconditionFailure("a door pass must carry its number, catalogue id and bracelet")
+        }
+        return [
+            Fire.Participant.source: Source.door.rawValue,
+            Fire.Participant.passId: passId,
+            Fire.Participant.ticketType: ticketType,
+            Fire.Participant.doorNumber: doorNumber,
+            Fire.Participant.ticketRef: ticketRef,
+            Fire.Participant.name: name,
+            Fire.Participant.nameLower: name.lowercased(),
+            // Capped at the twelve the rules accept. A long name with a long
+            // pass type can produce more, and the refusal would arrive as a
+            // failed sale rather than as anything anybody could act on.
+            Fire.Participant.searchTokens: Array(
+                Self.searchTokens(name: name, ticketType: ticketType).prefix(12)
+            ),
+            Fire.Participant.country: "",
+            Fire.Participant.level: level,
+            Fire.Participant.danceRole: danceRole,
             Fire.Participant.braceletId: braceletId.rawValue,
             Fire.Participant.checkedInAt: FieldValue.serverTimestamp(),
             Fire.Participant.balance: 0,

@@ -162,6 +162,10 @@ struct SBTextField: View {
     var isSecure: Bool = false
     var keyboard: UIKeyboardType = .default
     var textContentType: UITextContentType?
+    /// `.never` suits every field this started with — an email and a password.
+    /// A person's name is the exception, and typing one in lower case at a desk
+    /// is a worse default than an occasional stray capital.
+    var autocapitalization: TextInputAutocapitalization = .never
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -178,7 +182,7 @@ struct SBTextField: View {
             }
             .font(.sbBody(14))
             .foregroundStyle(.sbInk)
-            .textInputAutocapitalization(.never)
+            .textInputAutocapitalization(autocapitalization)
             .autocorrectionDisabled()
             .keyboardType(keyboard)
             .textContentType(textContentType)

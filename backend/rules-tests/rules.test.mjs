@@ -140,6 +140,15 @@ beforeEach(async () => {
     const db = context.firestore();
     await setDoc(doc(db, 'participants', PARTICIPANT), rosterDoc());
     await setDoc(doc(db, 'drinks', 'beer'), { name: 'Draught beer', price: 400 });
+    // The door catalogue. `isWellFormedDoorPass` reads it, so a sale cannot be
+    // tested without it — which is the rule working: reception sells what the
+    // organisers priced, and an empty catalogue sells nothing.
+    await setDoc(doc(db, 'doorPasses', 'full-pass'), {
+      name: 'Full Pass', price: 20500, sortOrder: 2, isActive: true, kind: 'pass',
+    });
+    await setDoc(doc(db, 'doorPasses', 'party-pass'), {
+      name: 'Party Pass', price: 12000, sortOrder: 0, isActive: true, kind: 'pass',
+    });
   });
 });
 
@@ -923,7 +932,11 @@ describe('selling an evening ticket at the door', () => {
     await assertFails(sell(bar()));
   });
 
-  it('THE ONE THAT MATTERS: refuses to mint any other pass type', async () => {
+  it('refuses an evening ticket wearing another pass type', async () => {
+    // Reception CAN sell a Full Pass at the door — see the door-pass suite — but
+    // not by relabelling an anonymous numbered evening ticket as one. The two
+    // shapes stay separate: this one has no buyer and no price, and `ev-friday-14`
+    // must mean what it has always meant.
     for (const ticketType of ['Full Pass Gold', 'Full Pass', 'Party Pass Plus', 'Jazz Performance Track']) {
       await assertFails(sell(reception(), { overrides: { ticketType } }));
     }
@@ -1015,6 +1028,264 @@ describe('selling an evening ticket at the door', () => {
     });
     batch.update(doc(db, 'participants', pid), { balance: 2000, lastTxId: 'tx-ev-1' });
     await assertSucceeds(batch.commit());
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Selling a full pass at the door
+//
+//  The widest thing reception can do: create a participant who was never in the
+//  Sheet, with a name on them and a 205 € pass type. What keeps it narrow is the
+//  catalogue — an organiser has to have priced the pass before anybody can be
+//  sold one — and the money rules, which are untouched by any of this.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('selling a pass at the door', () => {
+  const DOOR_CHIP = '04:D2:0B:6A';
+
+  /** The batch reception sends: the participant and the reverse lookup. */
+  function sellPass(
+    db,
+    { number = 7, passId = 'full-pass', chip = DOOR_CHIP, uid = RECEPTION_UID, overrides = {} } = {}
+  ) {
+    const pid = `door-${number}`;
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'participants', pid), {
+      source: 'door',
+      passId,
+      ticketType: 'Full Pass',
+      doorNumber: number,
+      ticketRef: `DOOR-${number}`,
+      name: 'Jana Novak',
+      nameLower: 'jana novak',
+      searchTokens: ['jana', 'novak', 'full', 'pass'],
+      country: '',
+      level: 'Advanced',
+      danceRole: 'follower',
+      braceletId: chip,
+      checkedInAt: serverTimestamp(),
+      balance: 0,
+      lastTxId: null,
+      isBlocked: false,
+      blockReason: null,
+      createdBy: uid,
+      ...overrides,
+    });
+    batch.set(doc(db, 'bracelets', chip), {
+      participantId: pid,
+      staffUid: uid,
+      pairedAt: serverTimestamp(),
+    });
+    return batch.commit();
+  }
+
+  it('lets reception sell one, with a buyer on it', async () => {
+    await assertSucceeds(sellPass(reception()));
+  });
+
+  it('lets an organiser sell one too, because admin counts as reception', async () => {
+    await assertSucceeds(sellPass(admin(), { uid: ADMIN_UID }));
+  });
+
+  it('refuses to let the bar sell one', async () => {
+    await assertFails(sellPass(bar(), { uid: BAR_UID }));
+  });
+
+  it('THE ONE THAT MATTERS: refuses a pass the organisers never priced', async () => {
+    // The replacement for "reception cannot invent a pass type". It can sell
+    // what is in the catalogue, at the desk, and nothing else — so a terminal
+    // cannot mint a pass type that exists nowhere in the festival.
+    await assertFails(
+      sellPass(reception(), {
+        passId: 'full-pass-platinum',
+        overrides: { passId: 'full-pass-platinum', ticketType: 'Full Pass Platinum' },
+      })
+    );
+  });
+
+  it('refuses a pass type that disagrees with the catalogue entry', async () => {
+    // `passId` says party-pass, the document claims Full Pass. Otherwise the
+    // 120 € entry could be sold as a 205 € pass, or the other way round.
+    await assertFails(sellPass(reception(), { overrides: { passId: 'party-pass' } }));
+  });
+
+  it('refuses a sale that starts with money on the bracelet', async () => {
+    await assertFails(sellPass(reception(), { overrides: { balance: 20500 } }));
+  });
+
+  it('THE EMAIL IS NOT ON THE PARTICIPANT', async () => {
+    // Every terminal reads a participant document, the bar included. The address
+    // belongs in contact/, and a terminal that tried to put it here is refused
+    // rather than quietly handing the bar a mailing list.
+    await assertFails(sellPass(reception(), { overrides: { email: 'jana@example.com' } }));
+    await assertFails(sellPass(reception(), { overrides: { phone: '+359000000' } }));
+  });
+
+  it('refuses a document id that disagrees with its contents', async () => {
+    await assertFails(sellPass(reception(), { overrides: { doorNumber: 9 } }));
+    await assertFails(sellPass(reception(), { overrides: { ticketRef: 'DOOR-9' } }));
+  });
+
+  it('accepts a name the Latin alphabet alone cannot spell', async () => {
+    // Half this festival is Polish, Czech or Bulgarian. `nameLower` is produced
+    // by Swift's `lowercased()` and checked against the rules' `.lower()`, and
+    // if those two disagree about "Ł" the sale is refused at the desk with a
+    // queue behind it. Asserted rather than assumed.
+    // The rules' own `.lower()` is ASCII-only, so they cannot check `nameLower`
+    // against `name` — proved against the emulator, and written up in the rule
+    // itself. This test is what stops somebody reinstating that check.
+    const names = ['Łukasz Ćwik', 'Karol Chrząszcz', 'Анита Солари', 'Åsa Ödegård'];
+    for (const [index, name] of names.entries()) {
+      await assertSucceeds(
+        sellPass(reception(), {
+          number: 21 + index,
+          chip: `04:AB:CD:2${index}`,
+          overrides: { name, nameLower: name.toLowerCase(), searchTokens: ['x'] },
+        })
+      );
+    }
+  });
+
+  it('refuses a nameless sale, and a country', async () => {
+    await assertFails(sellPass(reception(), { overrides: { name: '', nameLower: '' } }));
+    await assertFails(sellPass(reception(), { overrides: { country: 'Bulgaria' } }));
+  });
+
+  it('refuses a dance role that is not leader or follower', async () => {
+    await assertFails(sellPass(reception(), { overrides: { danceRole: 'both' } }));
+    await assertFails(sellPass(reception(), { overrides: { danceRole: '' } }));
+  });
+
+  it('refuses a level outside the four, and allows none at all', async () => {
+    await assertFails(sellPass(reception(), { overrides: { level: 'Beginner' } }));
+    await assertSucceeds(sellPass(reception(), { overrides: { level: '' } }));
+  });
+
+  it('refuses to start one blocked, or to arrive pre-blocked', async () => {
+    await assertFails(sellPass(reception(), { overrides: { isBlocked: true } }));
+  });
+
+  it('makes two desks selling at once collide instead of both claiming #7', async () => {
+    await assertSucceeds(sellPass(reception(), { number: 7 }));
+    await assertFails(sellPass(reception(), { number: 7, chip: '04:FF:FF:F1' }));
+    await assertSucceeds(sellPass(reception(), { number: 8, chip: '04:FF:FF:F1' }));
+  });
+
+  it('cannot be deleted afterwards, like anybody else', async () => {
+    await assertSucceeds(sellPass(reception()));
+    await assertFails(deleteDoc(doc(reception(), 'participants', 'door-7')));
+  });
+
+  it('behaves like any other participant once sold', async () => {
+    await assertSucceeds(sellPass(reception()));
+    const db = reception();
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'participants', 'door-7', 'transactions', 'tx-d-1'), {
+      clientTxId: 'tx-d-1', type: 'topup', amount: 2000, signedAmount: 2000,
+      staffUid: RECEPTION_UID, terminalId: 'terminal-01', createdAt: serverTimestamp(),
+      method: 'card',
+    });
+    batch.update(doc(db, 'participants', 'door-7'), { balance: 2000, lastTxId: 'tx-d-1' });
+    await assertSucceeds(batch.commit());
+  });
+});
+
+describe('the buyer’s email', () => {
+  const contactRef = (db, pid = PARTICIPANT) => doc(db, 'participants', pid, 'contact', 'details');
+  const details = (overrides = {}) => ({
+    email: 'jana@example.com',
+    addedBy: RECEPTION_UID,
+    addedAt: serverTimestamp(),
+    ...overrides,
+  });
+
+  it('THE ONE THAT MATTERS: the bar cannot read it', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(contactRef(context.firestore()), { email: 'jana@example.com' });
+    });
+    await assertFails(getDoc(contactRef(bar())));
+    await assertSucceeds(getDoc(contactRef(reception())));
+    // The organiser panel can, which is where anybody actually reads it.
+    await assertSucceeds(getDoc(contactRef(admin())));
+  });
+
+  it('lets reception write one, and fix a typo afterwards', async () => {
+    await assertSucceeds(setDoc(contactRef(reception()), details()));
+    await assertSucceeds(setDoc(contactRef(reception()), details({ email: 'jana@fixed.com' })));
+  });
+
+  it('refuses the bar writing one', async () => {
+    await assertFails(setDoc(contactRef(bar()), details({ addedBy: BAR_UID })));
+  });
+
+  it('refuses anything that is not an address, and allows an empty one', async () => {
+    await assertFails(setDoc(contactRef(reception()), details({ email: 'not an address' })));
+    await assertFails(setDoc(contactRef(reception()), details({ email: 'two@at@signs' })));
+    // Empty is allowed: a buyer who does not want to give one still gets a pass.
+    await assertSucceeds(setDoc(contactRef(reception()), details({ email: '' })));
+  });
+
+  it('refuses extra fields — this is an address, not a profile', async () => {
+    await assertFails(setDoc(contactRef(reception()), details({ phone: '+359000000' })));
+    await assertFails(setDoc(contactRef(reception()), details({ notes: 'came with Ivan' })));
+  });
+
+  it('refuses an entry attributed to somebody else, or backdated', async () => {
+    await assertFails(setDoc(contactRef(reception()), details({ addedBy: ADMIN_UID })));
+    await assertFails(setDoc(contactRef(reception()), details({ addedAt: new Date(0) })));
+  });
+
+  it('cannot be deleted', async () => {
+    await assertSucceeds(setDoc(contactRef(reception()), details()));
+    await assertFails(deleteDoc(contactRef(reception())));
+  });
+});
+
+describe('the door catalogue belongs to the admin panel', () => {
+  const passRef = (db, id = 'jazz-track') => doc(db, 'doorPasses', id);
+  const pass = (overrides = {}) => ({
+    name: 'Jazz Performance Track',
+    price: 18500,
+    sortOrder: 4,
+    isActive: true,
+    kind: 'pass',
+    ...overrides,
+  });
+
+  it('lets an organiser price a pass, and every terminal read it', async () => {
+    await assertSucceeds(setDoc(passRef(admin()), pass()));
+    await assertSucceeds(getDoc(passRef(reception())));
+    // The bar reads it too. It is a price list, not personal data — and a rule
+    // narrower than the need is how a screen ends up silently showing nothing.
+    await assertSucceeds(getDoc(passRef(bar())));
+  });
+
+  it('THE ONE THAT MATTERS: no terminal can set a price', async () => {
+    await assertFails(setDoc(passRef(reception()), pass()));
+    await assertFails(setDoc(passRef(bar()), pass()));
+  });
+
+  it('refuses a price that is not whole cents, or is a slipped decimal', async () => {
+    await assertFails(setDoc(passRef(admin()), pass({ price: 185.5 })));
+    await assertFails(setDoc(passRef(admin()), pass({ price: -100 })));
+    await assertFails(setDoc(passRef(admin()), pass({ price: 2000000 })));
+  });
+
+  it('refuses a kind the terminals would not know how to sell', async () => {
+    await assertFails(setDoc(passRef(admin()), pass({ kind: 'weekend' })));
+    await assertSucceeds(setDoc(passRef(admin()), pass({ kind: 'evening' })));
+  });
+
+  it('refuses a nameless pass and extra fields', async () => {
+    await assertFails(setDoc(passRef(admin()), pass({ name: '' })));
+    await assertFails(setDoc(passRef(admin()), pass({ colour: '#FF0000' })));
+  });
+
+  it('lets an organiser take one off sale, and delete one', async () => {
+    await assertSucceeds(setDoc(passRef(admin()), pass()));
+    await assertSucceeds(setDoc(passRef(admin()), pass({ isActive: false })));
+    await assertSucceeds(deleteDoc(passRef(admin())));
+    await assertFails(deleteDoc(passRef(reception())));
   });
 });
 

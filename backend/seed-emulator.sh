@@ -55,6 +55,13 @@ drink() {  # id, name, cents, order
     \"sortOrder\":{\"integerValue\":\"$4\"},\"isActive\":{\"booleanValue\":true}}}" >/dev/null
 }
 
+doorpass() {  # id, name, cents, order, kind
+  curl -s -X PATCH "$FS/doorPasses/$1" "${OWNER[@]}" -d "{\"fields\":{
+    \"name\":{\"stringValue\":\"$2\"},\"price\":{\"integerValue\":\"$3\"},
+    \"sortOrder\":{\"integerValue\":\"$4\"},\"isActive\":{\"booleanValue\":true},
+    \"kind\":{\"stringValue\":\"${5:-pass}\"}}}" >/dev/null
+}
+
 # admin@example.test is the web-admin panel's account. It has no terminal flow —
 # `admin` is not a staff role — and signing into the iOS or Android app with it is
 # correctly refused.
@@ -70,4 +77,14 @@ echo "participants:"; person 1041 "Amélie Roux" "Full Pass" France Advanced
 echo "drinks:";       drink water "Water" 200 0; drink beer "Beer" 400 1
                       drink gt "Gin & Tonic" 600 2
                       echo "  3 drinks"
+# The door catalogue. Without it reception cannot sell at the desk at all —
+# `isWellFormedDoorPass` reads this collection as the sale is written.
+echo "door passes:"
+                      doorpass evening-ticket "Evening Ticket" 0 0 evening
+                      doorpass party-pass "Party Pass" 12000 1
+                      doorpass party-pass-plus "Party Pass Plus" 15500 2
+                      doorpass full-pass "Full Pass" 20500 3
+                      doorpass full-pass-gold "Full Pass Gold" 25900 4
+                      doorpass jazz-performance-track "Jazz Performance Track" 18500 5
+                      echo "  6 passes"
 echo "done."

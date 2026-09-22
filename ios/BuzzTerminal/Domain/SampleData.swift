@@ -132,6 +132,26 @@ enum SampleData {
                        hex: "#6B4E9B", name: ""),
     ]
 
+    /// The door catalogue, at the festival's real prices.
+    ///
+    /// The evening ticket is first and unpriced, exactly as the seed script
+    /// writes it — it is the most-sold thing at the door, and the screen has to
+    /// look right saying "No price set" rather than "0.00 €".
+    static let doorPasses: [DoorPass] = [
+        DoorPass(id: "evening-ticket", name: TicketType.eveningTicket,
+                 price: .zero, sortOrder: 0, kind: .evening),
+        DoorPass(id: "party-pass", name: TicketType.partyPass,
+                 price: Money(euros: 120), sortOrder: 1),
+        DoorPass(id: "party-pass-plus", name: TicketType.partyPassPlus,
+                 price: Money(euros: 155), sortOrder: 2),
+        DoorPass(id: "full-pass", name: TicketType.fullPass,
+                 price: Money(euros: 205), sortOrder: 3),
+        DoorPass(id: "full-pass-gold", name: TicketType.fullPassGold,
+                 price: Money(euros: 259), sortOrder: 4),
+        DoorPass(id: "jazz-performance-track", name: TicketType.jazzPerformanceTrack,
+                 price: Money(euros: 185), sortOrder: 5),
+    ]
+
     /// Preordered merch, keyed by participant. Only a minority of the roster
     /// ordered anything — 28 of 105 on the real Sheet — so most of these people
     /// deliberately have no entry, which is the case the screen has to get

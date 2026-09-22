@@ -19,6 +19,10 @@ export const COLLECTIONS = {
   drinks: 'drinks',
   /** Which colour wristband each pass type gets. One document per pass type. */
   braceletColours: 'braceletColours',
+  /** What reception may sell at the desk, and for how much. */
+  doorPasses: 'doorPasses',
+  /** A door buyer's email. Reception and this panel only — never the bar. */
+  contact: 'contact',
 } as const;
 
 export const PARTICIPANT_FIELDS = {
@@ -28,6 +32,8 @@ export const PARTICIPANT_FIELDS = {
   ticketType: 'ticketType',
   country: 'country',
   level: 'level',
+  /** The DANCE role of a door buyer: leader or follower. Never a staff role. */
+  danceRole: 'danceRole',
   source: 'source',
   evening: 'evening',
   eveningNumber: 'eveningNumber',
@@ -45,6 +51,21 @@ export const DRINK_FIELDS = {
   price: 'price',
   sortOrder: 'sortOrder',
   isActive: 'isActive',
+} as const;
+
+export const DOOR_PASS_FIELDS = {
+  name: 'name',
+  price: 'price',
+  sortOrder: 'sortOrder',
+  isActive: 'isActive',
+  /** `'pass'` asks for a buyer; `'evening'` is the anonymous numbered ticket. */
+  kind: 'kind',
+} as const;
+
+export const CONTACT_FIELDS = {
+  email: 'email',
+  addedBy: 'addedBy',
+  addedAt: 'addedAt',
 } as const;
 
 export const BRACELET_COLOUR_FIELDS = {
@@ -100,6 +121,11 @@ export const MAX_DRINK_NAME = 60;
 /** The typo ceiling on a price, in cents. 1000 € is clear of any real drink. */
 export const MAX_DRINK_PRICE = 100_000;
 
+/** A pass name is written onto a participant as `ticketType`; the rules agree. */
+export const MAX_PASS_NAME = 100;
+/** 2000 € is a slipped decimal, not a festival pass. */
+export const MAX_PASS_PRICE = 200_000;
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface Participant {
@@ -110,8 +136,13 @@ export interface Participant {
   country: string;
   /** The DANCE level: one of LEVELS, or `''`. Never a permission. */
   level: string;
-  /** `'sheet'` for an imported registration, `'evening'` for a door sale. */
+  /**
+   * `'sheet'` for an imported registration, `'evening'` for an anonymous door
+   * ticket, `'door'` for a pass sold at the desk with a buyer on it.
+   */
   source: string;
+  /** `'leader'`, `'follower'`, or `''` for everyone from the Sheet. */
+  danceRole: string;
   /** `null` until reception pairs a chip. Permanent once set. */
   braceletId: string | null;
   checkedInAt: Date | null;
@@ -119,6 +150,27 @@ export interface Participant {
   balance: number;
   isBlocked: boolean;
   blockReason: string | null;
+}
+
+/**
+ * One thing reception can sell at the desk.
+ *
+ * The price is shown to whoever is selling and is never charged by anything —
+ * see the `doorPasses` block in firestore.rules. `name` is written verbatim onto
+ * the buyer as their `ticketType`, which is why it is bounded the same way.
+ */
+export interface DoorPass {
+  id: string;
+  name: string;
+  /** Cents. */
+  price: number;
+  sortOrder: number;
+  isActive: boolean;
+  /**
+   * `'evening'` routes the terminal to the anonymous numbered flow — no name, no
+   * email, pick a night. `'pass'` asks for the buyer's details.
+   */
+  kind: 'pass' | 'evening';
 }
 
 export interface Drink {
@@ -225,6 +277,7 @@ export function toParticipant(doc: Doc): Participant | null {
     country: str(data[PARTICIPANT_FIELDS.country]),
     level: str(data[PARTICIPANT_FIELDS.level]),
     source: str(data[PARTICIPANT_FIELDS.source], 'sheet'),
+    danceRole: str(data[PARTICIPANT_FIELDS.danceRole]),
     braceletId: str(data[PARTICIPANT_FIELDS.braceletId]) || null,
     checkedInAt: date(data[PARTICIPANT_FIELDS.checkedInAt]),
     balance,
@@ -247,6 +300,25 @@ export function toDrink(doc: Doc): Drink | null {
     // Absent means active: the seed script wrote documents without the field
     // before the bar started querying on it.
     isActive: data[DRINK_FIELDS.isActive] !== false,
+  };
+}
+
+export function toDoorPass(doc: Doc): DoorPass | null {
+  const data = doc.data();
+  const name = data[DOOR_PASS_FIELDS.name];
+  const price = int(data[DOOR_PASS_FIELDS.price]);
+  if (typeof name !== 'string' || price === null) return null;
+
+  return {
+    id: doc.id,
+    name,
+    price,
+    sortOrder: int(data[DOOR_PASS_FIELDS.sortOrder]) ?? 0,
+    isActive: data[DOOR_PASS_FIELDS.isActive] !== false,
+    // Anything unrecognised is an ordinary pass. A terminal that met a `kind` it
+    // did not know and refused to sell would be worse than one that asks for a
+    // name it did not strictly need.
+    kind: data[DOOR_PASS_FIELDS.kind] === 'evening' ? 'evening' : 'pass',
   };
 }
 

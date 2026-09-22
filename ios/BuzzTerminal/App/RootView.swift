@@ -64,6 +64,10 @@ struct RootView: View {
             AssignBraceletView()
         case .unassignedBracelet:
             UnassignedBraceletView()
+        case .doorPass:
+            DoorPassPickerView()
+        case .doorBuyer:
+            DoorBuyerView()
         case .assignEvening:
             AssignEveningTicketView()
         case .participant:

@@ -45,6 +45,13 @@ protocol TerminalRepository: Sendable {
     /// every check-in would be a round trip for something already in hand.
     func braceletColours() async throws -> [BraceletColour]
 
+    /// What reception may sell at the desk, in the order organisers arranged,
+    /// withdrawn ones already dropped.
+    ///
+    /// The price is for saying out loud. Nothing here charges it — a pass is not
+    /// credit on a bracelet, so a door sale writes no ledger entry.
+    func doorPasses() async throws -> [DoorPass]
+
     // MARK: Bracelets
     /// The account paired to this chip, or `nil` if the chip is unassigned.
     func participant(withBracelet bracelet: BraceletID) async throws -> Participant?
@@ -56,6 +63,18 @@ protocol TerminalRepository: Sendable {
     /// reception desks selling simultaneously collide and the loser must try the
     /// next one. That belongs here rather than in a view.
     func createEveningTicket(evening: Evening, bracelet: BraceletID) async throws -> Participant
+
+    /// Sell a catalogue pass at the door and pair it to a bracelet, in one write.
+    ///
+    /// Same ownership of the sequence and the retry as `createEveningTicket`, and
+    /// the buyer's email goes to `participants/{id}/contact/details` in the same
+    /// batch — the bar cannot read it there, which is the whole reason it is not
+    /// on the participant.
+    func createDoorPass(
+        _ pass: DoorPass,
+        draft: DoorSaleDraft,
+        bracelet: BraceletID
+    ) async throws -> Participant
 
     /// Pair a fresh bracelet to somebody already on the roster. Returns the
     /// updated participant.
@@ -104,6 +123,7 @@ enum TerminalError: Error, Equatable, LocalizedError {
     case braceletNotAssigned
     case braceletAlreadyPaired
     case eveningSequenceExhausted
+    case doorSequenceExhausted
     case braceletBlocked
     case noMerchOrdered
     case insufficientFunds(balance: Money, required: Money)
@@ -130,6 +150,8 @@ enum TerminalError: Error, Equatable, LocalizedError {
             "This bracelet is already paired to somebody. Use a fresh one."
         case .eveningSequenceExhausted:
             "Could not allocate an evening ticket number. Try again."
+        case .doorSequenceExhausted:
+            "Could not allocate a door sale number. Try again."
         case .braceletBlocked:
             "This bracelet is blocked. An organiser must lift the block."
         case .noMerchOrdered:

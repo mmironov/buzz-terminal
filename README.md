@@ -344,6 +344,12 @@ box is counted against afterwards.
 delete. Taking off the menu (`isActive: false`) is the reversible one for a keg that
 ran out; deleting is for something entered by mistake.
 
+**Door passes.** What reception may sell at the desk and for how much — Party Pass
+120 €, Full Pass 205 €, and the rest. The terminals sell from this list and can
+sell nothing that is not on it: the rules check the pass against this collection as
+the sale is written. The price is read out at the desk and charged by nothing; see
+`docs/door-sales.md`.
+
 **Bracelets.** Which colour wristband each pass type gets. The pass types are read
 off the roster rather than kept in a list here, so one the Sheet invents appears by
 itself — and a pass type nobody has coloured simply shows no colour on a phone.

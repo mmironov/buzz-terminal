@@ -33,7 +33,7 @@ struct ReceptionHomeView: View {
 
             VStack(spacing: 0) {
                 SBDivider(weight: SBRule.hairline)
-                Text("Read → who it is, and top up · By name → check-in · Door → evening ticket")
+                Text("Read → who it is, and top up · By name → check-in · Door → any pass")
                     .font(.sbBody(11))
                     .foregroundStyle(.sbInk(0.55))
                     .multilineTextAlignment(.center)
@@ -59,9 +59,9 @@ struct ReceptionHomeView: View {
             }
 
             VStack(spacing: 5) {
-                Button("Sell evening ticket") { model.beginEveningTicketSale() }
+                Button("Sell a pass at the door") { model.beginDoorSale() }
                     .buttonStyle(.sbBlock(.secondary, minHeight: 46, fontSize: 15))
-                Text("Sold at the door · no name needed")
+                Text("Evening ticket or a full pass · no Sheet row")
                     .font(.sbBody(10.5))
                     .foregroundStyle(.sbInk(0.5))
             }

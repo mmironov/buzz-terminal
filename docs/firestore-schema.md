@@ -12,6 +12,8 @@ Source of truth for the backend model. `backend/firestore.rules` enforces it;
 | Balance and its history | the terminals | the app, in Firestore transactions |
 | Blocks | organisers | the web admin panel, `web-admin/` |
 | Drinks and prices | organisers | the web admin panel; `npm run seed-drinks` bootstraps a fresh project |
+| What a door pass costs | organisers | the web admin panel; `npm run seed-passes` bootstraps it |
+| Who bought one at the door | the reception terminal | the app, at the moment of sale |
 
 The important line is the first one: **the Sheet owns identity, Firestore owns
 everything that happens during the festival.** The import never writes a balance
@@ -29,6 +31,10 @@ Six, and the spelling is canonical — `ios/BuzzTerminal/Domain/Models.swift`
 
 The first five come from the Sheet. **`Evening Ticket` never does** — those are
 sold at the door each evening and minted by reception. See *Evening tickets*.
+
+All six can also be sold at the desk, to somebody with no Sheet row at all: the
+`doorPasses` catalogue decides which, and at what price. See *Door passes* and
+`docs/door-sales.md`.
 
 ## `participants/{participantId}`
 
@@ -267,9 +273,10 @@ under contention.
 
 **Every field is pinned by the rules,** including that the id agrees with
 `evening` and `eveningNumber`, that `ticketType` is exactly `Evening Ticket`, that
-`balance` is zero, and that `country` is empty. Reception can mint an anonymous
-evening ticket and cannot mint anything else — not a Full Pass Gold, not one
-starting with 500 € on it, not one carrying a name.
+`balance` is zero, and that `country` is empty. An evening ticket cannot wear
+another pass type, carry a name, or start with 500 € on it. (Reception *can* now
+sell a Full Pass at the door — that is the separate door-pass shape below, with a
+buyer on it.)
 
 **Anonymous by construction.** There is nowhere to put personal data even if a
 terminal tried; `name` is the generated label.
@@ -283,10 +290,56 @@ A guest returning on a second evening buys a **new ticket on a new bracelet**, s
 "a bracelet is permanently paired" stays true and the pairing rules are untouched.
 Any balance left on the first evening's bracelet stays there.
 
-> Not recorded: the cash taken for the ticket itself. `npm run headers`-style
-> reconciliation can count evening-ticket documents per evening, but the price is
-> nowhere in Firestore. Worth revisiting if end-of-night cash reconciliation needs
-> to include door sales.
+> Not recorded: the cash taken for the ticket itself. The price now exists in
+> `doorPasses` so the desk can read it out, but no sale writes it anywhere. See
+> *"The price is shown, never charged"* in `docs/door-sales.md` for why, and what
+> it would take to change.
+
+## Door passes
+
+The other half of selling at the desk: a Party Pass, a Full Pass Gold — whatever
+organisers have priced — sold to somebody with a name.
+
+```
+participants/door-7
+  source:      "door"
+  passId:      "full-pass-gold"     // which doorPasses entry
+  ticketType:  "Full Pass Gold"     // its name, copied at the moment of sale
+  doorNumber:  7
+  ticketRef:   "DOOR-7"
+  name:        "Jana Novak"
+  danceRole:   "leader" | "follower"
+  level:       "Advanced" | ""      // Full Pass and Full Pass Gold only
+  country:     ""
+  braceletId, checkedInAt, balance: 0, createdBy
+
+participants/door-7/contact/details  // reception and the panel only
+  email: "jana@example.com"
+```
+
+Same id-is-the-sequence deduplication as the evening ticket, one sequence for the
+whole festival. What replaces "reception cannot invent a pass type" is
+`doorPasses`: the rules read that collection as the sale is written and check the
+name matches, so only a pass an organiser has priced can be sold.
+
+**The email is deliberately not on the participant** — every terminal reads those,
+the bar included. `docs/door-sales.md` has the whole shape, including the one check
+the rules cannot perform (`nameLower`, because their `.lower()` is ASCII-only and
+half this roster is not).
+
+## `doorPasses/{slug}`
+
+What reception may sell, and for how much. Owned by the admin panel, readable by
+every role, written by none of them.
+
+```
+doorPasses/full-pass-gold
+  name:      "Full Pass Gold"
+  price:     25900        // cents — displayed at the desk, charged by nothing
+  sortOrder: 4
+  isActive:  true
+  kind:      "pass" | "evening"
+```
 
 ## `bracelets/{chipUid}`
 

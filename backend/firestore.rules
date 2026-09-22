@@ -94,6 +94,9 @@ service cloud.firestore {
     function braceletRef(chipUid) {
       return /databases/$(database)/documents/bracelets/$(chipUid);
     }
+    function passRef(passId) {
+      return /databases/$(database)/documents/doorPasses/$(passId);
+    }
 
     // ── Participants ───────────────────────────────────────────────────────
 
@@ -104,16 +107,25 @@ service cloud.firestore {
       // Nobody deletes a person mid-festival.
       allow delete: if false;
 
-      // The one hole in "the roster belongs to the Sheet". Passes are also sold at
-      // the door each evening, and those buyers have no Sheet row — so reception
-      // has to be able to create a participant.
+      // The one hole in "the roster belongs to the Sheet". Passes are sold at the
+      // door too, and those buyers have no Sheet row — so reception has to be
+      // able to create a participant.
       //
-      // Deliberately the narrowest hole that does the job: reception can mint an
-      // ANONYMOUS EVENING TICKET and nothing else. It cannot invent a Full Pass
-      // Gold for a friend, cannot start one with a balance on it, cannot attach a
-      // name or a country, and cannot overwrite an existing ticket. Every field is
-      // pinned, and the document id has to agree with the fields inside it.
-      allow create: if isReception() && isWellFormedEveningTicket(participantId);
+      // Two shapes, and only these two:
+      //
+      //   · an ANONYMOUS EVENING TICKET, numbered per evening, no name at all;
+      //   · a DOOR PASS, which does carry a name, a dance role and a level.
+      //
+      // The door pass widens this hole on purpose, and it is worth naming what
+      // was given up: this rule used to say reception "cannot invent a Full Pass
+      // Gold for a friend", and now it can. That is the feature — a 259 € pass
+      // sold on the night is a real thing the desk does. What survives is the
+      // part that protects the money: no balance, no ledger entry, no block
+      // state, no overwriting an existing document, and a pass type that an
+      // organiser has actually priced in `doorPasses`. Reception can sell what
+      // the festival sells, at the desk, and nothing else.
+      allow create: if isReception()
+        && (isWellFormedEveningTicket(participantId) || isWellFormedDoorPass(participantId));
 
       function isWellFormedEveningTicket(pid) {
         let d = request.resource.data;
@@ -156,6 +168,106 @@ service cloud.firestore {
           // Paired in the same batch, and the reverse lookup must agree.
           && d.braceletId is string
           && getAfter(braceletRef(d.braceletId)).data.participantId == pid;
+      }
+
+      // A pass sold at the door: a Full Pass, a Party Pass, whatever the
+      // organisers have put in the catalogue at a price.
+      //
+      // Unlike an evening ticket this one has a buyer. The name, the dance role
+      // and the level sit on the document, where every terminal can read them —
+      // which is exactly what the Sheet-imported roster already exposes, so a
+      // door buyer is no more visible than anybody else. **The email does not
+      // live here.** It goes in `contact/details`, which only reception and the
+      // organiser panel can read; see the rule below and docs/door-sales.md.
+      function isWellFormedDoorPass(pid) {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+                 'source', 'passId', 'ticketType', 'doorNumber', 'ticketRef',
+                 'name', 'nameLower', 'searchTokens', 'country', 'level',
+                 'danceRole', 'braceletId', 'checkedInAt', 'balance', 'lastTxId',
+                 'isBlocked', 'blockReason', 'createdBy'
+               ])
+          && d.keys().hasAll([
+               'source', 'passId', 'ticketType', 'doorNumber', 'ticketRef',
+               'name', 'country', 'danceRole', 'braceletId', 'checkedInAt',
+               'balance', 'isBlocked', 'createdBy'
+             ])
+          && d.source == 'door'
+          // The id IS the sequence number, so two desks selling at the same
+          // moment collide on `door-7` and the loser retries with 8. Same
+          // deduplication-by-construction as the evening ticket above.
+          && d.doorNumber is int
+          && d.doorNumber > 0
+          && pid == 'door-' + string(d.doorNumber)
+          && d.ticketRef == 'DOOR-' + string(d.doorNumber)
+          // Only what an organiser has priced, spelled the way they spelled it.
+          // This is the check that replaces "reception cannot invent a pass
+          // type": it can sell a Full Pass Gold, because the festival sells one,
+          // and it cannot sell a "Full Pass Platinum" that exists nowhere.
+          && d.passId is string
+          && exists(passRef(d.passId))
+          && get(passRef(d.passId)).data.name == d.ticketType
+          // A real name. Bounded and nothing more.
+          //
+          // This said `d.nameLower == d.name.lower()` for about an hour, which
+          // would have refused half the festival. **Rules' `.lower()` is
+          // ASCII-only** — measured against the emulator, not assumed: a
+          // document naming "Łukasz" was accepted only when `nameLower` still
+          // held the capital Ł, and the correctly lowercased "łukasz" that Swift
+          // and every search box produce was refused. Polish, Czech and
+          // Bulgarian names are most of this roster, so the check had to go. What
+          // it protected against — a terminal filing somebody under a name the
+          // panel does not show — is a trusted reception account mislabelling its
+          // own sale, which is a much smaller problem than a queue at the door.
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 80
+          && d.nameLower is string && d.nameLower.size() <= 80
+          && d.searchTokens is list && d.searchTokens.size() <= 12
+          // No country at the door. It is in the Sheet for registrations because
+          // the Sheet asks; nobody is asking at 23:40 on a Saturday.
+          && d.country == ''
+          && d.danceRole in ['leader', 'follower']
+          // Levels are the four the panel offers, and only Full Pass and Full
+          // Pass Gold actually split by them — the app offers the field for
+          // those two alone. Empty is always allowed, so the rule does not have
+          // to know which pass types those are.
+          && d.get('level', '') in ['', 'Intermediate', 'Advanced', 'Pro', 'Other']
+          // The price is cash to the festival, not credit on the bracelet — the
+          // same line the evening ticket holds.
+          && d.balance == 0
+          && d.get('lastTxId', null) == null
+          && d.isBlocked == false
+          && d.get('blockReason', null) == null
+          && d.createdBy == request.auth.uid
+          && d.checkedInAt == request.time
+          && d.braceletId is string
+          && getAfter(braceletRef(d.braceletId)).data.participantId == pid;
+      }
+
+      // ── Contact details ──────────────────────────────────────────────────
+      //
+      // The buyer's email, and nothing else. It is here rather than on the
+      // participant for one reason: a participant document is readable by every
+      // signed-in terminal, and the bar has no business holding a mailing list.
+      // Same reasoning, same shape as the merch subcollection below.
+      match /contact/{contactId} {
+        allow read: if isReception();
+        allow delete: if false;
+        allow create, update: if isReception() && isWellFormedContact();
+
+        function isWellFormedContact() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['email', 'addedBy', 'addedAt'])
+            && d.keys().hasAll(['email', 'addedBy', 'addedAt'])
+            // Not a validating regex — an address the desk mistypes is a support
+            // problem, not a security one, and a strict pattern here would
+            // refuse the sale rather than the typo. This is a length and shape
+            // bound: something with an @ in it, or nothing at all.
+            && d.email is string
+            && d.email.size() <= 120
+            && (d.email == '' || d.email.matches('^[^@\\s]+@[^@\\s]+$'))
+            && d.addedBy == request.auth.uid
+            && d.addedAt == request.time;
+        }
       }
 
       allow update: if isStaff()
@@ -514,6 +626,46 @@ service cloud.firestore {
           && d.price is int && d.price >= 0 && d.price <= 100000
           && d.sortOrder is int && d.sortOrder >= 0
           && d.isActive is bool;
+      }
+    }
+
+    // ── Door passes ──────────────────────────────────────────────────────
+    //
+    // What reception may sell at the desk, and what to charge for it. One
+    // document per pass, keyed by a slug of its name, owned by organisers in the
+    // admin panel — the same arrangement as the drinks menu, for the same
+    // reason: prices are an organiser decision and no terminal writes them.
+    //
+    // The price is **shown, never charged**. Nothing in this system takes the
+    // money for a pass; the desk does, in cash or on the card machine, and the
+    // number here is what they say out loud. It deliberately does not become a
+    // ledger entry — the ledger is what is on a bracelet, and a pass is not.
+    //
+    // Readable by every role, like the colours and unlike merch: reception needs
+    // the list to sell from, and a price is not somebody's personal data.
+    match /doorPasses/{passId} {
+      allow read: if canRead();
+
+      allow create, update: if isAdmin() && isWellFormedPass();
+      allow delete: if isAdmin();
+
+      function isWellFormedPass() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['name', 'price', 'sortOrder', 'isActive', 'kind'])
+          && d.keys().hasAll(['name', 'price', 'sortOrder', 'isActive', 'kind'])
+          // `name` is written verbatim onto the participant as `ticketType`, and
+          // `isWellFormedDoorPass` checks the two agree — so this bound is also
+          // the bound on a pass type anybody can be sold.
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 100
+          // Cents, like every other price here. The ceiling is a typo bound: a
+          // 2,000 € festival pass is a slipped decimal, not a product.
+          && d.price is int && d.price >= 0 && d.price <= 200000
+          && d.sortOrder is int && d.sortOrder >= 0
+          && d.isActive is bool
+          // `evening` routes the terminal to the anonymous numbered flow instead
+          // of asking for a name. It is a behaviour, not a label, which is why
+          // it is a field the rules know about rather than a name match.
+          && d.kind in ['pass', 'evening'];
       }
     }
 

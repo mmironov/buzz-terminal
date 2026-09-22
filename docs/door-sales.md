@@ -1,0 +1,147 @@
+# Selling at the door
+
+Not everybody buys in advance. Reception sells passes at the desk all weekend, and
+those buyers have no row in the registrations Sheet — so the terminal creates the
+participant itself. That is the one hole in *"the roster belongs to the Sheet"*,
+and this is what it looks like.
+
+There are two shapes, and the catalogue decides which one a sale takes.
+
+| | Evening ticket | Door pass |
+|---|---|---|
+| Who | Anonymous — "Evening #14" | A named buyer |
+| Asked for | Which night | Name, dance role, level, email |
+| Document id | `ev-friday-14` | `door-7` |
+| `source` | `evening` | `door` |
+| Lives for | That evening | The whole festival |
+
+The evening ticket is unchanged; the door pass is the new half.
+
+## The catalogue
+
+`doorPasses/{slug}` is what reception may sell, owned by organisers in the admin
+panel's **Door passes** tab — the same arrangement as the drinks menu, for the
+same reason: a price is an organiser decision and no terminal writes one.
+
+```
+doorPasses/full-pass-gold
+  name:      "Full Pass Gold"    // written onto the buyer as their ticketType
+  price:     25900               // cents
+  sortOrder: 4
+  isActive:  true
+  kind:      "pass" | "evening"
+```
+
+The festival's prices seed with `npm run seed-passes -- --apply`, and are edited
+in the panel from then on. The evening ticket is seeded **unpriced**, because
+nobody has said what it costs; the panel shows "No price set" beside it and the
+terminal shows the same in place of a number, rather than reading "0.00 €" to
+somebody holding cash.
+
+`kind` is a behaviour, not a label. `evening` routes the terminal to the anonymous
+numbered flow; anything else asks for a buyer. Matching on the name instead would
+break the moment somebody renamed a row.
+
+### The price is shown, never charged
+
+Nothing in this system takes the money for a pass. The desk does — in cash, or on
+the card machine — and the number on screen is what they ask for.
+
+That is deliberate and it is the same line the evening ticket has always held. The
+ledger is what is **on a bracelet**: top-ups in, rounds at the bar out, every entry
+balanced against a balance the rules verify. A pass is not on a bracelet. Writing
+a 205 € "sale" into that ledger would make the reconciliation footer in the admin
+panel — the one that says whether the entries add up to the balance — permanently
+wrong by exactly the price of every pass sold.
+
+So door takings are counted the way they were always going to be: by counting them.
+If that ever needs to live in the app, it is a new thing to build, with its own
+collection, not a number to smuggle into this one.
+
+## What a sale writes
+
+One batch, three documents, all or nothing:
+
+```
+participants/door-7
+  source:      "door"
+  passId:      "full-pass-gold"      // which catalogue entry
+  ticketType:  "Full Pass Gold"      // its name, copied
+  doorNumber:  7
+  ticketRef:   "DOOR-7"
+  name:        "Jana Novak"
+  nameLower, searchTokens            // so the desk can find them again
+  danceRole:   "leader" | "follower"
+  level:       "Advanced" | ""       // Full Pass and Full Pass Gold only
+  country:     ""
+  braceletId, checkedInAt, balance: 0, isBlocked: false, createdBy
+
+participants/door-7/contact/details
+  email:   "jana@example.com"        // or "" — see below
+  addedBy, addedAt
+
+bracelets/04:A1:9C:7E                // the reverse lookup, same batch
+  participantId: "door-7", staffUid, pairedAt
+```
+
+**The id is the sequence number**, exactly as with evening tickets: two desks
+selling at the same moment collide on `door-7`, and the loser retries with 8.
+Deduplication by construction rather than by a counter document nobody can lock.
+
+One sequence for the whole festival rather than one per pass type. The number
+identifies a sale; it is not a count of Full Passes, and per-type sequences would
+mean another one to seed every time an organiser adds a row to the catalogue.
+
+### The email is not on the participant
+
+Every signed-in terminal reads participant documents — **the bar included**. Name,
+pass type and level are already exposed that way for all 109 people from the Sheet,
+so a door buyer is no more visible than anybody else. An address is different, and
+a bartender has no business holding a mailing list.
+
+So it goes to `contact/details`, which `firestore.rules` opens to reception and the
+organiser claim and nobody else. The same arrangement as preordered merch, for the
+same reason, and the rules refuse a participant document with an `email` on it
+outright rather than trusting the app to leave it off.
+
+It is written even when blank, so "asked, and they declined" and "never asked" are
+the same absent value rather than two states somebody has to tell apart later. The
+admin panel shows it under a person's row, because a field nobody can read is a
+field that should not have been collected.
+
+`danceRole`, never `role`. `role` is the staff claim the security rules authorise
+on, and the Sheet's own "Role" column means the dance one — a collision worth
+keeping a permanent distance from.
+
+## What the rules still guarantee
+
+This widened what reception can create, and it is worth being plain about what was
+given up. The rule used to say reception "cannot invent a Full Pass Gold for a
+friend". It now can: a 259 € pass sold on the night is a real thing the desk does.
+
+What survives is everything that protects the money:
+
+- **Only what an organiser priced.** `isWellFormedDoorPass` reads
+  `doorPasses/{passId}` as the sale is written and checks the name matches, so a
+  pass type that exists nowhere in the festival cannot be minted, and a withdrawn
+  one cannot be sold.
+- **No balance.** A sale starts at zero. A terminal that could create a
+  participant holding 500 € would be a mint.
+- **No ledger entry, no block state, no overwriting** an existing document.
+- **Paired in the same batch**, with the reverse lookup agreeing, or the whole
+  thing is refused.
+
+### One thing the rules cannot check
+
+`nameLower` is **not** verified against `name`. It was, for about an hour, and it
+would have refused half this festival: rules' `.lower()` is ASCII-only. Measured
+against the emulator rather than assumed — a document naming "Łukasz" was accepted
+only while `nameLower` still held the capital Ł, and the correctly lowercased
+"łukasz" that Swift and every search box produce was refused. Polish, Czech and
+Bulgarian names are most of this roster.
+
+What that check protected against — a trusted reception account filing its own sale
+under a name the panel does not show — is a much smaller problem than a queue at
+the door. `backend/rules-tests/rules.test.mjs` has a test that sells to
+"Łukasz Ćwik", "Карол Chrząszcz" and friends, which is what stops somebody
+reinstating it.

@@ -378,6 +378,42 @@ async function cmdSeedDrinks() {
   console.log(`\n✔ ${written} drinks written, ${retired} taken off the menu.\n`);
 }
 
+async function cmdSeedPasses() {
+  requireProject();
+  requireKeyFile();
+  const { initAdmin, seedDoorPasses, DEFAULT_DOOR_PASSES } = await cloud();
+  const app = initAdmin(config);
+  const db = app.firestore();
+
+  const existing = await db.collection('doorPasses').get();
+  const euro = (cents) => (cents / 100).toFixed(2) + ' €';
+
+  console.log(`\nDoor-sale catalogue — ${DEFAULT_DOOR_PASSES.length} passes:\n`);
+  for (const pass of DEFAULT_DOOR_PASSES) {
+    const was = existing.docs.find((doc) => doc.id === pass.id)?.data();
+    const note = !was
+      ? '(new)'
+      : was.price === pass.price && was.name === pass.name
+        ? '(unchanged)'
+        : `(was ${was.name} ${euro(was.price)} — this RESETS the price)`;
+    console.log(`  ${pass.id.padEnd(24)} ${pass.name.padEnd(24)} ${euro(pass.price).padStart(9)}  ${note}`);
+  }
+
+  const theirs = existing.docs.filter((doc) => !DEFAULT_DOOR_PASSES.some((p) => p.id === doc.id));
+  if (theirs.length) {
+    console.log(`\n  Left alone — added in the admin panel, not by this script:\n`);
+    theirs.forEach((doc) => console.log(`  ${doc.id.padEnd(24)} ${doc.data().name}`));
+  }
+
+  if (!config.apply) {
+    console.log(`\nDry run. Re-run with --apply to commit.\n`);
+    return;
+  }
+
+  const { written } = await seedDoorPasses(db, DEFAULT_DOOR_PASSES);
+  console.log(`\n✔ ${written} door passes written. Prices are edited in the admin panel from now on.\n`);
+}
+
 async function cmdReset() {
   requireProject();
   requireKeyFile();
@@ -468,6 +504,7 @@ Swing Buzz roster importer
   npm run set-role -- <email> <reception|bar|admin>   dry run
   npm run set-role -- <email> <role> --apply      commit it
   npm run seed-drinks -- --apply                  write the menu's first three
+  npm run seed-passes -- --apply                  write the door-sale catalogue
   npm run reset                                   dry run: what a wipe would remove
   npm run reset -- --apply --confirm=<project>    WIPE the operational data
   npm test                                        unit-test the diff logic
@@ -493,6 +530,7 @@ const commands = {
   import: cmdImport,
   'set-role': cmdSetRole,
   'seed-drinks': cmdSeedDrinks,
+  'seed-passes': cmdSeedPasses,
   reset: cmdReset,
 };
 

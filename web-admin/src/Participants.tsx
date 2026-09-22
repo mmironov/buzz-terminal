@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 
+import { DoorSaleDetails } from './DoorSaleDetails';
 import { History } from './History';
 import { db } from './firebase';
 import {
@@ -213,7 +214,10 @@ function Row({
           <td colSpan={6}>
             <div className="detail__grid">
               <History participant={person} />
-              <BlockPanel person={person} uid={uid} />
+              <div className="stack">
+                <DoorSaleDetails person={person} />
+                <BlockPanel person={person} uid={uid} />
+              </div>
             </div>
           </td>
         </tr>
