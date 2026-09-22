@@ -137,17 +137,19 @@ protocol TerminalRepository: Sendable {
         for participant: Participant
     ) async throws -> FreeShirt
 
-    /// The extra classes this person has already bought, keyed by catalogue id.
+    /// The extra class this person has bought, or nil for almost everybody.
     ///
-    /// Empty for almost everybody. Same read rule as merch — reception and the
-    /// panel, not the bar — so a bar terminal gets nothing rather than an error.
-    func sessionSales(for participant: Participant) async throws -> [String: SessionSale]
+    /// One each: the sale lives at a fixed document id, so this is a point read
+    /// like merch, and the same read rule applies — reception and the panel, not
+    /// the bar, which gets nil rather than an error.
+    func sessionSale(for participant: Participant) async throws -> SessionSale?
 
     /// Sell one, and take the money for it at the desk.
     ///
     /// Written once: the document existing is the sale, and the rules refuse an
-    /// update or a delete. The name and price are snapshotted from the catalogue
-    /// entry passed in, so renaming a class later cannot rewrite what was sold.
+    /// update or a delete — which is also what makes "one class each" true. The
+    /// name and price are snapshotted from the catalogue entry passed in, so
+    /// renaming a class later cannot rewrite what was sold.
     func sellSession(
         _ session: DoorPass,
         method: PaymentMethod,

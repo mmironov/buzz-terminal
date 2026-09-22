@@ -91,14 +91,15 @@ Notes on specific fields:
   ask about afterwards — and the rules pin `blockedAt` to `request.time`, so it is
   the server's clock.
 
-## `participants/{participantId}/sessions/{sessionId}`
+## `participants/{participantId}/sessions/booked`
 
-An extra class somebody bought at the desk. One document per class, keyed by the
-catalogue id, and the document existing **is** the sale.
+The one extra class somebody bought at the desk. A fixed document id, and the
+document existing **is** the sale — `create` failing on an existing one is what
+makes "one class each" true, the same trick `door-7` uses.
 
 ```
-participants/tkt-10432/sessions/jazz-patrik
-  sessionId: "jazz-patrik"       // the catalogue id, repeated for group reads
+participants/tkt-10432/sessions/booked
+  sessionId: "jazz-patrik"       // WHICH class — a field, because the id is fixed
   name:      "Jazz with Patrik"  // the catalogue's name at the moment of sale
   price:     2500                // cents, likewise a snapshot
   method:    "cash" | "card"     // mandatory
@@ -109,7 +110,8 @@ participants/tkt-10432/sessions/jazz-patrik
 Reception-only, like merch: every participant document is readable by every
 terminal, and what somebody bought with a price on it is not the bar's business.
 Written once — `update` and `delete` are both refused — because a sale that can
-be rewritten is one nobody can count a cash box against.
+be rewritten is one nobody can count a cash box against, and because that refusal
+is also what limits everybody to one class.
 
 The catalogue rows live in `doorPasses` with `kind: "session"`; the door flow
 filters them out and the rules refuse a door sale pointing at one. See

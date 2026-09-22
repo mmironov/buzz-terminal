@@ -38,8 +38,12 @@ enum Fire {
     }
 
     enum SessionSale {
-        /// The catalogue id, repeated in the document so a collection-group read
-        /// says which class it was without parsing a path.
+        /// One class per person, so the sale lives at a fixed id and Firestore's
+        /// create-fails-if-exists is what makes "at most one" true. Which class
+        /// it was is a field.
+        static let documentId = "booked"
+
+        /// Which class was bought — a `doorPasses` id with `kind: session`.
         static let sessionId = "sessionId"
         /// The class's name and price as the catalogue held them at the moment
         /// of sale. Snapshots, like a ledger line's `unitPrice`.

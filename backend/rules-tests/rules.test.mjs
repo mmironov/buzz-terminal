@@ -159,6 +159,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'doorPasses', 'jazz-patrik'), {
       name: 'Jazz with Patrik', price: 2500, sortOrder: 9, isActive: true, kind: 'session',
     });
+    await setDoc(doc(db, 'doorPasses', 'lindy-hop'), {
+      name: 'Lindy Hop with Sakarias & Elice',
+      price: 2500, sortOrder: 8, isActive: true, kind: 'session',
+    });
   });
 });
 
@@ -1685,8 +1689,10 @@ describe('the free shirt', () => {
 // ───────────────────────────────────────────────────────────────────────────
 
 describe('special sessions', () => {
-  const ref = (db, sid = 'jazz-patrik') =>
-    doc(db, 'participants', PARTICIPANT, 'sessions', sid);
+  // One class each, so the sale lives at a fixed document id and which class it
+  // was is a field. `create` failing on an existing document is the enforcement.
+  const ref = (db, docId = 'booked') =>
+    doc(db, 'participants', PARTICIPANT, 'sessions', docId);
 
   const sale = (overrides = {}) => ({
     sessionId: 'jazz-patrik',
@@ -1721,15 +1727,32 @@ describe('special sessions', () => {
     await seedSale();
     await assertFails(getDoc(ref(bar())));
     await assertSucceeds(getDoc(ref(reception())));
-    await assertFails(setDoc(ref(bar(), 'lindy-hop'), sale({ sessionId: 'lindy-hop' })));
+    await assertFails(setDoc(ref(bar()), sale()));
   });
 
   it('refuses a class the organisers never put on sale', async () => {
     // The same protection a door pass gets: reception sells what the festival
     // sells, at the price list's own names, and cannot invent a private lesson.
     await assertFails(
-      setDoc(ref(reception(), 'private-lesson'), sale({ sessionId: 'private-lesson', name: 'Private lesson' }))
+      setDoc(ref(reception()), sale({ sessionId: 'private-lesson', name: 'Private lesson' }))
     );
+  });
+
+  it('THE CHANGE: one class each — a second sale is refused', async () => {
+    // Enforced by the path rather than by the screen: the sale is at a fixed id,
+    // so `create` on an existing one fails. Somebody who bought Jazz cannot also
+    // be sold Lindy Hop, whatever a terminal sends.
+    await assertSucceeds(setDoc(ref(reception()), sale()));
+    await assertFails(
+      setDoc(ref(reception()), sale({ sessionId: 'lindy-hop', name: 'Lindy Hop with Sakarias & Elice' }))
+    );
+  });
+
+  it('refuses a sale written anywhere but the one document', async () => {
+    // Two documents under one person would be two classes, which is the thing
+    // the fixed id exists to prevent.
+    await assertFails(setDoc(ref(reception(), 'jazz-patrik'), sale()));
+    await assertFails(setDoc(ref(reception(), 'second'), sale()));
   });
 
   it('refuses a name that disagrees with the catalogue', async () => {
@@ -1740,7 +1763,7 @@ describe('special sessions', () => {
     // `full-pass` is in the same collection but is not a class. Selling one
     // here would record a 205 € pass as an add-on and put nobody on the roster.
     await assertFails(
-      setDoc(ref(reception(), 'full-pass'), sale({ sessionId: 'full-pass', name: 'Full Pass', price: 20500 }))
+      setDoc(ref(reception()), sale({ sessionId: 'full-pass', name: 'Full Pass', price: 20500 }))
     );
   });
 
@@ -1757,10 +1780,6 @@ describe('special sessions', () => {
     // Deliberately not pinned to the catalogue: a phone holding a five-minute-old
     // price must not have the sale refused with money already on the desk.
     await assertSucceeds(setDoc(ref(reception()), sale({ price: 2000 })));
-  });
-
-  it('refuses a document id that disagrees with its contents', async () => {
-    await assertFails(setDoc(ref(reception(), 'jazz-patrik'), sale({ sessionId: 'lindy-hop' })));
   });
 
   it('pins who sold it and when to the server, not to the client', async () => {

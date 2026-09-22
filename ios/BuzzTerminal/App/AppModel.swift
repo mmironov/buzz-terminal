@@ -373,8 +373,9 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
-        sessionSales = [:]
-        sessionMethod = [:]
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -628,16 +629,18 @@ final class AppModel {
     /// everybody — five people on a roster of a hundred and ten.
     private(set) var freeShirt: FreeShirt?
 
-    /// The extra classes this person has already bought, keyed by catalogue id.
-    /// Empty until the read lands, and empty for almost everybody after it.
-    private(set) var sessionSales: [String: SessionSale] = [:]
+    /// The extra class this person has bought, once the read lands. Nil for
+    /// almost everybody, and at most one: everybody gets one session.
+    private(set) var sessionSale: SessionSale?
 
-    /// The method chosen for a class that has not been sold yet, per class.
+    /// Which class the desk has picked, and how it is being paid for, before any
+    /// of it is written.
     ///
-    /// Held here rather than written: picking cash is not a sale, and a desk
-    /// that changes its mind should not have written twice. Cleared with the
+    /// Held here rather than written: picking one is not a sale, and a desk that
+    /// changes its mind should not have written twice. Cleared with the
     /// participant, so the next guest starts from nothing.
-    private(set) var sessionMethod: [String: PaymentMethod] = [:]
+    private(set) var sessionChoice: String?
+    private(set) var sessionMethod: PaymentMethod?
 
     /// The extra classes on sale, in the order organisers arranged them.
     ///
@@ -655,8 +658,9 @@ final class AppModel {
         participant = guest
         merch = nil
         freeShirt = nil
-        sessionSales = [:]
-        sessionMethod = [:]
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
         merchUnavailable = false
         screen = .participant
         Task { await loadMerch(for: guest) }
@@ -666,10 +670,10 @@ final class AppModel {
 
     private func loadSessions(for guest: Participant) async {
         do {
-            let sales = try await repository.sessionSales(for: guest)
+            let sale = try await repository.sessionSale(for: guest)
             // The operator may have moved on while this was in flight.
             guard participant?.id == guest.id else { return }
-            sessionSales = sales
+            sessionSale = sale
         } catch {
             // Folded into the same warning the merch read raises: both are
             // reception-only subcollections behind the same kind of rule, and
@@ -680,9 +684,30 @@ final class AppModel {
         }
     }
 
-    /// Choose how a class is being paid for, before it is sold.
-    func chooseSessionMethod(_ method: PaymentMethod, for session: DoorPass) {
-        sessionMethod[session.id] = method
+    /// Pick which class is being bought. One each, so this replaces the last.
+    func chooseSession(_ session: DoorPass) {
+        sessionChoice = session.id
+    }
+
+    /// Choose how it is being paid for, before it is sold.
+    func chooseSessionMethod(_ method: PaymentMethod) {
+        sessionMethod = method
+    }
+
+    /// The class the desk has picked, if it is still on sale.
+    var chosenSession: DoorPass? {
+        specialSessions.first { $0.id == sessionChoice }
+    }
+
+    /// What the sell button says: what is missing, or what it will take.
+    var sellSessionLabel: String {
+        guard let chosen = chosenSession else { return "Choose a session" }
+        guard sessionMethod != nil else { return "Choose cash or card" }
+        return chosen.price.isPositive ? "Sell · \(chosen.price)" : "Sell"
+    }
+
+    var canSellSession: Bool {
+        chosenSession != nil && sessionMethod != nil && sessionSale == nil
     }
 
     /// Sell an extra class to the person on screen, and take the money for it.
@@ -690,21 +715,23 @@ final class AppModel {
     /// Written once and never rewritten: the rules refuse a second write to the
     /// same document, so a double tap on a class somebody already has fails
     /// loudly rather than quietly recording a second payment method.
-    func sellSession(_ session: DoorPass) async {
+    func sellSession() async {
         guard let guest = participant, !isPendingDoorSale else { return }
-        guard sessionSales[session.id] == nil else { return }
-        // The rules refuse a sale with no method; this is the same rule on the
-        // near side of the network, where it is a disabled button rather than a
-        // red banner in front of somebody holding out a card.
-        guard let method = sessionMethod[session.id] else { return }
+        // One class each, and the rules enforce it by refusing a second write to
+        // the same document. This is the same rule on the near side of the
+        // network, where it is a hidden button rather than a red banner.
+        guard sessionSale == nil, let session = chosenSession else { return }
+        // Likewise for the money: a sale with no method is refused server-side.
+        guard let method = sessionMethod else { return }
 
         isWorking = true
         defer { isWorking = false }
         do {
             let sale = try await repository.sellSession(session, method: method, to: guest)
             guard participant?.id == guest.id else { return }
-            sessionSales[sale.sessionId] = sale
-            sessionMethod[session.id] = nil
+            sessionSale = sale
+            sessionChoice = nil
+            sessionMethod = nil
             ScanFeedback.shared.success()
         } catch {
             errorMessage = error.localizedDescription
@@ -822,8 +849,9 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
-        sessionSales = [:]
-        sessionMethod = [:]
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
         merchUnavailable = false
         search = ""
         screen = .assign
@@ -952,8 +980,9 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
-        sessionSales = [:]
-        sessionMethod = [:]
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
         merchUnavailable = false
         bracelet = nil
         selectedPass = nil
@@ -1008,8 +1037,9 @@ final class AppModel {
         )
         merch = nil
         freeShirt = nil
-        sessionSales = [:]
-        sessionMethod = [:]
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
         merchUnavailable = false
         isPendingDoorSale = true
         screen = .participant
@@ -1207,8 +1237,9 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
-        sessionSales = [:]
-        sessionMethod = [:]
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
@@ -1234,8 +1265,9 @@ final class AppModel {
         participant = nil
         merch = nil
         freeShirt = nil
-        sessionSales = [:]
-        sessionMethod = [:]
+        sessionSale = nil
+        sessionChoice = nil
+        sessionMethod = nil
         merchUnavailable = false
         paymentDecision = nil
     }

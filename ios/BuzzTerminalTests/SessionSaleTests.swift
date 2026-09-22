@@ -62,6 +62,20 @@ struct SessionSaleTests {
         #expect(sale.soldLabel == "Sold · Cash")
     }
 
+    @Test("THE CHANGE: one class each, and the path is what enforces it")
+    func oneEach() {
+        // The sale lives at a fixed document id, so Firestore's
+        // create-fails-if-exists does the work — the same
+        // deduplication-by-construction `door-7` uses. Which class it was is a
+        // field, which is why `sessionId` is on the document at all.
+        let sale = SessionSale(
+            sessionId: "lindy-sakarias-elice", name: "Lindy Hop with Sakarias & Elice",
+            price: Money(euros: 25), method: .cash, soldAt: .now, soldBy: "uid"
+        )
+        #expect(sale.sessionId == "lindy-sakarias-elice")
+        #expect(sale.id == sale.sessionId)
+    }
+
     @Test("The name and the price are the catalogue's at the moment of sale")
     func snapshots() {
         // Renaming a class or repricing it next week must not rewrite what was

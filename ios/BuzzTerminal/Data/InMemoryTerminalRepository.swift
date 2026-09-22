@@ -22,9 +22,9 @@ actor InMemoryTerminalRepository: TerminalRepository {
     /// Standing in for `participants/{id}/merch/freeShirt`.
     private var freeShirts: [ParticipantID: FreeShirt]
 
-    /// Standing in for `participants/{id}/sessions/{sessionId}` — the extra
-    /// classes somebody has bought, keyed by catalogue id.
-    private var sessions: [ParticipantID: [String: SessionSale]] = [:]
+    /// Standing in for `participants/{id}/sessions/booked` — the one extra class
+    /// somebody has bought.
+    private var sessions: [ParticipantID: SessionSale] = [:]
 
     init(
         roster: [Participant] = SampleData.roster,
@@ -203,9 +203,9 @@ actor InMemoryTerminalRepository: TerminalRepository {
         return shirt
     }
 
-    func sessionSales(for participant: Participant) async throws -> [String: SessionSale] {
+    func sessionSale(for participant: Participant) async throws -> SessionSale? {
         await simulateNetwork()
-        return sessions[participant.id] ?? [:]
+        return sessions[participant.id]
     }
 
     func sellSession(
@@ -214,9 +214,10 @@ actor InMemoryTerminalRepository: TerminalRepository {
         to participant: Participant
     ) async throws -> SessionSale {
         await simulateNetwork()
-        // The rules refuse a second write to the same document, and so does the
-        // fixture: selling the same class twice is the mistake worth reproducing.
-        guard sessions[participant.id]?[session.id] == nil else {
+        // One class each: the rules refuse a second write to the same document,
+        // and so does the fixture — selling a second class to the same person is
+        // the mistake worth reproducing.
+        guard sessions[participant.id] == nil else {
             throw TerminalError.sessionNotSold
         }
         let sale = SessionSale(
@@ -227,7 +228,7 @@ actor InMemoryTerminalRepository: TerminalRepository {
             soldAt: .now,
             soldBy: "fixture-staff"
         )
-        sessions[participant.id, default: [:]][session.id] = sale
+        sessions[participant.id] = sale
         return sale
     }
 

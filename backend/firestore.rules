@@ -274,31 +274,38 @@ service cloud.firestore {
       // Reception-only, like merch and for the same reason: what somebody bought
       // and what they paid is not the bar's business, and every participant
       // document is readable by every terminal.
-      match /sessions/{sessionId} {
+      match /sessions/{documentId} {
         allow read: if isReception();
 
+        // **One class per person, enforced by the path.** Everybody gets at most
+        // one special session, so the sale lives at a fixed document id and
+        // `create` fails if it is already there — the same
+        // deduplication-by-construction the door sale's `door-7` uses. Which
+        // class it was is a field, not the id.
+        //
         // Written once and never again. No update, because a sale that can be
         // rewritten is a sale nobody can count a cash box against — a second tap
-        // on a class somebody already bought fails here rather than quietly
-        // replacing the method the first one recorded. No delete either: a
-        // refund is a conversation with an organiser, not a tap at the desk.
-        allow create: if isReception() && isWellFormedSessionSale(sessionId);
+        // fails here rather than quietly replacing the method the first one
+        // recorded. No delete either: a refund is a conversation with an
+        // organiser, not a tap at the desk.
+        allow create: if isReception()
+          && documentId == 'booked'
+          && isWellFormedSessionSale();
         allow update, delete: if false;
 
-        function isWellFormedSessionSale(sid) {
+        function isWellFormedSessionSale() {
           let d = request.resource.data;
           return d.keys().hasOnly(['sessionId', 'name', 'price', 'method', 'soldAt', 'soldBy'])
             && d.keys().hasAll(['sessionId', 'name', 'price', 'method', 'soldAt', 'soldBy'])
-            // The id is the catalogue's, repeated in the document so a
-            // collection-group read says which class it was without parsing a
-            // path. The two must agree or neither can be trusted.
-            && d.sessionId == sid
+            // Which class was bought. A field rather than the document id,
+            // because the id is what makes "one each" true.
+            && d.sessionId is string
             // Only a class an organiser has actually put up for sale, and only
             // under the name they gave it — the same check a door pass gets, and
             // the reason reception cannot invent a 200 € private lesson.
-            && exists(passRef(sid))
-            && get(passRef(sid)).data.name == d.name
-            && get(passRef(sid)).data.get('kind', 'pass') == 'session'
+            && exists(passRef(d.sessionId))
+            && get(passRef(d.sessionId)).data.name == d.name
+            && get(passRef(d.sessionId)).data.get('kind', 'pass') == 'session'
             // A snapshot of the price, bounded like every other. Deliberately
             // not pinned to the catalogue's current value: a phone holding a
             // five-minute-old price would otherwise have the sale refused with

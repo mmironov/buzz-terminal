@@ -423,13 +423,11 @@ actor FirebaseTerminalRepository: TerminalRepository {
         }
     }
 
-    func sessionSales(for participant: Participant) async throws -> [String: SessionSale] {
+    func sessionSale(for participant: Participant) async throws -> SessionSale? {
         do {
-            let snapshot = try await participantDocument(participant.id)
-                .collection(Fire.Collection.sessions)
-                .getDocuments()
-            let sales = snapshot.documents.compactMap(SessionSale.init(document:))
-            return Dictionary(sales.map { ($0.sessionId, $0) }, uniquingKeysWith: { _, later in later })
+            let document = try await sessionDocument(participant.id).getDocument()
+            guard document.exists else { return nil }
+            return SessionSale(document: document)
         } catch {
             // Same treatment as the merch and free-shirt reads: the bar is
             // refused by design, reception only when something is wrong.
@@ -441,7 +439,7 @@ actor FirebaseTerminalRepository: TerminalRepository {
                 Self.log.error("session read refused for a reception terminal — are the rules deployed?")
                 throw error
             }
-            return [:]
+            return nil
         }
     }
 
@@ -451,13 +449,12 @@ actor FirebaseTerminalRepository: TerminalRepository {
         to participant: Participant
     ) async throws -> SessionSale {
         let uid = try requireStaffUid()
-        let document = participantDocument(participant.id)
-            .collection(Fire.Collection.sessions)
-            .document(session.id)
+        let document = sessionDocument(participant.id)
 
-        // `setData` on a document that may already exist would be an update, and
-        // the rules refuse one — so a second tap on a class somebody already
-        // bought fails rather than quietly rewriting the first sale's method.
+        // `setData` on a document that already exists is an update, and the rules
+        // refuse one — which is exactly what makes "one class each" true. A
+        // second sale to the same person fails here rather than quietly
+        // replacing the first one.
         try await document.setData(SessionSale.document(session, method: method, soldBy: uid))
 
         guard let sale = SessionSale(document: try await document.getDocument()) else {
@@ -841,6 +838,12 @@ actor FirebaseTerminalRepository: TerminalRepository {
         participantDocument(id)
             .collection(Fire.Collection.contact)
             .document(Fire.Contact.documentId)
+    }
+
+    private func sessionDocument(_ id: ParticipantID) -> DocumentReference {
+        participantDocument(id)
+            .collection(Fire.Collection.sessions)
+            .document(Fire.SessionSale.documentId)
     }
 
     private func freeShirtDocument(_ id: ParticipantID) -> DocumentReference {

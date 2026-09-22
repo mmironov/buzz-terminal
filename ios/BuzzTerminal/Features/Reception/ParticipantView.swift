@@ -216,78 +216,79 @@ struct ParticipantView: View {
         }
     }
 
-    /// The extra classes, and the one thing to do with each: sell it.
+    /// The extra class, and the one thing to do with it: sell it.
     ///
-    /// Shaped like the free shirt above it — a kicker, what it is, a choice, a
-    /// button — because it is the same question at the same desk: something to
-    /// give somebody, and a record that it happened. The difference is that this
-    /// one takes money, so the choice is cash or card and the button says the
-    /// price out loud.
+    /// Shaped like the free shirt above it — a kicker, a choice, a button —
+    /// because it is the same question at the same desk. The difference is that
+    /// this one takes money, so under the class there is cash or card, and the
+    /// button says the price out loud.
     ///
-    /// A sold class loses its controls entirely. There is no undo: the rules
-    /// refuse a second write to the same document, because a sale that can be
-    /// rewritten is a sale nobody can count the cash box against. Fixing a
-    /// genuine mistake is an organiser's job, with the database open.
+    /// **One class each**, so the classes are radio buttons rather than a row of
+    /// independent sales, and picking the second unpicks the first.
+    /// `firestore.rules` enforces the same thing from the other side: the sale
+    /// lives at a fixed document id and a second `create` fails.
+    ///
+    /// Once sold, the whole choice collapses to one line of record. There is no
+    /// undo: a sale that can be rewritten is a sale nobody can count the cash box
+    /// against, and fixing a genuine mistake is an organiser's job.
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SBDivider(weight: SBRule.hairline)
 
-            SBKicker(text: "Special sessions")
-                .padding(.top, 12)
-
-            ForEach(model.specialSessions) { session in
-                sessionRow(session)
-                    .padding(.top, 10)
-            }
-        }
-    }
-
-    private func sessionRow(_ session: DoorPass) -> some View {
-        let sale = model.sessionSales[session.id]
-        return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: SBSpace.x2) {
-                Text(session.name)
-                    .font(.sbHeading(16))
-                    .foregroundStyle(sale == nil ? .sbInk : .sbInk(0.45))
-                    .fixedSize(horizontal: false, vertical: true)
+                SBKicker(text: "Special session")
                 Spacer(minLength: 0)
-                Text(sale.map { "\($0.price)" } ?? session.priceLabel())
-                    .font(.sbHeading(15, weight: .extrabold))
-                    .foregroundStyle(sale == nil ? .sbInk : .sbInk(0.45))
+                if let sale = model.sessionSale {
+                    Text(sale.soldLabel)
+                        .font(.sbBody(11))
+                        .foregroundStyle(.sbOk)
+                }
             }
+            .padding(.top, 12)
 
-            if let sale {
-                Text(sale.soldLabel)
-                    .font(.sbBody(11))
-                    .foregroundStyle(.sbOk)
+            if let sale = model.sessionSale {
+                Text(sale.name)
+                    .font(.sbHeading(19))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 5)
+                Text("\(sale.price) · one session each, and this one is sold")
+                    .font(.sbBody(11.5))
+                    .foregroundStyle(.sbInk(0.55))
                     .padding(.top, 3)
             } else {
+                VStack(spacing: SBSpace.x2) {
+                    ForEach(model.specialSessions) { session in
+                        SBChoiceBox(
+                            title: session.name,
+                            isSelected: model.sessionChoice == session.id,
+                            note: session.priceLabel(),
+                            select: { model.chooseSession(session) }
+                        )
+                    }
+                }
+                .padding(.top, 10)
+
                 HStack(spacing: SBSpace.x2) {
                     ForEach(PaymentMethod.allCases) { method in
                         SBChoiceBox(
                             title: method.label,
-                            isSelected: model.sessionMethod[session.id] == method,
-                            select: { model.chooseSessionMethod(method, for: session) }
+                            isSelected: model.sessionMethod == method,
+                            select: { model.chooseSessionMethod(method) }
                         )
                     }
                 }
                 .padding(.top, 8)
 
-                Button(sellLabel(session)) {
-                    Task { await model.sellSession(session) }
+                // Says what is missing rather than sitting there greyed out, the
+                // same rule the top-up keypad and the buyer form follow.
+                Button(model.sellSessionLabel) {
+                    Task { await model.sellSession() }
                 }
                 .buttonStyle(.sbBlock(.secondary, minHeight: 44, fontSize: 14))
-                .disabled(model.isWorking || model.sessionMethod[session.id] == nil)
-                .padding(.top, 8)
+                .disabled(model.isWorking || !model.canSellSession)
+                .padding(.top, 10)
             }
         }
-    }
-
-    /// Says what is missing rather than sitting there greyed out, the same rule
-    /// the top-up keypad and the buyer form follow.
-    private func sellLabel(_ session: DoorPass) -> String {
-        guard model.sessionMethod[session.id] != nil else { return "Choose cash or card" }
-        return session.price.isPositive ? "Sell · \(session.price)" : "Sell"
     }
 
     /// A row of one-tap choices that wraps — five sizes fit across a phone,
