@@ -166,6 +166,9 @@ beforeEach(async () => {
 });
 
 /** Give the participant a bracelet and a balance, bypassing the rules. */
+/** Fixed, so a test can copy it into the record the way the panel does. */
+const PAIRED_AT = new Date('2026-09-25T19:00:00Z');
+
 async function seedCheckedIn(balance = 2350, extra = {}) {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -178,7 +181,7 @@ async function seedCheckedIn(balance = 2350, extra = {}) {
     await setDoc(doc(db, 'bracelets', CHIP), {
       participantId: PARTICIPANT,
       staffUid: RECEPTION_UID,
-      pairedAt: new Date(),
+      pairedAt: PAIRED_AT,
     });
   });
 }
@@ -507,6 +510,162 @@ describe('replacing a bracelet', () => {
       replacementMethod: 'cash',
     });
     await assertFails(batch.commit());
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Handing a wristband back
+//
+//  An evening-ticket guest returns their wristband at the end of the night and
+//  the festival reuses the chip tomorrow. The pairing ends — the participant
+//  lets go and the chip document is deleted, freeing the id — so a chip still
+//  never changes owner. It stops having one, and a later check-in gives it a
+//  new one by ordinary `create`.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('handing a wristband back', () => {
+  /** The batch the panel sends: detach, free the chip, keep the record. */
+  function handBack(
+    db,
+    {
+      chip = CHIP,
+      uid = ADMIN_UID,
+      participant = PARTICIPANT,
+      detach = true,
+      freeChip = true,
+      archive = true,
+      archiveOverrides = {},
+    } = {}
+  ) {
+    const batch = writeBatch(db);
+    if (detach) {
+      batch.update(doc(db, 'participants', participant), { braceletId: null });
+    }
+    if (freeChip) {
+      batch.delete(doc(db, 'bracelets', chip));
+    }
+    if (archive) {
+      batch.set(doc(db, 'braceletHistory', `${chip}-1`), {
+        chipUid: chip,
+        participantId: participant,
+        pairedAt: PAIRED_AT,
+        returnedAt: serverTimestamp(),
+        returnedBy: uid,
+        ...archiveOverrides,
+      });
+    }
+    return batch.commit();
+  }
+
+  beforeEach(async () => {
+    await seedCheckedIn(750);
+  });
+
+  it('THE ONE THAT MATTERS: an organiser can free a returned wristband', async () => {
+    await assertSucceeds(handBack(admin()));
+  });
+
+  it('refuses reception and the bar — it is an organiser decision', async () => {
+    await assertFails(handBack(reception(), { uid: RECEPTION_UID }));
+    await assertFails(handBack(bar(), { uid: BAR_UID }));
+  });
+
+  it('refuses freeing a chip while somebody still points at it', async () => {
+    // The dangerous half: a chip that resolves to somebody with no wristband is
+    // one the bar would happily charge.
+    await assertFails(handBack(admin(), { detach: false }));
+  });
+
+  it('refuses detaching somebody while their chip still resolves', async () => {
+    await assertFails(handBack(admin(), { freeChip: false }));
+  });
+
+  it('leaves the money exactly where it was', async () => {
+    // The balance lives on the person, not the wristband. Handing one back does
+    // not spend, refund or forget anything — and `hasOnly` is what says so.
+    const db = admin();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'participants', PARTICIPANT), { braceletId: null, balance: 0 });
+    batch.delete(doc(db, 'bracelets', CHIP));
+    await assertFails(batch.commit());
+  });
+
+  it('refuses rewriting the roster on the way past', async () => {
+    const db = admin();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'participants', PARTICIPANT), { braceletId: null, name: 'Somebody else' });
+    batch.delete(doc(db, 'bracelets', CHIP));
+    await assertFails(batch.commit());
+  });
+
+  it('THE OTHER ONE: a replaced wristband cannot be freed and re-issued', async () => {
+    // A lost chip is dead, not returned — the festival does not have it. Without
+    // this an organiser could unassign somebody's current wristband and then
+    // delete the invalidated one, putting a lost chip back in the box.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'bracelets', OTHER_CHIP), {
+        participantId: PARTICIPANT,
+        staffUid: RECEPTION_UID,
+        pairedAt: PAIRED_AT,
+        invalidatedAt: new Date(),
+        invalidatedBy: RECEPTION_UID,
+        reason: 'Lost it',
+      });
+    });
+    // Detach them first, so the only thing standing in the way is the rule.
+    await assertSucceeds(handBack(admin()));
+    await assertFails(deleteDoc(doc(admin(), 'bracelets', OTHER_CHIP)));
+  });
+
+  it('frees the chip for somebody else tomorrow', async () => {
+    // The point of all of it: the id is available again, and the next pairing is
+    // an ordinary create by reception with no special case anywhere.
+    await assertSucceeds(handBack(admin()));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'participants', 'tkt-10002'), rosterDoc({ name: 'Somebody Else' }));
+    });
+    const db = reception();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'participants', 'tkt-10002'), {
+      braceletId: CHIP,
+      checkedInAt: serverTimestamp(),
+    });
+    batch.set(doc(db, 'bracelets', CHIP), {
+      participantId: 'tkt-10002',
+      staffUid: RECEPTION_UID,
+      pairedAt: serverTimestamp(),
+    });
+    await assertSucceeds(batch.commit());
+  });
+
+  // ── the record it leaves ─────────────────────────────────────────────────
+
+  it('refuses a record that does not match the pairing it ends', async () => {
+    await assertFails(handBack(admin(), { archiveOverrides: { participantId: 'tkt-10002' } }));
+    await assertFails(handBack(admin(), { archiveOverrides: { chipUid: OTHER_CHIP } }));
+    await assertFails(handBack(admin(), { archiveOverrides: { pairedAt: new Date(0) } }));
+  });
+
+  it('pins who took it back and when to the server', async () => {
+    await assertFails(handBack(admin(), { archiveOverrides: { returnedBy: RECEPTION_UID } }));
+    await assertFails(handBack(admin(), { archiveOverrides: { returnedAt: new Date() } }));
+  });
+
+  it('refuses extra fields, and cannot be edited afterwards', async () => {
+    await assertFails(handBack(admin(), { archiveOverrides: { note: 'handed in at the bar' } }));
+
+    await assertSucceeds(handBack(admin()));
+    const record = doc(admin(), 'braceletHistory', `${CHIP}-1`);
+    await assertFails(updateDoc(record, { returnedBy: RECEPTION_UID }));
+    await assertFails(deleteDoc(record));
+  });
+
+  it('is the organiser\u2019s to read, and nobody else\u2019s business', async () => {
+    await assertSucceeds(handBack(admin()));
+    await assertSucceeds(getDoc(doc(admin(), 'braceletHistory', `${CHIP}-1`)));
+    await assertFails(getDoc(doc(reception(), 'braceletHistory', `${CHIP}-1`)));
+    await assertFails(getDoc(doc(bar(), 'braceletHistory', `${CHIP}-1`)));
   });
 });
 

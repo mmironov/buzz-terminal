@@ -437,6 +437,25 @@ The replacement fee is recorded here rather than on the balance: it is taken at
 the desk in cash or on the card machine, and the ledger stays the record of what
 somebody has spent at the bar. See `docs/lost-bracelets.md`.
 
+## `braceletHistory/{recordId}`
+
+A pairing that ended — a wristband handed back so the chip could be reused. The
+chip document itself is deleted, which is what frees the id, so this is the only
+thing that still knows who wore it last night.
+
+```
+braceletHistory/04:E7:3A:2C-1790116485116
+  chipUid:       "04:E7:3A:2C"
+  participantId: "ev-friday-1"
+  pairedAt:      <when they got it>
+  returnedAt:    <server timestamp>
+  returnedBy:    "<uid of the organiser>"
+```
+
+Organiser-only, append-only. Written in the same batch that detaches the
+participant and deletes the chip; the rules check it against the pairing it
+records. See `docs/lost-bracelets.md`.
+
 ## `settings/bracelets`
 
 One document, for the numbers that are neither a price list nor a person:

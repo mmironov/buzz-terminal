@@ -30,6 +30,8 @@ export const COLLECTIONS = {
   contact: 'contact',
   /** Numbers that are neither a price list nor a person. One document. */
   settings: 'settings',
+  /** Pairings that ended: a wristband handed back, and who had had it. */
+  braceletHistory: 'braceletHistory',
 } as const;
 
 export const PARTICIPANT_FIELDS = {
@@ -92,6 +94,14 @@ export const BRACELET_FIELDS = {
   /** What the desk took for the wristband that replaced it. Absent = waived. */
   replacementFee: 'replacementFee',
   replacementMethod: 'replacementMethod',
+} as const;
+
+export const BRACELET_HISTORY_FIELDS = {
+  chipUid: 'chipUid',
+  participantId: 'participantId',
+  pairedAt: 'pairedAt',
+  returnedAt: 'returnedAt',
+  returnedBy: 'returnedBy',
 } as const;
 
 export const SETTINGS = {
@@ -420,6 +430,32 @@ export function toBracelet(doc: Doc): Bracelet | null {
     reason: str(data[BRACELET_FIELDS.reason]),
     replacementFee: int(data[BRACELET_FIELDS.replacementFee]),
     replacementMethod: toPaymentMethod(data[BRACELET_FIELDS.replacementMethod]),
+  };
+}
+
+/** A pairing that ended: a wristband handed back, so the chip could be reused. */
+export interface BraceletReturn {
+  id: string;
+  chipUid: string;
+  participantId: string;
+  pairedAt: Date | null;
+  returnedAt: Date | null;
+  returnedBy: string;
+}
+
+export function toBraceletReturn(doc: Doc): BraceletReturn | null {
+  const data = doc.data();
+  const chipUid = data[BRACELET_HISTORY_FIELDS.chipUid];
+  const participantId = data[BRACELET_HISTORY_FIELDS.participantId];
+  if (typeof chipUid !== 'string' || typeof participantId !== 'string') return null;
+
+  return {
+    id: doc.id,
+    chipUid,
+    participantId,
+    pairedAt: date(data[BRACELET_HISTORY_FIELDS.pairedAt]),
+    returnedAt: date(data[BRACELET_HISTORY_FIELDS.returnedAt]),
+    returnedBy: str(data[BRACELET_HISTORY_FIELDS.returnedBy]),
   };
 }
 

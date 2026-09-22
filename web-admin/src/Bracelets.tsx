@@ -15,12 +15,15 @@ import {
   parseEuros,
   parseHexColour,
   shortTime,
+  BRACELET_HISTORY_FIELDS,
   toBracelet,
   toBraceletColour,
+  toBraceletReturn,
   toParticipant,
   wristbandFor,
   type Bracelet,
   type BraceletColour,
+  type BraceletReturn,
   type Participant,
   type Wristband,
 } from './schema';
@@ -194,6 +197,7 @@ export function Bracelets() {
       <Strays strays={strays} />
       <Leftovers leftovers={leftovers} onError={setError} />
       <Replacements onError={setError} />
+      <Returns onError={setError} />
 
       <p className="note">
         One row per pile of wristbands, and nothing else. Paste a hex into the box
@@ -499,6 +503,96 @@ function Replacements({ onError }: { onError: (message: string) => void }) {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Wristbands handed back, and who had had them.
+ *
+ * The chip documents themselves are gone — that is what frees the id for
+ * somebody else — so this is the only place that still knows a stranger wore
+ * 04:A1:9C:7E on Friday. Append-only, like the ledger: a record of what
+ * happened rather than a description of what is true now.
+ */
+function Returns({ onError }: { onError: (message: string) => void }) {
+  const [returns, setReturns] = useState<BraceletReturn[] | null>(null);
+  const [people, setPeople] = useState<Map<string, Participant>>(new Map());
+
+  useEffect(() => {
+    const history = query(
+      collection(db, COLLECTIONS.braceletHistory),
+      orderBy(BRACELET_HISTORY_FIELDS.returnedAt, 'desc')
+    );
+    return onSnapshot(
+      history,
+      (snapshot) => setReturns(snapshot.docs.flatMap((entry) => toBraceletReturn(entry) ?? [])),
+      (cause) => onError(cause.message)
+    );
+  }, [onError]);
+
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, COLLECTIONS.participants),
+      (snapshot) => {
+        const byId = new Map<string, Participant>();
+        for (const entry of snapshot.docs) {
+          const person = toParticipant(entry);
+          if (person) byId.set(person.id, person);
+        }
+        setPeople(byId);
+      },
+      (cause) => onError(cause.message)
+    );
+  }, [onError]);
+
+  if (!returns || returns.length === 0) return null;
+
+  return (
+    <div className="stack">
+      <h2 className="card__title">Wristbands handed back</h2>
+      <table className="table">
+        <colgroup>
+          <col />
+          <col style={{ width: '150px' }} />
+          <col style={{ width: '120px' }} />
+          <col style={{ width: '120px' }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Who had it</th>
+            <th>Bracelet</th>
+            <th>Paired</th>
+            <th>Taken back</th>
+          </tr>
+        </thead>
+        <tbody>
+          {returns.map((record) => {
+            const person = people.get(record.participantId);
+            return (
+              <tr key={record.id}>
+                <td>
+                  {person?.name ?? record.participantId}
+                  {person && person.balance > 0 ? (
+                    <div className="sub">
+                      still holds {euros(person.balance)} on their account
+                    </div>
+                  ) : null}
+                </td>
+                <td className="mono sub">{record.chipUid}</td>
+                <td className="mono sub">{shortTime(record.pairedAt)}</td>
+                <td className="mono sub">{shortTime(record.returnedAt)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="note">
+        Each of these chips is free again: it belongs to nobody, and the next
+        check-in pairs it like a wristband out of the box. The money never moved
+        — somebody who handed theirs back keeps whatever was on it, and it is out
+        of reach until they are given another wristband.
+      </p>
     </div>
   );
 }

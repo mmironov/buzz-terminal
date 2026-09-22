@@ -384,6 +384,32 @@ service cloud.firestore {
       // prevent. Not the roster either; that still belongs to the Sheet.
       allow update: if isAdmin() && isBlockChange();
 
+      // The other organiser write: a wristband handed back at the end of the
+      // night, so the chip can be given to somebody else tomorrow.
+      //
+      // **Ending a pairing, not moving a chip.** The participant lets go of it
+      // and the chip document is deleted in the same write, which frees the id
+      // for an ordinary `create` later — so a chip still never changes owner,
+      // it stops having one and gets a new one. The alternative, re-pointing
+      // the existing document, is the thing the whole model forbids.
+      //
+      // The balance is not touched, and `hasOnly` is what says so. Money lives
+      // on the person: somebody who hands their wristband back still has
+      // whatever was on it, reachable again when they are given another.
+      allow update: if isAdmin() && isBraceletReturn();
+
+      function isBraceletReturn() {
+        let after = request.resource.data;
+        let old = resource.data.get('braceletId', null);
+        return after.diff(resource.data).affectedKeys().hasOnly(['braceletId', 'updatedAt'])
+          && old is string
+          && after.get('braceletId', null) == null
+          // The chip is freed in the same write. A chip that still resolved to
+          // somebody who has gone home with no wristband is one the bar would
+          // happily charge.
+          && getAfter(braceletRef(old)) == null;
+      }
+
       function isBlockChange() {
         let after = request.resource.data;
         return after.diff(resource.data).affectedKeys()
@@ -769,7 +795,22 @@ service cloud.firestore {
       // Nothing is deleted, so a chip that turns up later cannot be quietly
       // re-issued to somebody else.
       allow update: if isReception() && isInvalidation();
-      allow delete: if false;
+
+      // Deleted only when the wristband has been handed back, by an organiser,
+      // with its owner letting go of it in the same write. That is what makes
+      // the chip reusable: the id becomes free, and tomorrow's check-in is an
+      // ordinary `create` rather than a re-pointing.
+      allow delete: if isAdmin() && isHandedBack();
+
+      function isHandedBack() {
+        return getAfter(participantRef(resource.data.participantId))
+                 .data.get('braceletId', null) == null
+          // A replaced wristband is dead, not free. Without this, an organiser
+          // could unassign somebody's *current* chip and then delete the old
+          // invalidated one — whose owner is now detached — and the lost
+          // wristband would be back in the box, ready to be issued again.
+          && resource.data.get('invalidatedAt', null) == null;
+      }
 
       // What the desk took for a replacement wristband, on the wristband it
       // issued. **Not on the balance and not in the ledger**: the guest pays for
@@ -819,6 +860,36 @@ service cloud.firestore {
           // participant would be stuck for the rest of the festival.
           && getAfter(participantRef(resource.data.participantId))
                .data.get('braceletId', null) != chipUid;
+      }
+    }
+
+    // ── Wristbands that came back ──────────────────────────────────────────
+    //
+    // A pairing that ended, kept after the chip document was deleted. Without
+    // it, reusing a wristband would erase the fact that somebody else wore it
+    // last night — and "whose was this on Friday?" is a question an organiser
+    // asks on Saturday, once the chip is on a different wrist.
+    //
+    // Append-only, like the ledger and for the same reason: it is a record of
+    // what happened, not a description of what is true now.
+    match /braceletHistory/{recordId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isWellFormedReturn();
+      allow update, delete: if false;
+
+      function isWellFormedReturn() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['chipUid', 'participantId', 'pairedAt', 'returnedAt', 'returnedBy'])
+          && d.keys().hasAll(['chipUid', 'participantId', 'pairedAt', 'returnedAt', 'returnedBy'])
+          // It records the pairing being ended in this very write, copied from
+          // the document on its way out rather than described by the client.
+          && getAfter(braceletRef(d.chipUid)) == null
+          && get(braceletRef(d.chipUid)).data.participantId == d.participantId
+          && get(braceletRef(d.chipUid)).data.pairedAt == d.pairedAt
+          // Server clock and the organiser's own uid, so "who took it back and
+          // when" is answerable afterwards.
+          && d.returnedAt == request.time
+          && d.returnedBy == request.auth.uid;
       }
     }
 

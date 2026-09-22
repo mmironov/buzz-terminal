@@ -1,11 +1,13 @@
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -13,6 +15,8 @@ import { DoorSaleDetails } from './DoorSaleDetails';
 import { History } from './History';
 import { db } from './firebase';
 import {
+  BRACELET_FIELDS,
+  BRACELET_HISTORY_FIELDS,
   COLLECTIONS,
   MAX_BLOCK_REASON,
   PARTICIPANT_FIELDS,
@@ -227,6 +231,7 @@ function Row({
               <History participant={person} />
               <div className="stack">
                 <DoorSaleDetails person={person} />
+                <ReturnPanel person={person} uid={uid} />
                 <BlockPanel person={person} uid={uid} />
               </div>
             </div>
@@ -234,6 +239,102 @@ function Row({
         </tr>
       ) : null}
     </>
+  );
+}
+
+/**
+ * A wristband handed back at the end of the night, so the chip can be given to
+ * somebody else tomorrow.
+ *
+ * **It ends the pairing; it does not move the chip.** The participant lets go
+ * and the chip document is deleted in the same write, which frees the id for an
+ * ordinary check-in later — so a chip still never changes owner. Re-pointing the
+ * existing document is what `firestore.rules` forbids, and this is how the
+ * festival reuses a wristband without going near it.
+ *
+ * The balance is untouched, which is why the confirmation says what it is: the
+ * money lives on the person, and it becomes unreachable until they are given
+ * another wristband.
+ */
+function ReturnPanel({ person, uid }: { person: Participant; uid: string }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Nothing to hand back. Somebody who never checked in, or whose wristband has
+  // already been taken back, simply has no panel here.
+  if (!person.braceletId) return null;
+
+  const chip = person.braceletId;
+
+  async function handBack() {
+    setBusy(true);
+    setError(null);
+    try {
+      const batch = writeBatch(db);
+      const braceletRef = doc(db, COLLECTIONS.bracelets, chip);
+      // Read first, because the record copies the pairing rather than
+      // describing it — and the rules check that it did.
+      const bracelet = await getDoc(braceletRef);
+      const pairedAt = bracelet.data()?.[BRACELET_FIELDS.pairedAt] ?? null;
+
+      batch.update(doc(db, COLLECTIONS.participants, person.id), {
+        [PARTICIPANT_FIELDS.braceletId]: null,
+      });
+      batch.delete(braceletRef);
+      // The id carries the chip so the history reads in the database as it does
+      // on screen; the timestamp keeps a chip that comes back twice from
+      // colliding with its own earlier record.
+      batch.set(doc(db, COLLECTIONS.braceletHistory, `${chip}-${Date.now()}`), {
+        [BRACELET_HISTORY_FIELDS.chipUid]: chip,
+        [BRACELET_HISTORY_FIELDS.participantId]: person.id,
+        [BRACELET_HISTORY_FIELDS.pairedAt]: pairedAt,
+        [BRACELET_HISTORY_FIELDS.returnedAt]: serverTimestamp(),
+        [BRACELET_HISTORY_FIELDS.returnedBy]: uid,
+      });
+      await batch.commit();
+      setConfirming(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2 className="card__title">Wristband handed back</h2>
+      <p className="field__hint">
+        Frees <span className="mono">{chip}</span> so it can be checked in to
+        somebody else. {person.name} keeps {euros(person.balance)}
+        {person.balance > 0
+          ? ' — it stays on their account and is out of reach until they are given another wristband.'
+          : ' on their account.'}
+      </p>
+
+      {error ? <p className="field__hint field__hint--bad">{error}</p> : null}
+
+      {confirming ? (
+        <div className="actions">
+          {person.balance > 0 ? (
+            <div className="field__hint field__hint--bad">
+              {person.name} still has {euros(person.balance)}. Handing the
+              wristband back does not refund it.
+            </div>
+          ) : null}
+          <button className="btn btn--danger" type="button" disabled={busy} onClick={handBack}>
+            Take it back
+          </button>
+          <button className="btn" type="button" onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button className="btn" type="button" onClick={() => setConfirming(true)}>
+          Take the wristband back
+        </button>
+      )}
+    </div>
   );
 }
 
