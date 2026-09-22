@@ -92,12 +92,14 @@ export function Passes() {
         </p>
       ) : (
         <table className="table table--drinks">
+          {/* Wider price column than the drinks table's: this one holds three
+              labelled boxes for an evening ticket, not a single figure. */}
           <colgroup>
             <col />
-            <col style={{ width: '120px' }} />
-            <col style={{ width: '120px' }} />
+            <col style={{ width: '170px' }} />
             <col style={{ width: '100px' }} />
-            <col style={{ width: '340px' }} />
+            <col style={{ width: '80px' }} />
+            <col style={{ width: '300px' }} />
           </colgroup>
           <thead>
             <tr>

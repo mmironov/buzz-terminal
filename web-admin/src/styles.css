@@ -545,6 +545,19 @@ select {
   table-layout: fixed;
 }
 
+/* `table-layout: fixed` honours the colgroup exactly, which is what keeps the
+   delete confirmation from reflowing every row — but it also means the fixed
+   columns take their width first and the flexible name column gets whatever is
+   left, which on a narrow window is nothing. A minimum width on the table makes
+   the page scroll sideways instead of crushing the names to zero. */
+.table--drinks {
+  min-width: 820px;
+}
+
+.page {
+  overflow-x: auto;
+}
+
 /* The delete confirmation shares this cell with the buttons, so it needs to wrap
    rather than widen. */
 .table--drinks td:last-child .field__hint {
@@ -651,8 +664,18 @@ select {
 
 .night {
   display: grid;
-  grid-template-columns: 62px 1fr;
+  grid-template-columns: 62px minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   text-align: left;
+}
+
+/* The input fills whatever the night row leaves it, rather than keeping the
+   84px a standalone price box gets. `min-width: 0` is the part that matters: a
+   fixed-width grid item sets its track's minimum, so without it the box kept
+   its 84px, pushed the track past the cell, and drew itself on top of the
+   "On sale" tag in the next column. Measured at 44px of overlap before this. */
+.night input.price {
+  width: 100%;
+  min-width: 0;
 }
