@@ -100,22 +100,30 @@ struct BarMenuView: View {
         .contentShape(Rectangle())
     }
 
+    /// The running total, a way to throw the round away, and the scan.
+    ///
+    /// The total used to be a button into a line-by-line editor. It is plain
+    /// text now: correcting a round on a busy bar is "start again", not "find
+    /// the beer and press minus", and the tap target for the editor sat under
+    /// the number staff are reading rather than tapping.
     private var cartBar: some View {
         VStack(spacing: 0) {
             SBDivider()
             HStack(spacing: SBSpace.x3) {
-                Button { model.goToCart() } label: {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("\(model.cartCountLabel) · edit")
-                            .font(.sbBody(11))
-                            .foregroundStyle(.sbInk(0.55))
-                        Text(model.cartTotal.description)
-                            .font(.sbHeading(24))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(model.cartCountLabel)
+                        .font(.sbBody(11))
+                        .foregroundStyle(.sbInk(0.55))
+                    Text(model.cartTotal.description)
+                        .font(.sbHeading(24))
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Outlined rather than solid: it undoes work, and it is beside
+                // the one button on this screen that must not be mistaken for
+                // anything else.
+                Button("Reset") { model.clearCart() }
+                    .buttonStyle(SBButtonStyle(kind: .secondary, minHeight: 48, fontSize: 14))
 
                 Button("Scan to pay") {
                     model.beginScan(for: .payment)

@@ -785,3 +785,52 @@ struct ReceiptActionTests {
         #expect(receipt(.checkIn).secondaryActionLabel == "Done")
     }
 }
+
+// MARK: - The round
+
+@Suite("The round")
+struct CartTests {
+
+    private let beer = SampleData.drinks[0]
+    private let gt = SampleData.drinks[5]
+    private var menu: [Drink] { SampleData.drinks }
+
+    private func round() -> Cart {
+        var cart = Cart()
+        cart.bump(beer, by: 2)
+        cart.bump(gt, by: 1)
+        return cart
+    }
+
+    @Test("A round adds up in menu order, so it does not reshuffle as staff tap")
+    func theRound() {
+        let cart = round()
+        #expect(cart.itemCount == 3)
+        #expect(cart.total(in: menu) == Money(euros: 16))
+        #expect(cart.lines(in: menu).map(\.drink.id) == ["beer", "gt"])
+    }
+
+    @Test("THE ONE THAT MATTERS: Reset throws the whole round away")
+    func reset() {
+        // The bar's only correction now that the total is no longer a way into a
+        // line-by-line editor: a mis-tapped round is started again, which is
+        // what a bartender does anyway with three people waiting.
+        var cart = round()
+        cart.removeAll()
+        #expect(cart.isEmpty)
+        #expect(cart.itemCount == 0)
+        #expect(cart.total(in: menu) == .zero)
+        #expect(cart.quantity(of: beer) == 0)
+    }
+
+    @Test("And it is only the round — the menu is untouched")
+    func resetKeepsTheMenu() {
+        // Reset is not a sign-out and not a refresh. Whatever the bar is selling
+        // is still on the screen, which is the difference between clearing a
+        // mistake and losing your place.
+        var cart = round()
+        cart.removeAll()
+        #expect(menu.count == SampleData.drinks.count)
+        #expect(cart.lines(in: menu).isEmpty)
+    }
+}
