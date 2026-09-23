@@ -31,15 +31,15 @@ enum BarMenuLayout {
     /// rather than out of the type.
     static let preferredRowHeight: CGFloat = 66
 
-    /// The floor, and it is **measured, not chosen**: a card's name (17pt) and
-    /// price (15pt) plus its own padding come to just over 60pt, so a smaller
-    /// number here does not make a shorter row — the text pushes the card back
-    /// out and the last row slides under the cart bar. Asking for 56 is exactly
-    /// how that was discovered.
+    /// The floor, and it is **measured, not chosen**: a card's name (19pt) over
+    /// its price (16pt) and quantity (18pt), plus the card's own padding, comes
+    /// to this. A smaller number here does not make a shorter row — the text
+    /// pushes the card back out and the last row slides under the cart bar.
+    /// Asking for 56 is exactly how that was discovered.
     ///
-    /// Anything below this has to come out of the type, which is the thing the
-    /// bar asked to make bigger.
-    static let minimumRowHeight: CGFloat = 61
+    /// So it moves whenever the type does, and it moved when the bar asked for
+    /// bigger names: anything below this now has to come back out of the type.
+    static let minimumRowHeight: CGFloat = 64
 
     /// Rows needed for a menu of `count` drinks.
     static func rowCount(forDrinks count: Int) -> Int {

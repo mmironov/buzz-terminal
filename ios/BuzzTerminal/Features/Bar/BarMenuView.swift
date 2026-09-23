@@ -65,8 +65,8 @@ struct BarMenuView: View {
     private func drinkCard(_ drink: Drink, height: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: SBSpace.x1) {
             Text(drink.name)
-                .font(.sbHeading(17))
-                .sbLineHeight(1.15, size: 17)
+                .font(.sbHeading(19))
+                .sbLineHeight(1.12, size: 19)
                 // Two lines at most, and a hair smaller rather than a third
                 // line: one long name must not set the height of every row.
                 .lineLimit(2)
@@ -78,22 +78,24 @@ struct BarMenuView: View {
 
             HStack {
                 Text(drink.price.description)
-                    .font(.sbBody(15))
+                    .font(.sbBody(16))
                     .foregroundStyle(.sbInk(0.75))
                 Spacer()
                 // Quantity in the accent — the one spot of colour on the grid,
-                // so a half-built round is obvious at a glance. In the heading
-                // face because it is read across the bar, not up close.
+                // so a half-built round is obvious at a glance. The largest
+                // thing on the card after the name, because "have I tapped the
+                // beer twice or three times" is the question being asked with a
+                // queue waiting.
                 let quantity = model.cart.quantity(of: drink)
                 if quantity > 0 {
                     Text("× \(quantity)")
-                        .font(.sbHeading(15))
+                        .font(.sbHeading(18))
                         .foregroundStyle(.sbAccent)
                 }
             }
         }
         .padding(.horizontal, 11)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
         .frame(minHeight: height, alignment: .topLeading)
         .contentShape(Rectangle())
     }

@@ -56,7 +56,11 @@ struct BarMenuLayoutTests {
         // The text pushes the card back out, every row is taller than the
         // arithmetic said, and the last one ends up under the cart bar — which
         // is what an 18-drink menu did on the simulator at a floor of 56.
-        #expect(BarMenuLayout.minimumRowHeight >= 61)
+        //
+        // 64pt is what the cards measure at today's sizes, read off a render
+        // rather than worked out on paper. **Anybody changing the type on the
+        // card has to measure again** — this number is downstream of it.
+        #expect(BarMenuLayout.minimumRowHeight >= 64)
     }
 
     @Test("A short menu does not get playing-card-sized rows")
