@@ -35,7 +35,7 @@ const isDoorSale = (data) => data.source === 'evening' || data.source === 'door'
  * @param participants `[{ id, data }]`
  * @param scope `'test-data'` keeps the imported roster; `'all'` deletes it too.
  */
-export function planReset({ participants = [], braceletIds = [], ledgerCount = 0, scope = 'test-data' }) {
+export function planReset({ participants = [], braceletIds = [], historyIds = [], ledgerCount = 0, scope = 'test-data' }) {
   if (!['test-data', 'all'].includes(scope)) {
     throw new Error(`Unknown scope "${scope}". Use "test-data" or "all".`);
   }
@@ -58,6 +58,12 @@ export function planReset({ participants = [], braceletIds = [], ledgerCount = 0
     deleteParticipants,
     resetParticipants,
     braceletIds: [...braceletIds],
+    // A wristband handed back leaves a record behind on purpose: it outlives the
+    // chip document, and once the chip is on somebody else's wrist it is the only
+    // thing that still knows who wore it. That makes it festival state, exactly
+    // like a ledger entry — and a festival must not start with a Friday-night
+    // hand-back already in the panel.
+    historyIds: [...historyIds],
     ledgerCount,
     // The fields a reset returns to their post-import values. Everything the
     // importer owns — name, ticketType, country, ticketRef — is deliberately absent:
@@ -92,6 +98,7 @@ export function isNoOp(plan) {
   return (
     plan.deleteParticipants.length === 0 &&
     plan.braceletIds.length === 0 &&
+    plan.historyIds.length === 0 &&
     plan.ledgerCount === 0 &&
     plan.resetParticipants.length === 0
   );
@@ -148,6 +155,7 @@ export async function executeReset(db, plan, { deleteDrinks = false } = {}) {
     participantsDeleted: 0,
     participantsReset: 0,
     braceletsDeleted: 0,
+    historyDeleted: 0,
     drinksDeleted: 0,
     merchCleared: 0,
   };
@@ -190,6 +198,11 @@ export async function executeReset(db, plan, { deleteDrinks = false } = {}) {
   await inBatches(db, plan.braceletIds, (batch, id) => {
     batch.delete(db.collection('bracelets').doc(id));
     counts.braceletsDeleted += 1;
+  });
+
+  await inBatches(db, plan.historyIds, (batch, id) => {
+    batch.delete(db.collection('braceletHistory').doc(id));
+    counts.historyDeleted += 1;
   });
 
   if (deleteDrinks) {

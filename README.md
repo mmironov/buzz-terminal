@@ -200,7 +200,7 @@ different project is refused, and that refusal is a test.
 
 | scope | |
 | --- | --- |
-| `test-data` (default) | bracelets, ledger, balances, check-ins, door-sold evening tickets. **The imported roster stays**, so no re-import and no dependency on the Sheet being reachable. |
+| `test-data` (default) | bracelets, hand-back records, ledger, balances, check-ins, special sessions sold, what the desk did with the merch, door-sold evening tickets and passes. **The imported roster stays**, so no re-import and no dependency on the Sheet being reachable. |
 | `--scope=all` | the above plus every participant document. Re-run the import afterwards. |
 
 Add `--drinks` to wipe the menu too. **Staff accounts and their role claims are

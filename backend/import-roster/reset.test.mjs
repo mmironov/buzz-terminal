@@ -67,6 +67,24 @@ test('THE GAP: a reset clears what the desk did with the merch, not what the She
   assert.equal('entitled' in merchResetFields.freeShirt, false);
 });
 
+test('THE OTHER GAP: a reset clears the hand-back records too', () => {
+  // `braceletHistory` outlives the chip document on purpose — once a returned
+  // chip is on somebody else's wrist it is the only thing that still knows who
+  // wore it on Friday. That makes it festival state, exactly like a ledger
+  // entry, and it survived the first two resets because nothing read it.
+  const plan = planReset({
+    participants: [sheetPerson('a')],
+    historyIds: ['04:A1-1790116886285'],
+  });
+  assert.deepEqual(plan.historyIds, ['04:A1-1790116886285']);
+  assert.equal(isNoOp(plan), false);
+});
+
+test('a database with nothing but a hand-back record is not called clean', () => {
+  assert.equal(isNoOp(planReset({ participants: [], historyIds: ['04:A1-1'] })), false);
+  assert.equal(isNoOp(planReset({ participants: [] })), true);
+});
+
 test('an unknown scope is refused rather than guessed at', () => {
   assert.throws(() => planReset({ participants: [], scope: 'everything' }), /Unknown scope/);
 });

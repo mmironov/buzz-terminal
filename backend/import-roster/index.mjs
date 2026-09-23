@@ -446,9 +446,10 @@ async function cmdReset() {
   const app = initAdmin(config);
   const db = app.firestore();
 
-  const [participantSnap, braceletSnap, ledgerSnap] = await Promise.all([
+  const [participantSnap, braceletSnap, historySnap, ledgerSnap] = await Promise.all([
     db.collection('participants').get(),
     db.collection('bracelets').get(),
+    db.collection('braceletHistory').get(),
     db.collectionGroup('transactions').get(),
   ]);
 
@@ -457,6 +458,7 @@ async function cmdReset() {
     plan = planReset({
       participants: participantSnap.docs.map((d) => ({ id: d.id, data: d.data() })),
       braceletIds: braceletSnap.docs.map((d) => d.id),
+      historyIds: historySnap.docs.map((d) => d.id),
       ledgerCount: ledgerSnap.size,
       scope,
     });
@@ -471,6 +473,7 @@ async function cmdReset() {
   console.log(`\nCurrently in the database:`);
   console.log(`  participants        ${participantSnap.size}`);
   console.log(`  paired bracelets    ${braceletSnap.size}`);
+  console.log(`  handed back         ${historySnap.size}`);
   console.log(`  ledger entries      ${money.count}`);
   if (money.count) {
     console.log(`    topped up         ${euro(money.topUps)}`);
@@ -492,6 +495,10 @@ async function cmdReset() {
     console.log(`  reset  ${plan.resetParticipants.length} imported participants to bracelet-less, 0 € balance`);
   }
   if (plan.braceletIds.length) console.log(`  delete ${plan.braceletIds.length} bracelet pairings`);
+  if (plan.historyIds.length) {
+    const n = plan.historyIds.length;
+    console.log(`  delete ${n} hand-back record${n === 1 ? '' : 's'} — the panel would otherwise open on somebody else's festival`);
+  }
   if (money.count) console.log(`  delete ${money.count} ledger entries — permanently, append-only does not apply to the Admin SDK`);
   console.log(`  ${deleteDrinks ? 'delete the drinks menu too (--drinks)' : 'keep the drinks menu'}`);
   console.log(`  keep every staff account and role claim`);
@@ -508,7 +515,8 @@ async function cmdReset() {
   console.log(`\nDeleting…`);
   const counts = await executeReset(db, plan, { deleteDrinks });
   console.log(`\n✔ ${counts.participantsDeleted} participants deleted, ${counts.participantsReset} reset,`);
-  console.log(`  ${counts.braceletsDeleted} bracelets deleted, ${counts.drinksDeleted} drinks deleted.`);
+  console.log(`  ${counts.braceletsDeleted} bracelets deleted, ${counts.historyDeleted} hand-back records deleted,`);
+  console.log(`  ${counts.drinksDeleted} drinks deleted.`);
   console.log(`\n  Restart the terminals. FirebaseTerminalRepository caches the next`);
   console.log(`  evening-ticket number per run, and that cache now disagrees with the`);
   console.log(`  database.\n`);

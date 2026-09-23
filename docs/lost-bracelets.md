@@ -139,6 +139,10 @@ The record is what survives the chip document, and it is append-only like the
 ledger: once a chip is on somebody else's wrist, `braceletHistory` is the only
 thing that still knows who wore it on Friday.
 
+Which also makes it festival state, so `npm run reset` clears it — it was missed
+at first, and a reset left one hand-back sitting in the panel on a database that
+was otherwise empty.
+
 ## What a found wristband does
 
 Nothing. It resolves for nobody, at either terminal, and gets its own screen
@@ -190,8 +194,9 @@ new one, with cash and card totalled.
 
 ## Still open
 
-- **Nothing is in production.** The rules are not deployed and no fee is set;
-  until `settings/bracelets` exists the desk replaces wristbands for nothing.
+- **Live since 2026-09-23**, rules and panel deployed, app build 103, and the
+  replacement fee set to 1 €. Both flows were exercised against production and
+  then cleared by a reset.
 - **A mis-tap needs an organiser.** A replacement cannot be undone from a
   terminal — the old chip is dead for good. That is deliberate, and it means
   replacing the wrong person's wristband is a database job.
