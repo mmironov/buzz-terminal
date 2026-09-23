@@ -7,7 +7,10 @@ import SwiftUI
 struct BarMenuView: View {
     @Environment(AppModel.self) private var model
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 2)
+    private let columns = Array(
+        repeating: GridItem(.flexible(), spacing: BarMenuLayout.spacing),
+        count: BarMenuLayout.columns
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,26 +36,41 @@ struct BarMenuView: View {
         .padding(.bottom, SBSpace.x2)
     }
 
+    /// The grid measures itself so the whole menu lands on one screen where it
+    /// can: rows tighten as drinks are added rather than running off the bottom.
+    /// It still scrolls, for the menu long enough to need it.
     private var menuGrid: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 10) {
-                ForEach(model.menu) { drink in
-                    Button { model.add(drink) } label: {
-                        drinkCard(drink)
+        GeometryReader { proxy in
+            let rowHeight = BarMenuLayout.rowHeight(
+                forDrinks: model.menu.count,
+                availableHeight: proxy.size.height - SBSpace.x2
+            )
+
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: BarMenuLayout.spacing) {
+                    ForEach(model.menu) { drink in
+                        Button { model.add(drink) } label: {
+                            drinkCard(drink, height: rowHeight)
+                        }
+                        .buttonStyle(DrinkCardStyle())
                     }
-                    .buttonStyle(DrinkCardStyle())
                 }
+                .padding(.horizontal, 18)
+                .padding(.bottom, SBSpace.x2)
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, SBSpace.x3)
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 
-    private func drinkCard(_ drink: Drink) -> some View {
-        VStack(alignment: .leading, spacing: SBSpace.x2) {
+    private func drinkCard(_ drink: Drink, height: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: SBSpace.x1) {
             Text(drink.name)
-                .font(.sbHeading(15.5))
-                .sbLineHeight(1.2, size: 15.5)
+                .font(.sbHeading(17))
+                .sbLineHeight(1.15, size: 17)
+                // Two lines at most, and a hair smaller rather than a third
+                // line: one long name must not set the height of every row.
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -60,23 +78,23 @@ struct BarMenuView: View {
 
             HStack {
                 Text(drink.price.description)
-                    .font(.sbBody(13))
-                    .foregroundStyle(.sbInk(0.7))
+                    .font(.sbBody(15))
+                    .foregroundStyle(.sbInk(0.75))
                 Spacer()
                 // Quantity in the accent — the one spot of colour on the grid,
-                // so a half-built round is obvious at a glance.
+                // so a half-built round is obvious at a glance. In the heading
+                // face because it is read across the bar, not up close.
                 let quantity = model.cart.quantity(of: drink)
                 if quantity > 0 {
                     Text("× \(quantity)")
-                        .font(.sbBody(11))
+                        .font(.sbHeading(15))
                         .foregroundStyle(.sbAccent)
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-        .frame(minHeight: 82, alignment: .topLeading)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .frame(minHeight: height, alignment: .topLeading)
         .contentShape(Rectangle())
     }
 
