@@ -74,6 +74,12 @@ export interface StockRow {
   id: string;
   name: string;
   openingMl: number;
+  /** Cents per litre as entered, or null while nobody has said. */
+  costPerLitreCents: number | null;
+  /** What was poured, in cents — null until a cost is known. */
+  pouredCost: number | null;
+  /** What is still in the store is worth, in cents. Null likewise. */
+  remainingValue: number | null;
   /** Deliveries and recounts since opening, netted. */
   movedMl: number;
   /** What the sales say has been poured. */
@@ -110,7 +116,13 @@ export function stockReport({
   sold,
   movements,
 }: {
-  items: { id: string; name: string; openingMl: number; isActive: boolean }[];
+  items: {
+    id: string;
+    name: string;
+    openingMl: number;
+    isActive: boolean;
+    costPerLitreCents?: number | null;
+  }[];
   drinks: { id: string; name: string; recipe: Record<string, number> }[];
   sold: SoldLine[];
   movements: Record<string, number>;
@@ -148,10 +160,15 @@ export function stockReport({
     const movedMl = movements[item.id] ?? 0;
     const consumedMl = consumed.get(item.id) ?? 0;
     const everHad = item.openingMl + movedMl;
+    const cost = item.costPerLitreCents ?? null;
+    const remainingMl = everHad - consumedMl;
     return {
       id: item.id,
       name: item.name,
       openingMl: item.openingMl,
+      costPerLitreCents: cost,
+      pouredCost: costOf(consumedMl, cost),
+      remainingValue: costOf(remainingMl, cost),
       movedMl,
       consumedMl,
       remainingMl: everHad - consumedMl,
@@ -161,6 +178,18 @@ export function stockReport({
   });
 
   return { rows, uncosted, orphanedRecipes };
+}
+
+/**
+ * What some millilitres cost, in cents, or null when nobody has said.
+ *
+ * Null rather than zero throughout: "this was free" and "nobody has entered a
+ * price" are different facts, and a total that silently treats the second as the
+ * first is the sort of number somebody takes to a supplier.
+ */
+export function costOf(ml: number, centsPerLitre: number | null): number | null {
+  if (centsPerLitre === null) return null;
+  return Math.round((ml * centsPerLitre) / 1000);
 }
 
 /** `"4.5 L"`, or `"350 ml"` below a litre. Negative is shown, not hidden. */

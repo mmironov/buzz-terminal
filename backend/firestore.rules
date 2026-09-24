@@ -1049,8 +1049,20 @@ service cloud.firestore {
 
       function isWellFormedStock() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['name', 'openingMl', 'sortOrder', 'isActive'])
+        return d.keys().hasOnly(['name', 'openingMl', 'sortOrder', 'isActive', 'costPerLitreCents'])
           && d.keys().hasAll(['name', 'openingMl', 'sortOrder', 'isActive'])
+          // What the festival paid for it, per litre, in cents. **Optional**:
+          // the levels matter during the festival and the money matters after
+          // it, so this is filled in at leisure — and a stock item without it
+          // is a normal state, not a half-finished one.
+          //
+          // Cents per litre rather than per millilitre: a litre is what an
+          // invoice is written in, and per-millilitre would be under a cent for
+          // anything the bar pours.
+          && (!d.keys().hasAny(['costPerLitreCents'])
+              || (d.costPerLitreCents is int
+                  && d.costPerLitreCents >= 0
+                  && d.costPerLitreCents <= 1000000))
           && d.name is string && d.name.size() > 0 && d.name.size() <= 60
           // A thousand litres is a typo bound, not a policy — the festival's
           // beer is measured in dozens of litres, not thousands.

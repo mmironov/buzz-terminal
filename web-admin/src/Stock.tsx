@@ -15,6 +15,8 @@ import { db } from './firebase';
 import {
   COLLECTIONS,
   DRINK_FIELDS,
+  euros,
+  parseEuros,
   MAX_MOVEMENT_REASON,
   MAX_STOCK_ML,
   MAX_STOCK_NAME,
@@ -114,6 +116,8 @@ export function Stock({ uid }: { uid: string }) {
               <th className="num">Since</th>
               <th className="num">Poured</th>
               <th className="num">Left</th>
+              <th className="num">€ / litre</th>
+              <th className="num">Value left</th>
               <th>What is drinking it</th>
               <th />
             </tr>
@@ -140,6 +144,21 @@ export function Stock({ uid }: { uid: string }) {
                     {row.fractionLeft !== null ? (
                       <div className="sub">{Math.round(row.fractionLeft * 100)}% left</div>
                     ) : null}
+                  </td>
+                  <td className="num">
+                    {item ? <CostPerLitre item={item} onError={setError} /> : null}
+                  </td>
+                  <td className="num mono">
+                    {row.remainingValue === null ? (
+                      <span className="sub">—</span>
+                    ) : (
+                      <>
+                        {euros(row.remainingValue)}
+                        {row.pouredCost !== null && row.pouredCost > 0 ? (
+                          <div className="sub">{euros(row.pouredCost)} poured</div>
+                        ) : null}
+                      </>
+                    )}
                   </td>
                   <td className="sub">
                     {row.drawnBy.length === 0
@@ -439,5 +458,75 @@ function Sold({ sold }: { sold: SoldLine[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * What a litre of it cost, filled in whenever somebody gets to it.
+ *
+ * Deliberately editable in place and deliberately optional: during the festival
+ * the levels are what matter, and the money is a job for the week after. A blank
+ * here is "nobody has said", which is why the value column shows a dash rather
+ * than zero — a total that quietly counts unknown as free is the sort of number
+ * somebody takes to a supplier.
+ */
+function CostPerLitre({
+  item,
+  onError,
+}: {
+  item: StockItem;
+  onError: (message: string | null) => void;
+}) {
+  const asInput = item.costPerLitreCents === null ? '' : (item.costPerLitreCents / 100).toFixed(2);
+  const [value, setValue] = useState(asInput);
+  const [busy, setBusy] = useState(false);
+
+  // Re-sync when the document changes underneath — another organiser, or this
+  // field's own write coming back through the listener.
+  useEffect(() => setValue(asInput), [asInput]);
+
+  const trimmed = value.trim();
+  const cents = trimmed === '' ? null : parseEuros(trimmed);
+  const bad = trimmed !== '' && cents === null;
+  const dirty = cents !== item.costPerLitreCents;
+
+  async function save() {
+    if (bad || !dirty) return;
+    setBusy(true);
+    try {
+      await setDoc(
+        doc(db, COLLECTIONS.stock, item.id),
+        {
+          [STOCK_FIELDS.name]: item.name,
+          [STOCK_FIELDS.openingMl]: item.openingMl,
+          [STOCK_FIELDS.sortOrder]: item.sortOrder,
+          [STOCK_FIELDS.isActive]: item.isActive,
+          // Left out entirely rather than written as null: the rules take the
+          // field or its absence, and absence is what "nobody has said" is.
+          ...(cents === null ? {} : { [STOCK_FIELDS.costPerLitreCents]: cents }),
+        }
+      );
+      onError(null);
+    } catch (cause) {
+      onError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <input
+      aria-label={`Cost per litre of ${item.name}`}
+      className="price"
+      inputMode="decimal"
+      placeholder="—"
+      value={value}
+      disabled={busy}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={save}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') save();
+      }}
+    />
   );
 }

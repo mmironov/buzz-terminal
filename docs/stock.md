@@ -24,6 +24,7 @@ missing are the ones a spreadsheet would have held:
 
 ```
 stock/gin                    name "Gin", openingMl 700, sortOrder, isActive
+                             costPerLitreCents 1800        // optional, see below
 stock/gin/movements/{id}     deltaMl +700, reason "Second bottle opened", at, by
 drinks/gt.recipe             { gin: 50, tonic: 200 }      // millilitres per serving
 ```
@@ -47,6 +48,25 @@ than no stock level at all. Litres exist only on the way to the screen —
 The store is entered in **litres**, because that is how a keg arrives. A recipe
 is entered in **millilitres**, because a gin and tonic is 50 ml and nobody wants
 to type `0.05` forty times on a Friday.
+
+## What it cost
+
+`costPerLitreCents` is **optional**, and the reason is scheduling rather than
+design: during the festival the levels are what matter, and what things cost is
+a job for the week after. A stock item without it is a normal state, not a
+half-finished one.
+
+Cents per litre rather than per millilitre — a litre is what an invoice is
+written in, and per-millilitre would be under a cent for anything the bar pours.
+Typed in euros in the panel, stored as an integer number of cents.
+
+When it is set, two figures appear beside the item: what is still in the store is
+**worth**, and what has been **poured** cost. When it is not, both show a dash.
+**Null, never zero** — "this was free" and "nobody has entered a price" are
+different facts, and a total that silently treats the second as the first is the
+sort of number somebody takes to a supplier. The field is left out of the
+document entirely rather than written as null, so absence is what absence looks
+like.
 
 ## The two ways this page can lie
 
@@ -119,11 +139,12 @@ snapshot the price instead.
 
 ## Verified
 
-- **209 rules tests**, including: no terminal can write stock or even a
+- **210 rules tests**, including: a cost per litre is optional and refused
+  unless it is a whole number of cents within the ceiling, no terminal can write stock or even a
   movement, a movement cannot be rewritten or deleted, zero is not a movement,
   the recipe map is bounded, and the two collection-group reads work for the
   panel and for nobody else.
-- **12 unit tests** on the arithmetic (`web-admin/src/inventory.test.ts`, run
+- **14 unit tests** on the arithmetic (`web-admin/src/inventory.test.ts`, run
   with `npm test` there): the half-open night window, a top-up that is not a
   sale, an uncosted drink being named rather than ignored, negative remainders
   surviving, and 10.8 L not reading as 11 L.
@@ -131,7 +152,10 @@ snapshot the price instead.
   items into the store, two drinks costed from the Bar tab, and 29 seeded drinks
   across two nights turning into 300 ml of gin poured (400 ml left, 57%) and 8 L
   off a 30 L keg. A second gin bottle carried in moved it to 1.1 L and 79%, and
-  the uncosted water stayed named throughout.
+  the uncosted water stayed named throughout. Then again on 2026-09-24 for the
+  cost: 18 €/L typed into the gin row wrote `costPerLitreCents: 1800` through the
+  rules and produced 7.20 € still in the bottle and 5.40 € poured, while the
+  tonic beside it — with no cost entered — kept its dash.
 
 ## Still open
 

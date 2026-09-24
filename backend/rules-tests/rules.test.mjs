@@ -2404,6 +2404,21 @@ describe('the stock behind the bar', () => {
     }
   });
 
+  it('carries what it cost, or does not — the money is filled in after the festival', async () => {
+    // Optional on purpose: during the festival the levels matter, afterwards
+    // the money does. A stock item without a cost is a normal state.
+    await assertSucceeds(setDoc(doc(admin(), 'stock', 'gin'), item({ costPerLitreCents: 1800 })));
+    await assertSucceeds(setDoc(doc(admin(), 'stock', 'gin'), item()));
+    for (const bad of [
+      item({ costPerLitreCents: 18.5 }),        // euros as a float
+      item({ costPerLitreCents: -1 }),
+      item({ costPerLitreCents: 1000001 }),     // past the typo ceiling
+      item({ costPerLitreCents: '18' }),
+    ]) {
+      await assertFails(setDoc(doc(admin(), 'stock', 'gin'), bad));
+    }
+  });
+
   it('THE ONE THAT MATTERS: no terminal writes stock, and the bar does not read it to sell', async () => {
     // It is a planning tool, not a till: the bar's screen must never depend on
     // it, and a bartender must never be able to change it.

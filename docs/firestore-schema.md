@@ -487,10 +487,11 @@ cents, for the same reason. Litres are a screen detail.
 
 ```
 stock/gin
-  name:      "Gin"
-  openingMl: 700          // what was there at the start
-  sortOrder: 0
-  isActive:  true
+  name:              "Gin"
+  openingMl:         700        // what was there at the start
+  costPerLitreCents: 1800       // optional — filled in after the festival
+  sortOrder:         0
+  isActive:          true
 
 stock/gin/movements/1790248499123
   deltaMl: 700                      // signed: a delivery, or a recount that found less

@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { litres, parseLitres, soldByDrink, stockReport, type ChargeLike } from './inventory.ts';
+import {
+  costOf,
+  litres,
+  parseLitres,
+  soldByDrink,
+  stockReport,
+  type ChargeLike,
+} from './inventory.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  The stock arithmetic.
@@ -165,4 +172,42 @@ test('typing a stock level, in litres, without floats reaching the database', ()
   assert.equal(parseLitres('abc'), null);
   // Four decimals is a typo, not a microlitre.
   assert.equal(parseLitres('0.7001'), null);
+});
+
+
+// ── What it cost ───────────────────────────────────────────────────────────
+
+test('THE ONE THAT MUST NOT ROUND TO ZERO: cents per litre, applied to millilitres', () => {
+  // 18 € a litre, 50 ml of it: 90 cents.
+  assert.equal(costOf(50, 1800), 90);
+  assert.equal(costOf(1000, 1800), 1800);
+  assert.equal(costOf(30000, 250), 7500);       // a 30 L keg at 2.50 €/L
+  assert.equal(costOf(0, 1800), 0);
+});
+
+test('nobody has entered a price is not the same as free', () => {
+  // Null all the way through rather than zero: a money column that silently
+  // treats "unknown" as "free" is the sort of number somebody takes to a
+  // supplier.
+  assert.equal(costOf(50, null), null);
+
+  const report = stockReport({
+    items: [
+      { id: 'gin', name: 'Gin', openingMl: 700, isActive: true, costPerLitreCents: 1800 },
+      { id: 'tonic', name: 'Tonic', openingMl: 12000, isActive: true },
+    ],
+    drinks: [{ id: 'gt', name: 'Gin & tonic', recipe: { gin: 50, tonic: 200 } }],
+    sold: [{ drinkId: 'gt', name: 'Gin & tonic', quantity: 6 }],
+    movements: {},
+  });
+
+  const gin = report.rows.find((r) => r.id === 'gin')!;
+  assert.equal(gin.consumedMl, 300);
+  assert.equal(gin.pouredCost, 540);            // 300 ml at 18 €/L
+  assert.equal(gin.remainingValue, 720);        // 400 ml still in the bottle
+
+  const tonic = report.rows.find((r) => r.id === 'tonic')!;
+  assert.equal(tonic.consumedMl, 1200);
+  assert.equal(tonic.pouredCost, null);
+  assert.equal(tonic.remainingValue, null);
 });

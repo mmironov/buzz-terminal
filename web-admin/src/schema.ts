@@ -81,6 +81,11 @@ export const STOCK_FIELDS = {
   name: 'name',
   /** Millilitres, as an integer. Litres are for the screen only. */
   openingMl: 'openingMl',
+  /**
+   * What the festival paid for it, per litre, in cents. Optional — the levels
+   * matter during the festival and the money matters after it.
+   */
+  costPerLitreCents: 'costPerLitreCents',
   sortOrder: 'sortOrder',
   isActive: 'isActive',
 } as const;
@@ -358,6 +363,8 @@ export interface StockItem {
   id: string;
   name: string;
   openingMl: number;
+  /** Cents per litre, or null when nobody has entered it yet. */
+  costPerLitreCents: number | null;
   sortOrder: number;
   isActive: boolean;
 }
@@ -675,6 +682,9 @@ export function toStockItem(doc: Doc): StockItem | null {
     id: doc.id,
     name,
     openingMl,
+    // Null, never zero: "free" and "nobody has said" are different facts, and
+    // only one of them should produce a money column.
+    costPerLitreCents: int(data[STOCK_FIELDS.costPerLitreCents]),
     sortOrder: int(data[STOCK_FIELDS.sortOrder]) ?? 0,
     isActive: data[STOCK_FIELDS.isActive] !== false,
   };
