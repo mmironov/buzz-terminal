@@ -45,6 +45,12 @@ export const PARTICIPANT_FIELDS = {
   danceRole: 'danceRole',
   source: 'source',
   evening: 'evening',
+  /**
+   * `staff`, `guest`, or absent: how somebody got in when they did not pay.
+   * Read out of the Sheet's `Pass Type` bracket by the importer. It is not a
+   * permission of any kind — see docs/staff-credit.md.
+   */
+  admission: 'admission',
   /** How a door sale was paid — `cash` or `card` — and what was collected. */
   paymentMethod: 'paymentMethod',
   pricePaid: 'pricePaid',
@@ -254,6 +260,8 @@ export interface Participant {
    */
   paymentMethod: PaymentMethod | null;
   pricePaid: number | null;
+  /** `staff`, `guest` or `''` — how they got in, never what they may do. */
+  admission: string;
   /** `null` until reception pairs a chip. Permanent once set. */
   braceletId: string | null;
   checkedInAt: Date | null;
@@ -354,17 +362,32 @@ export interface Transaction {
    */
   items: LedgerItem[];
   /**
-   * How a top-up was paid: cash or card. `null` on every charge.
+   * How a top-up was paid: cash, card, or `comp` for credit the festival gave.
+   * `null` on every charge.
    *
-   * The rules now require one on a top-up, so a null here should be unreachable
-   * for new entries. The panel still shows it as "Method not recorded" rather
-   * than as a blank, because the day it does appear is the day something wrote
-   * a top-up these rules were supposed to refuse — which is worth seeing.
+   * The rules require cash or card on a top-up written by a terminal, so a null
+   * here should be unreachable for new entries. The panel still shows it as
+   * "Method not recorded" rather than as a blank, because the day it does
+   * appear is the day something wrote a top-up these rules were supposed to
+   * refuse — which is worth seeing.
    */
-  method: PaymentMethod | null;
+  method: LedgerMethod | null;
+  /** Which run of the staff top-up script wrote this, if one did. */
+  grant: string;
 }
 
 export type PaymentMethod = 'cash' | 'card';
+
+/**
+ * What a ledger entry can say about where the money came from.
+ *
+ * `comp` is the one a terminal cannot write: staff credit, put on by
+ * `npm run topup`, which goes through the Admin SDK and past the rules. It is
+ * deliberately a third value rather than being recorded as cash — nobody paid,
+ * and counting it as cash would put money in the end-of-night reckoning that
+ * nobody can produce from the box. See docs/staff-credit.md.
+ */
+export type LedgerMethod = PaymentMethod | 'comp';
 
 /**
  * One extra class an organiser runs, as they priced it.
@@ -495,9 +518,30 @@ export function toSessionSale(doc: Doc): SessionSale | null {
 const toPaymentMethod = (value: unknown): PaymentMethod | null =>
   value === 'cash' || value === 'card' ? value : null;
 
+/**
+ * The same two, plus the one only a script can write.
+ *
+ * Kept separate from `toPaymentMethod` on purpose: a door sale or a special
+ * session recorded as `comp` would mean the rules had let something through,
+ * and widening the shared parser would hide exactly that.
+ */
+const toLedgerMethod = (value: unknown): LedgerMethod | null =>
+  value === 'comp' ? 'comp' : toPaymentMethod(value);
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Cash',
   card: 'Card',
+};
+
+/** How the two marked kinds of admission read on screen. */
+export const ADMISSION_LABELS: Record<string, string> = {
+  staff: 'Staff',
+  guest: 'Guest list',
+};
+
+export const LEDGER_METHOD_LABELS: Record<LedgerMethod, string> = {
+  ...PAYMENT_METHOD_LABELS,
+  comp: 'Staff credit',
 };
 
 // ── Reading ────────────────────────────────────────────────────────────────
@@ -540,6 +584,7 @@ export function toParticipant(doc: Doc): Participant | null {
     source: str(data[PARTICIPANT_FIELDS.source], 'sheet'),
     danceRole: str(data[PARTICIPANT_FIELDS.danceRole]),
     evening: str(data[PARTICIPANT_FIELDS.evening]),
+    admission: str(data[PARTICIPANT_FIELDS.admission]),
     paymentMethod: toPaymentMethod(data[PARTICIPANT_FIELDS.paymentMethod]),
     pricePaid: int(data[PARTICIPANT_FIELDS.pricePaid]),
     braceletId: str(data[PARTICIPANT_FIELDS.braceletId]) || null,
@@ -680,7 +725,8 @@ export function toTransaction(doc: Doc): Transaction | null {
     terminalId: str(data['terminalId']),
     createdAt: date(data['createdAt']),
     items,
-    method: toPaymentMethod(data['method']),
+    method: toLedgerMethod(data['method']),
+    grant: str(data['grant']),
   };
 }
 

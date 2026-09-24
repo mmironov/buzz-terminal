@@ -20,6 +20,7 @@ import {
   COLLECTIONS,
   MAX_BLOCK_REASON,
   PARTICIPANT_FIELDS,
+  ADMISSION_LABELS,
   PAYMENT_METHOD_LABELS,
   euros,
   shortTime,
@@ -198,6 +199,12 @@ function Row({
         </td>
         <td>
           {person.ticketType || '—'}
+          {/* Staff and the guest list came in without paying, and the staff are
+              who `npm run topup` credits. Worth seeing next to the pass rather
+              than only in the database. */}
+          {person.admission ? (
+            <span className="tag tag--quiet">{ADMISSION_LABELS[person.admission] ?? person.admission}</span>
+          ) : null}
           {person.country ? <div className="sub">{person.country}</div> : null}
           {/* What the desk took for it, for somebody sold at the door. Nobody
               from the Sheet has this: they paid a registration system months

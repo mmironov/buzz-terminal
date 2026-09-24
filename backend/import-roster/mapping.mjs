@@ -138,6 +138,72 @@ export function isCanonicalPassType(value) {
   return CANONICAL_PASS_TYPES.includes(value);
 }
 
+// ── Staff and the guest list ───────────────────────────────────────────────
+
+/**
+ * How somebody got in, when it was not by paying: `staff`, `guest`, or `''`.
+ *
+ * The organisers record it in the bracket at the end of `Pass Type`, alongside
+ * the price:
+ *
+ *     "Full Pass - 0 € (Staff member - Taster Teacher)"
+ *     "Party Pass - 0 € (Staff member - Musician)"
+ *     "Saturday Evening - 0 € (Guest list)"
+ *     "Party Pass - 0 € (Guest list - Sakarias' friend)"
+ *
+ * Most brackets mean nothing of the sort — "(EARLY BIRD pricing)", "(First
+ * Installment 50%)", "(Upgrade from Party - 135€ + 70€)" — so this matches the
+ * two markers rather than treating any bracket as a category.
+ */
+export const ADMISSIONS = ['staff', 'guest'];
+
+const ADMISSION_MARKERS = [
+  { admission: 'staff', marker: 'staff member' },
+  { admission: 'guest', marker: 'guest list' },
+];
+
+/**
+ * Every bracketed note in a value, including an **unclosed** one.
+ *
+ * The unclosed case is not defensive programming: `"Party Pass - 0 € (Staff
+ * member - DJ"` is in the real Sheet, twice, and a plain `\(([^)]*)\)` misses
+ * both. Two DJs would have been left off the staff list, and a top-up run would
+ * have silently skipped them — the kind of miss that is only noticed by the
+ * person who did not get their money.
+ */
+export function bracketedNotes(raw) {
+  const value = String(raw ?? '');
+  const notes = [];
+  for (const match of value.matchAll(/\(([^)]*)\)/g)) notes.push(match[1].trim());
+  const unclosed = value.match(/\(([^)]*)$/);
+  if (unclosed) notes.push(unclosed[1].trim());
+  return notes.filter(Boolean);
+}
+
+/**
+ * Reduce a raw `Pass Type` to `staff`, `guest` or `''`.
+ *
+ * **Every** bracket is checked, not just the first: one row already reads
+ * "(EARLY BIRD pricing) - Discounted Party Pass amount", so a scan that stopped
+ * at the first bracket would be one form edit away from missing a staff member.
+ *
+ * What is deliberately NOT extracted is the job after the dash — Musician, Main
+ * Teacher, Barman, Reception. Two of those are the names of the app's own
+ * roles, and a field on the participant document saying "Reception" would be
+ * read as a permission sooner or later. `StaffRole` comes from a custom claim
+ * and from nowhere else; this field says how somebody got in, not what they may
+ * do. It is the same trap as the Sheet's `Role` column, which is the dance role.
+ */
+export function normaliseAdmission(rawPassType) {
+  for (const note of bracketedNotes(rawPassType)) {
+    const lower = note.toLowerCase();
+    for (const { admission, marker } of ADMISSION_MARKERS) {
+      if (lower.startsWith(marker)) return admission;
+    }
+  }
+  return '';
+}
+
 // ── Privacy ────────────────────────────────────────────────────────────────
 
 /**
@@ -235,6 +301,9 @@ export function toRosterFields(row) {
     country: String(row.country ?? '').trim(),
     // One word, or empty. See normaliseLevel.
     level: normaliseLevel(row.level),
+    // Staff and the guest list, read out of the same column's bracket. Empty
+    // for everybody who simply bought a ticket, which is most people.
+    admission: normaliseAdmission(row.ticketType),
   };
 }
 
@@ -431,6 +500,7 @@ export const IMPORT_OWNED_FIELDS = [
   'ticketType',
   'country',
   'level',
+  'admission',
   'rosterHash',
   'importedAt',
 ];

@@ -55,6 +55,7 @@ participants/tkt-10432
   ticketType:    "Full pass"
   country:       "France"          // the Sheet asks for a country, not a city
   level:         "Advanced"        // DANCE level, one word. NOT a permission.
+  admission:     "" | "staff" | "guest"   // how they got in. ALSO not a permission.
   importedAt:    <timestamp>
   rosterHash:    "9f2c…"            // skip the write when the row is unchanged
 
@@ -73,6 +74,13 @@ participants/tkt-10432
 ```
 
 Notes on specific fields:
+
+- **`admission`** is read out of the `Pass Type` bracket — "Full Pass - 0 €
+  (Staff member - Musician)", "Saturday Evening - 0 € (Guest list)" — and says
+  how somebody got in when they did not pay. It is what `npm run topup` credits.
+  The job after the dash (Musician, Reception, Barman) is deliberately **not**
+  imported: two of those are the names of the app's own roles, and `StaffRole`
+  comes from a custom claim and nowhere else. See `docs/staff-credit.md`.
 
 - **`balance` is an integer of cents.** Same reason as `ios/BuzzTerminal/Domain/Money.swift`:
   `0.1 + 0.2 != 0.3` in binary floating point, and Firestore numbers are doubles.
@@ -230,7 +238,8 @@ participants/tkt-10432/transactions/8f14e45f-ceea-…
   queuedOffline: true                  // optional; set when replayed from the queue
 
   // top-ups only — how the money reached the desk
-  method:        "cash" | "card"
+  method:        "cash" | "card" | "comp"   // comp: staff credit, script-only
+  grant:         "2026-09-25"               // which staff top-up run wrote it
 
   // charges only — what the round bought
   items: [
@@ -238,6 +247,13 @@ participants/tkt-10432/transactions/8f14e45f-ceea-…
     { drinkId: "water", name: "Water", unitPrice: 200, quantity: 1 },
   ]
 ```
+
+`method: "comp"` and `grant` are the staff top-up script's, and only the
+script's: the rules refuse anything but cash or card from a terminal. Nobody paid
+for a comp, so recording it as cash would put money in the end-of-night count
+that nobody can produce. `grant` names the run that wrote it, and the ledger id
+is derived from the same label — which is what stops a second run crediting the
+crew twice. See `docs/staff-credit.md`.
 
 **The document id is the idempotency key.** The client generates a UUID per
 attempt and writes to that id. When iteration 3's offline queue replays a write
