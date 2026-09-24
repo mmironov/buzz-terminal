@@ -56,6 +56,7 @@ participants/tkt-10432
   country:       "France"          // the Sheet asks for a country, not a city
   level:         "Advanced"        // DANCE level, one word. NOT a permission.
   admission:     "" | "staff" | "guest"   // how they got in. ALSO not a permission.
+  evening:       "" | "saturday"          // set when the Sheet sold one night
   importedAt:    <timestamp>
   rosterHash:    "9f2c…"            // skip the write when the row is unchanged
 
@@ -81,6 +82,13 @@ Notes on specific fields:
   The job after the dash (Musician, Reception, Barman) is deliberately **not**
   imported: two of those are the names of the app's own roles, and `StaffRole`
   comes from a custom claim and nowhere else. See `docs/staff-credit.md`.
+
+- **`evening`** is not only the door's. A Sheet row reading "Saturday Evening -
+  0 € (Guest list)" or "Saturday Party - 50 €" is one night, so the importer
+  normalises the pass type to `Evening Ticket` and records the night — which is
+  what gives those people a wristband colour, since the colour lookup asks the
+  night before it asks the pass type. They keep `source: "sheet"` and have no
+  `eveningNumber`: that counter belongs to the door's own numbered tickets.
 
 - **`balance` is an integer of cents.** Same reason as `ios/BuzzTerminal/Domain/Money.swift`:
   `0.1 + 0.2 != 0.3` in binary floating point, and Firestore numbers are doubles.

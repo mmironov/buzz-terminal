@@ -38,6 +38,30 @@ bracket as a category. Two rules earn their place:
   the Sheet, twice, with no closing bracket. A plain `\(([^)]*)\)` misses both,
   and the first anybody would hear of it is two DJs who were not topped up.
 
+## A single night, whatever the Sheet calls it
+
+Most of the guest list came for one night, and the Sheet spells that two ways at
+the same price — "Saturday Evening - 50 €" and "Saturday Party - 50 €". Both
+normalise to the `Evening Ticket` pass type with the night recorded:
+
+```
+Saturday Evening - 0 € (Guest list)  →  ticketType "Evening Ticket", evening "saturday"
+```
+
+That is not tidying. The wristband colour lookup asks the **night** before it
+asks the pass type, so before this those six people had no colour at all, and
+the reception screen showed them the raw Sheet string — bracket, price and all.
+Now they get Saturday's black wristband like anybody else who came on Saturday.
+
+**Thursday is deliberately left out.** There is one "Thursday Party - 15 €" row,
+and the festival's evenings are Friday, Saturday and Sunday in both apps, the
+colours, the door flow and `firestore.rules`. A parser must not mint a fourth
+night; it stays an unrecognised pass type, which every import reports.
+
+The weekday has to come first, too: a **Party Pass** is every night of the
+festival, and reading it as one night would hand a weekend guest an evening
+ticket's colour.
+
 ## What is deliberately not imported
 
 The job after the dash: Musician, Main Teacher, Barman, Reception, DJ, Venue.
@@ -139,10 +163,17 @@ before thirty people get 2000 € each.
 
 ## Verified
 
-- **17 unit tests** on the marking and the plan, including: the unclosed bracket
+- **23 unit tests** on the marking and the plan, including: the unclosed bracket
   in the real Sheet, a pricing bracket that must not count, the guest list not
-  being staff, a named id that is not staff, a blocked account, and the one that
-  matters — the same label credits nobody twice.
+  being staff, a named id that is not staff, a blocked account, a Party Pass
+  that must not be read as a single night, and the one that matters — the same
+  label credits nobody twice.
+- **Applied to production**, 2026-09-24: 159 participants, **42 staff**, **7 on
+  the guest list**, and six of those seven now holding a Saturday evening ticket
+  with a colour behind it. The counts reconcile with the Sheet's own, which is
+  what proves the two unclosed brackets were caught. No unrecognised pass types
+  are left. Balances, wristbands and check-ins were untouched, including the
+  three people who had been testing on the real app that morning.
 - **End to end against the emulator**, 2026-09-24. Five people, three of them
   staff: `--all` credited two and skipped the blocked one; a second identical run
   credited nobody and said why; `--id` with a different label added 12.50 € to

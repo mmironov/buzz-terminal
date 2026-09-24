@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normaliseAdmission, bracketedNotes, toRosterFields } from './mapping.mjs';
+import {
+  bracketedNotes,
+  normaliseAdmission,
+  normaliseEvening,
+  normaliseTicketType,
+  toRosterFields,
+} from './mapping.mjs';
 import {
   COMP_METHOD,
   ledgerEntry,
@@ -72,6 +78,66 @@ test('the marking rides on the roster fields, so a re-import maintains it', () =
 test('somebody who simply bought a ticket is marked as nothing', () => {
   const fields = toRosterFields({ ticketRef: '43', name: 'Someone', ticketType: 'Party Pass - 120 €' });
   assert.equal(fields.admission, '');
+});
+
+// ── A single night ─────────────────────────────────────────────────────────
+
+test('an evening pass becomes an evening ticket, on its night', () => {
+  // These used to be kept verbatim, because "Saturday Evening" starts with none
+  // of the canonical pass types. Six guest-list people had "Saturday Evening -
+  // 0 € (Guest list)" on the reception screen — price, bracket and all — and no
+  // wristband colour, because the colour lookup asks the night first and their
+  // night was empty.
+  assert.equal(normaliseTicketType('Saturday Evening - 0 € (Guest list)'), 'Evening Ticket');
+  assert.equal(normaliseEvening('Saturday Evening - 0 € (Guest list)'), 'saturday');
+  assert.equal(normaliseEvening('Friday Evening - 45 €'), 'friday');
+  assert.equal(normaliseEvening('Sunday Evening'), 'sunday');
+});
+
+test('the Sheet sells the same night under two names', () => {
+  // "Saturday Evening - 50 €" and "Saturday Party - 50 €" are both in there, at
+  // the same price. One product, two spellings, and the person on the door
+  // cannot tell them apart either.
+  assert.equal(normaliseEvening('Saturday Party - 50 €'), 'saturday');
+  assert.equal(normaliseEvening('Friday Party - 45 €'), 'friday');
+  assert.equal(normaliseTicketType('Saturday Party - 50 €'), 'Evening Ticket');
+});
+
+test('THE ONE THAT WOULD BITE: a Party Pass is not a single night', () => {
+  // A Party Pass is every night of the festival. Reading it as one — because
+  // the word "party" is in it — would give a weekend guest an evening ticket's
+  // wristband colour and a door that only opens once.
+  assert.equal(normaliseEvening('Party Pass - 120 €'), '');
+  assert.equal(normaliseEvening('Party Pass Plus - 155 €'), '');
+  assert.equal(normaliseTicketType('Party Pass Plus - 155 €'), 'Party Pass Plus');
+  assert.equal(normaliseEvening('Full Pass - 205 € (Upgrade from Party - 135€ + 70€)'), '');
+});
+
+test('Thursday stays unrecognised rather than inventing a fourth night', () => {
+  // There is one "Thursday Party - 15 €" row. The festival's evenings are
+  // Friday, Saturday and Sunday in both apps, the wristband colours, the
+  // door-sale flow and firestore.rules — so a parser must not mint a fourth.
+  // It stays verbatim, and every import reports it.
+  assert.equal(normaliseEvening('Thursday Party - 15 €'), '');
+  assert.equal(normaliseTicketType('Thursday Party - 15 €'), 'Thursday Party - 15 €');
+});
+
+test('a night and the guest list travel together', () => {
+  const fields = toRosterFields({
+    ticketRef: '300',
+    name: 'Somebody',
+    ticketType: 'Saturday Evening - 0 € (Guest list)',
+  });
+  assert.equal(fields.ticketType, 'Evening Ticket');
+  assert.equal(fields.evening, 'saturday');
+  assert.equal(fields.admission, 'guest');
+  // And the price in the Sheet stays in the Sheet, as with every other pass.
+  assert.equal(fields.ticketType.includes('€'), false);
+});
+
+test('everybody else has no night at all', () => {
+  const fields = toRosterFields({ ticketRef: '301', name: 'Someone', ticketType: 'Full Pass - 205 €' });
+  assert.equal(fields.evening, '');
 });
 
 // ── Planning a top-up ──────────────────────────────────────────────────────

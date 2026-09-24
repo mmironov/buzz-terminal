@@ -126,6 +126,12 @@ export const CANONICAL_PASS_TYPES = [
 export function normaliseTicketType(raw) {
   const value = String(raw ?? '').trim();
   if (!value) return '';
+  // A single night is an evening ticket, whatever the Sheet calls it. Checked
+  // first because "Saturday Evening" starts with none of the canonical types
+  // and would otherwise be kept verbatim — which is what it did, and it put
+  // "Saturday Evening - 0 € (Guest list)" on the reception screen, price and
+  // all, with no wristband colour behind it.
+  if (normaliseEvening(value)) return 'Evening Ticket';
   const lower = value.toLowerCase();
   const byLongest = [...CANONICAL_PASS_TYPES].sort((a, b) => b.length - a.length);
   for (const canonical of byLongest) {
@@ -136,6 +142,43 @@ export function normaliseTicketType(raw) {
 
 export function isCanonicalPassType(value) {
   return CANONICAL_PASS_TYPES.includes(value);
+}
+
+// ── Single nights ──────────────────────────────────────────────────────────
+
+/**
+ * The three nights the festival sells, spelled as the apps and the rules spell
+ * them. There is no Thursday here, and that is not an oversight — see below.
+ */
+export const EVENINGS = ['friday', 'saturday', 'sunday'];
+
+/**
+ * Which night a single-evening pass is for, or `''`.
+ *
+ * The Sheet sells the same thing under two names, at the same price:
+ *
+ *     "Saturday Evening - 50 €"      "Saturday Party - 50 €"
+ *     "Friday Evening - 45 €"        "Friday Party - 45 €"
+ *     "Saturday Evening - 0 € (Guest list)"
+ *
+ * Both are matched, because the two spellings are one product and the person
+ * on the door cannot tell them apart either. The weekday has to come first, so
+ * "Party Pass" — which is a full weekend of parties — cannot be read as a
+ * single night.
+ *
+ * **Thursday is deliberately not here.** The Sheet has one "Thursday Party -
+ * 15 €" row, and the festival's evenings are Friday, Saturday and Sunday
+ * everywhere else: the `Evening` enum in both apps, the wristband colours, the
+ * door-sale flow, and `firestore.rules`. Inventing a fourth would be a
+ * three-codebase change made by a parser. It stays an unrecognised pass type,
+ * which the import reports on every run — visible, rather than guessed at.
+ */
+export function normaliseEvening(rawPassType) {
+  const match = String(rawPassType ?? '')
+    .trim()
+    .toLowerCase()
+    .match(/^(friday|saturday|sunday)\s+(evening|party)\b/);
+  return match ? match[1] : '';
 }
 
 // ── Staff and the guest list ───────────────────────────────────────────────
@@ -304,6 +347,10 @@ export function toRosterFields(row) {
     // Staff and the guest list, read out of the same column's bracket. Empty
     // for everybody who simply bought a ticket, which is most people.
     admission: normaliseAdmission(row.ticketType),
+    // Which night, for a single-evening pass. Empty for everybody else, and it
+    // is what gives these people a wristband colour: the colour lookup asks the
+    // night first, ahead of the pass type, in both apps and in the panel.
+    evening: normaliseEvening(row.ticketType),
   };
 }
 
@@ -501,6 +548,7 @@ export const IMPORT_OWNED_FIELDS = [
   'country',
   'level',
   'admission',
+  'evening',
   'rosterHash',
   'importedAt',
 ];
