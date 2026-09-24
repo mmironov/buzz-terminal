@@ -251,6 +251,23 @@ async function cmdImport() {
     console.log('');
   }
 
+  // Staff and the guest list, read out of the Pass Type bracket. Printed
+  // because it is a count somebody knows the answer to — an organiser reading
+  // "11 staff" when they hired 13 has found a Sheet row with a typo in the
+  // bracket, and this is the only place that would ever say so.
+  const admissions = new Map();
+  for (const op of [...plan.creates, ...plan.updates]) {
+    const admission = op.data.admission;
+    if (admission) admissions.set(admission, (admissions.get(admission) ?? 0) + 1);
+  }
+  if (admissions.size) {
+    console.log(`  Marked from the Pass Type bracket:`);
+    for (const [admission, count] of [...admissions].sort((a, b) => b[1] - a[1])) {
+      console.log(`      ${String(count).padStart(3)}  ${admission}`);
+    }
+    console.log('');
+  }
+
   console.log(`  create     ${plan.creates.length}`);
   console.log(`  update     ${plan.updates.length}   (roster fields only)`);
   console.log(`  unchanged  ${plan.unchanged.length}`);
@@ -434,6 +451,105 @@ async function cmdSeedPasses() {
   console.log(`\n✔ ${written} door passes written. Prices are edited in the admin panel from now on.\n`);
 }
 
+async function cmdTopUp() {
+  requireProject();
+  requireKeyFile();
+
+  const { initAdmin } = await cloud();
+  const admin = (await import('firebase-admin')).default;
+  const {
+    planTopUps, executeTopUps, findAlreadyCredited, parseAmount, toLabel, COMP_METHOD,
+  } = await import('./topup.mjs');
+  const { checkConfirmation } = await import('./reset.mjs');
+
+  const amount = parseAmount(option('amount'));
+  const label = toLabel(option('label'));
+  const only = option('id');
+  const target = only ? { id: only } : { all: true };
+  if (!only && !flag('all')) {
+    fail(
+      'Say who this is for:\n' +
+        '    npm run topup -- --amount=20 --all          every staff member\n' +
+        '    npm run topup -- --amount=20 --id=tkt-123   one of them'
+    );
+  }
+
+  const app = initAdmin(config);
+  const db = app.firestore();
+
+  const snapshot = await db.collection('participants').get();
+  const participants = snapshot.docs.map((d) => ({ id: d.id, data: d.data() }));
+  const staff = participants.filter(({ data }) => data.admission === 'staff');
+
+  const euro = (cents) => (cents / 100).toFixed(2) + ' €';
+
+  // Asked before the plan is printed, so a dry run says "already done" rather
+  // than promising to credit everybody a second time.
+  const alreadyCredited = await findAlreadyCredited(db, {
+    participants: only ? participants.filter(({ id }) => id === only) : staff,
+    label,
+  });
+
+  let plan;
+  try {
+    plan = planTopUps({ participants, amount, target, label, alreadyCredited });
+  } catch (error) {
+    fail(error.message);
+  }
+
+  console.log(`\nProject: ${config.projectId}    run: "${plan.label}"`);
+  console.log(`\n  staff on the roster   ${staff.length}`);
+  console.log(`  to credit             ${plan.credits.length} × ${euro(amount)} = ${euro(plan.total)}`);
+
+  for (const credit of plan.credits) {
+    console.log(
+      `    ${credit.name.padEnd(28)} ${euro(credit.balanceBefore)} → ${euro(credit.balanceAfter)}   ${credit.id}`
+    );
+  }
+  if (plan.skipped.length) {
+    // Only worth printing for a targeted run, or when somebody staff-ish was
+    // passed over — "not staff" for the other hundred people is noise.
+    const notable = plan.skipped.filter((s) => s.reason !== 'not staff' || only);
+    if (notable.length) {
+      console.log(`\n  skipped:`);
+      for (const skip of notable) console.log(`    ${skip.name.padEnd(28)} ${skip.reason}`);
+    }
+  }
+
+  if (!plan.credits.length) {
+    console.log(`\n✔ Nothing to do.\n`);
+    return;
+  }
+
+  console.log(`\n  Each one gets a ledger entry (type topup, method ${COMP_METHOD}) beside the balance,`);
+  console.log(`  exactly like a top-up taken at the desk. Re-running with the same`);
+  console.log(`  --label credits nobody twice.`);
+
+  const refusal = checkConfirmation({ apply: config.apply, confirm: option('confirm'), projectId: config.projectId });
+  if (refusal) fail(refusal);
+
+  if (!config.apply) {
+    console.log(`\nDry run. No money moved.\n`);
+    console.log(`To go ahead:  npm run topup -- --amount=${(amount / 100).toFixed(2)} ${only ? `--id=${only}` : '--all'} --label=${plan.label} --apply --confirm=${config.projectId}\n`);
+    return;
+  }
+
+  console.log(`\nCrediting…`);
+  const results = await executeTopUps(db, plan, {
+    serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  console.log(`\n✔ ${results.credited} credited, ${euro(results.cents)} in total.`);
+  if (results.failures.length) {
+    console.log(`\n✖ ${results.failures.length} did not go through:`);
+    for (const failure of results.failures) {
+      console.log(`    ${failure.name.padEnd(28)} ${failure.reason}`);
+    }
+    console.log(`\n  Re-run the same command — the ones that worked are skipped.`);
+  }
+  console.log();
+}
+
 async function cmdReset() {
   requireProject();
   requireKeyFile();
@@ -533,9 +649,18 @@ Swing Buzz roster importer
   npm run set-role -- <email> <role> --apply      commit it
   npm run seed-drinks -- --apply                  write the menu's first three
   npm run seed-passes -- --apply                  write the door-sale catalogue
+  npm run topup -- --amount=20 --all              dry run: credit every staff member
+  npm run topup -- --amount=20 --id=<id>          dry run: credit one of them
+  npm run topup -- --amount=20 --all --apply --confirm=<project>
   npm run reset                                   dry run: what a wipe would remove
   npm run reset -- --apply --confirm=<project>    WIPE the operational data
   npm test                                        unit-test the diff logic
+
+Topping up staff (money — see docs/staff-credit.md):
+  --amount=<euros>   20, or 12.50. Required.
+  --all / --id=<id>  everybody marked staff, or one person. Required.
+  --label=<name>     names the run; today's date by default. The same label
+                     credits nobody twice, so a repeated run is safe.
 
 Reset scopes (--scope=, default test-data):
   test-data   bracelets, ledger, balances, check-ins, door-sold evening tickets.
@@ -560,6 +685,7 @@ const commands = {
   'seed-drinks': cmdSeedDrinks,
   'seed-passes': cmdSeedPasses,
   reset: cmdReset,
+  topup: cmdTopUp,
 };
 
 const run = commands[command];

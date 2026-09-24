@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { db } from './firebase';
 import {
   COLLECTIONS,
-  PAYMENT_METHOD_LABELS,
+  LEDGER_METHOD_LABELS,
   euros,
   shortTime,
   toTransaction,
@@ -87,7 +87,8 @@ export function History({ participant }: { participant: Participant }) {
                   // they should have refused — worth seeing when the cash box
                   // is counted, rather than rendered as an unremarkable blank.
                   <p className="lines">
-                    {entry.method ? PAYMENT_METHOD_LABELS[entry.method] : 'Method not recorded'}
+                    {entry.method ? LEDGER_METHOD_LABELS[entry.method] : 'Method not recorded'}
+                    {entry.grant ? ` · ${entry.grant}` : ''}
                   </p>
                 ) : (
                   <Lines entry={entry} />

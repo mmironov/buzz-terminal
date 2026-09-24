@@ -11,6 +11,7 @@
     "seed-drinks": "node index.mjs seed-drinks",
     "seed-passes": "node index.mjs seed-passes",
     "reset": "node index.mjs reset",
+    "topup": "node index.mjs topup",
     "test": "node --test"
   },
   "dependencies": {

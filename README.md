@@ -177,6 +177,22 @@ Only `Status = paid` is imported, and only roster fields. Balances, bracelets an
 check-in state belong to the terminals and are never touched, so re-importing
 mid-festival cannot clobber somebody who has already checked in.
 
+### Staff drinks
+
+The Sheet marks staff and the guest list in the `Pass Type` bracket — "Full Pass
+- 0 € (Staff member - Musician)" — so the import reads it into `admission` on the
+participant, and the panel shows it beside the pass. Staff drink on the festival,
+so their accounts get credited before doors:
+
+```bash
+cd backend/import-roster && npm run topup -- --amount=20 --all
+```
+
+A dry run: who, from what balance to what, and who is passed over. `--apply
+--confirm=swing-buzz` commits it; `--id=<participant>` does one person. Every run
+has a label (today's date by default) and the ledger id is derived from it, so
+running it twice credits nobody twice. See `docs/staff-credit.md`.
+
 ### Testing on the live project, then starting clean
 
 Testing against production is the only way to prove the real thing works, and it
