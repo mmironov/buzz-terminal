@@ -453,6 +453,15 @@ with the client SDK and sends exactly the batches the two apps send, so every wr
 goes through the rules and a wrong shape fails loudly. Full runbook, including
 `npm run deploy` to Firebase Hosting, in `web-admin/README.md`.
 
+## What is left behind the bar
+
+The organiser panel's **Stock** tab: what was in the store, what has been poured,
+what is left. Nothing new is recorded by the terminals — the bar has always
+written what it sold, itemised and timestamped, so the only new facts are the
+store's opening levels and a recipe per drink saying what a serving takes out of
+it. Everything else is arithmetic, which means next year's by-night and by-hour
+numbers can be computed from data being written tonight. See `docs/stock.md`.
+
 ## Tests
 
 Four runners, **341 tests**, all green: 102 iOS, 85 Android, 94 rules, 60 importer.

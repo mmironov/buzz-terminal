@@ -480,6 +480,32 @@ Organiser-only, append-only. Written in the same batch that detaches the
 participant and deletes the chip; the rules check it against the pairing it
 records. See `docs/lost-bracelets.md`.
 
+## `stock/{stockId}` and `stock/{stockId}/movements/{movementId}`
+
+What is behind the bar, in **millilitres as integers** — the same discipline as
+cents, for the same reason. Litres are a screen detail.
+
+```
+stock/gin
+  name:      "Gin"
+  openingMl: 700          // what was there at the start
+  sortOrder: 0
+  isActive:  true
+
+stock/gin/movements/1790248499123
+  deltaMl: 700                      // signed: a delivery, or a recount that found less
+  reason:  "Second bottle opened"
+  at:      <server timestamp>
+  by:      "<uid of the organiser>"
+```
+
+Organisers write both; no terminal writes either, and the bar reads nothing from
+them — it is a planning tool, not a till. Movements are append-only, like the
+ledger: "how did we get to four litres" is a question somebody asks next year.
+
+What has been poured is never stored. It is derived from the charges the bar was
+already writing, against `drinks/{id}.recipe`. See `docs/stock.md`.
+
 ## `settings/bracelets`
 
 One document, for the numbers that are neither a price list nor a person:
@@ -492,6 +518,13 @@ settings/bracelets
 Organisers write it in the panel's Bracelets tab; the terminals read it.
 
 ## `drinks/{drinkId}`
+
+A drink may also carry `recipe`, `{ stockId: millilitres }` — what one serving
+takes out of the store. Optional, and its values are the one shape the rules
+cannot check: rules have no loop and the keys are stock ids nobody knows in
+advance. A drink with no recipe is reported as uncosted rather than counted as
+pouring nothing. See `docs/stock.md`.
+
 
 ```
 drinks/beer

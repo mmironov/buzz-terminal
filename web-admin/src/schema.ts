@@ -22,6 +22,10 @@ export const COLLECTIONS = {
   /** Chip → participant, and the record of the ones that were replaced. */
   bracelets: 'bracelets',
   drinks: 'drinks',
+  /** What is behind the bar, in millilitres. See docs/stock.md. */
+  stock: 'stock',
+  /** Deliveries and recounts, under a stock item. Append-only. */
+  movements: 'movements',
   /** Which colour wristband each pass type gets. One document per pass type. */
   braceletColours: 'braceletColours',
   /** What reception may sell at the desk, and for how much. */
@@ -69,7 +73,29 @@ export const DRINK_FIELDS = {
   price: 'price',
   sortOrder: 'sortOrder',
   isActive: 'isActive',
+  /** `{ stockId: millilitres }` — what one serving takes out of the store. */
+  recipe: 'recipe',
 } as const;
+
+export const STOCK_FIELDS = {
+  name: 'name',
+  /** Millilitres, as an integer. Litres are for the screen only. */
+  openingMl: 'openingMl',
+  sortOrder: 'sortOrder',
+  isActive: 'isActive',
+} as const;
+
+export const STOCK_MOVEMENT_FIELDS = {
+  deltaMl: 'deltaMl',
+  reason: 'reason',
+  at: 'at',
+  by: 'by',
+} as const;
+
+/** A thousand litres, matching the rules' own typo ceiling. */
+export const MAX_STOCK_ML = 1_000_000;
+export const MAX_STOCK_NAME = 60;
+export const MAX_MOVEMENT_REASON = 200;
 
 export const DOOR_PASS_FIELDS = {
   name: 'name',
@@ -317,6 +343,32 @@ export interface Drink {
   price: number;
   sortOrder: number;
   isActive: boolean;
+  /**
+   * What one serving takes out of the store, as `{ stockId: millilitres }`.
+   *
+   * Empty for a drink nobody has costed yet, which is a real state and not the
+   * same as "uses nothing": the stock report says so rather than quietly
+   * counting it as zero.
+   */
+  recipe: Record<string, number>;
+}
+
+/** Something behind the bar, measured in millilitres. */
+export interface StockItem {
+  id: string;
+  name: string;
+  openingMl: number;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+/** A delivery, or a recount. Append-only. */
+export interface StockMovement {
+  id: string;
+  deltaMl: number;
+  reason: string;
+  at: Date | null;
+  by: string;
 }
 
 export interface BraceletColour {
@@ -595,6 +647,52 @@ export function toParticipant(doc: Doc): Participant | null {
   };
 }
 
+/**
+ * `{ stockId: millilitres }`, keeping only what is usable.
+ *
+ * The rules cannot check the values — they have no loop, and the keys are stock
+ * ids nobody knows in advance — so this is where a nonsense entry is dropped: a
+ * float, a negative, a string. Dropping is right rather than rounding, because a
+ * drink that then shows as uncosted is reported on the stock page, where
+ * somebody can see it and fix it.
+ */
+export function toRecipe(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const recipe: Record<string, number> = {};
+  for (const [stockId, amount] of Object.entries(value as Record<string, unknown>)) {
+    const ml = int(amount);
+    if (ml !== null && ml > 0) recipe[stockId] = ml;
+  }
+  return recipe;
+}
+
+export function toStockItem(doc: Doc): StockItem | null {
+  const data = doc.data();
+  const name = data[STOCK_FIELDS.name];
+  const openingMl = int(data[STOCK_FIELDS.openingMl]);
+  if (typeof name !== 'string' || openingMl === null) return null;
+  return {
+    id: doc.id,
+    name,
+    openingMl,
+    sortOrder: int(data[STOCK_FIELDS.sortOrder]) ?? 0,
+    isActive: data[STOCK_FIELDS.isActive] !== false,
+  };
+}
+
+export function toStockMovement(doc: Doc): StockMovement | null {
+  const data = doc.data();
+  const deltaMl = int(data[STOCK_MOVEMENT_FIELDS.deltaMl]);
+  if (deltaMl === null) return null;
+  return {
+    id: doc.id,
+    deltaMl,
+    reason: str(data[STOCK_MOVEMENT_FIELDS.reason]),
+    at: date(data[STOCK_MOVEMENT_FIELDS.at]),
+    by: str(data[STOCK_MOVEMENT_FIELDS.by]),
+  };
+}
+
 export function toDrink(doc: Doc): Drink | null {
   const data = doc.data();
   const name = data[DRINK_FIELDS.name];
@@ -609,6 +707,7 @@ export function toDrink(doc: Doc): Drink | null {
     // Absent means active: the seed script wrote documents without the field
     // before the bar started querying on it.
     isActive: data[DRINK_FIELDS.isActive] !== false,
+    recipe: toRecipe(data[DRINK_FIELDS.recipe]),
   };
 }
 

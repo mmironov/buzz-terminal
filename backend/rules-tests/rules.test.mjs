@@ -1242,6 +1242,27 @@ describe('the drinks menu belongs to the admin panel', () => {
     }
   });
 
+  it('lets a drink say what it takes out of the store', async () => {
+    // Millilitres per serving, keyed by stock id. Optional: a drink nobody has
+    // costed yet simply has none.
+    await assertSucceeds(
+      setDoc(doc(admin(), 'drinks', 'espresso'), drink({ recipe: { gin: 50, tonic: 200 } }))
+    );
+    await assertSucceeds(setDoc(doc(admin(), 'drinks', 'espresso'), drink()));
+  });
+
+  it('bounds the recipe, which is all a rule can do to it', async () => {
+    // Rules have no loop and the keys are stock ids nobody knows in advance, so
+    // "every value is a positive int" cannot be asserted here the way the charge
+    // itemisation is unrolled to eight fixed terms. The size cap is the part
+    // that is enforceable; the panel writes the integers.
+    const tooMany = Object.fromEntries(
+      Array.from({ length: 13 }, (_, i) => [`stock-${i}`, 10])
+    );
+    await assertFails(setDoc(doc(admin(), 'drinks', 'espresso'), drink({ recipe: tooMany })));
+    await assertFails(setDoc(doc(admin(), 'drinks', 'espresso'), drink({ recipe: 'gin' })));
+  });
+
   it('refuses every write from a terminal, still', async () => {
     // This is the rule that used to be `allow write: if false`. The authority
     // moved to the admin panel; it did not widen.
@@ -2328,5 +2349,105 @@ describe('bracelet colours', () => {
     await seed();
     await assertFails(deleteDoc(ref(reception())));
     await assertFails(deleteDoc(ref(bar())));
+  });
+});
+
+
+// ── What is behind the bar ───────────────────────────────────────────────────
+
+describe('reading every ledger at once', () => {
+  it('THE SILENT ONE: the panel can run the collection-group query, and only the panel', async () => {
+    // A nested match does not authorise a collection-group query, and the
+    // failure is invisible — the table simply never appears. That is exactly
+    // how the special-session takings shipped broken once already.
+    await assertSucceeds(getDocs(collectionGroup(admin(), 'transactions')));
+    // Narrower than the per-participant rule on purpose: a terminal may read
+    // the ledger of whoever is in front of it, not everybody's at once.
+    await assertFails(getDocs(collectionGroup(bar(), 'transactions')));
+    await assertFails(getDocs(collectionGroup(reception(), 'transactions')));
+    await assertFails(getDocs(collectionGroup(anonymous(), 'transactions')));
+  });
+
+  it('and every delivery at once, for the stock report', async () => {
+    await assertSucceeds(getDocs(collectionGroup(admin(), 'movements')));
+    await assertFails(getDocs(collectionGroup(bar(), 'movements')));
+    await assertFails(getDocs(collectionGroup(reception(), 'movements')));
+  });
+});
+
+describe('the stock behind the bar', () => {
+  const item = (overrides = {}) => ({
+    name: 'Gin', openingMl: 6000, sortOrder: 0, isActive: true, ...overrides,
+  });
+  const movement = (overrides = {}) => ({
+    deltaMl: 3000, reason: 'A new box carried in', at: serverTimestamp(), by: ADMIN_UID, ...overrides,
+  });
+
+  it('an organiser sets up what is in the store', async () => {
+    await assertSucceeds(setDoc(doc(admin(), 'stock', 'gin'), item()));
+    await assertSucceeds(setDoc(doc(admin(), 'stock', 'gin'), item({ openingMl: 9000 })));
+    await assertSucceeds(deleteDoc(doc(admin(), 'stock', 'gin')));
+  });
+
+  it('refuses a malformed item', async () => {
+    for (const bad of [
+      item({ openingMl: 6.5 }),               // litres as a float — the whole point of ml
+      item({ openingMl: -1 }),
+      item({ openingMl: 1000001 }),           // past the typo ceiling
+      item({ name: '' }),
+      item({ name: 'x'.repeat(61) }),
+      item({ isActive: 'yes' }),
+      { ...item(), supplier: 'Ivan' },        // an extra field
+      { name: 'Gin', openingMl: 6000 },       // missing sortOrder and isActive
+    ]) {
+      await assertFails(setDoc(doc(admin(), 'stock', 'gin'), bad));
+    }
+  });
+
+  it('THE ONE THAT MATTERS: no terminal writes stock, and the bar does not read it to sell', async () => {
+    // It is a planning tool, not a till: the bar's screen must never depend on
+    // it, and a bartender must never be able to change it.
+    await setDoc(doc(admin(), 'stock', 'gin'), item());
+    for (const db of [bar(), reception(), roleless(), anonymous()]) {
+      await assertFails(setDoc(doc(db, 'stock', 'gin'), item()));
+      await assertFails(updateDoc(doc(db, 'stock', 'gin'), { openingMl: 1 }));
+      await assertFails(deleteDoc(doc(db, 'stock', 'gin')));
+    }
+    // Reading is open to staff, the same as the menu and the colours: it costs
+    // nothing and a future screen may want it.
+    await assertSucceeds(getDoc(doc(bar(), 'stock', 'gin')));
+    await assertFails(getDoc(doc(anonymous(), 'stock', 'gin')));
+  });
+
+  it('records a new box, and cannot rewrite one', async () => {
+    await setDoc(doc(admin(), 'stock', 'gin'), item());
+    await assertSucceeds(setDoc(doc(admin(), 'stock/gin/movements', 'm1'), movement()));
+    // Append-only, like the ledger: "how did we get to four litres" is a
+    // question somebody asks next year.
+    await assertFails(updateDoc(doc(admin(), 'stock/gin/movements', 'm1'), { deltaMl: 9000 }));
+    await assertFails(deleteDoc(doc(admin(), 'stock/gin/movements', 'm1')));
+  });
+
+  it('a recount that found less is a negative movement, and zero is not a movement', async () => {
+    await setDoc(doc(admin(), 'stock', 'gin'), item());
+    await assertSucceeds(
+      setDoc(doc(admin(), 'stock/gin/movements', 'm2'), movement({ deltaMl: -400, reason: 'Recount at 2am' }))
+    );
+    await assertFails(setDoc(doc(admin(), 'stock/gin/movements', 'm3'), movement({ deltaMl: 0 })));
+    await assertFails(setDoc(doc(admin(), 'stock/gin/movements', 'm4'), movement({ deltaMl: 500.5 })));
+    await assertFails(setDoc(doc(admin(), 'stock/gin/movements', 'm5'), movement({ reason: '' })));
+  });
+
+  it('a movement carries the server clock and the organiser who made it', async () => {
+    await setDoc(doc(admin(), 'stock', 'gin'), item());
+    await assertFails(
+      setDoc(doc(admin(), 'stock/gin/movements', 'm6'), movement({ at: new Date('2020-01-01') }))
+    );
+    await assertFails(
+      setDoc(doc(admin(), 'stock/gin/movements', 'm7'), movement({ by: 'uid-somebody-else' }))
+    );
+    for (const db of [bar(), reception()]) {
+      await assertFails(setDoc(doc(db, 'stock/gin/movements', 'm8'), movement({ by: 'uid-bar' })));
+    }
   });
 });

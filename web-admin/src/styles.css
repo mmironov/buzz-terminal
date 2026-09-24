@@ -733,3 +733,24 @@ select {
   width: 100%;
   min-width: 0;
 }
+
+/* ── A drink's recipe: millilitres per serving, one line per stock item ─────── */
+
+.recipe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 15rem;
+}
+
+.recipe__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--ink-70);
+}
+
+.recipe__line input {
+  width: 4.5rem;
+}

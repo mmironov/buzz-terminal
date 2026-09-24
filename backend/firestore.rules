@@ -931,9 +931,21 @@ service cloud.firestore {
 
       function isWellFormedDrink() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['name', 'price', 'sortOrder', 'isActive'])
+        return d.keys().hasOnly(['name', 'price', 'sortOrder', 'isActive', 'recipe'])
           && d.keys().hasAll(['name', 'price', 'sortOrder', 'isActive'])
           && d.name is string && d.name.size() > 0 && d.name.size() <= 60
+          // What one serving takes out of the store, as `{stockId: millilitres}`.
+          // Optional: a drink nobody has costed yet simply has none, and the
+          // panel reports it rather than assuming zero.
+          //
+          // **The values are not checked here, and cannot be.** Rules have no
+          // loop, and the keys are stock ids nobody knows in advance, so there
+          // is no way to assert "every value is a positive int" the way the
+          // charge itemisation is unrolled to eight fixed terms. The size cap
+          // is what a rule can do; the panel writes integers and the stock
+          // report shows what it read, so a bad number is visible rather than
+          // silently wrong.
+          && (!d.keys().hasAny(['recipe']) || (d.recipe is map && d.recipe.keys().size() <= 12))
           // Cents, never a float — the same integer discipline as `balance`.
           // Zero is a legitimate price; the ceiling is a typo bound, not a
           // policy, and 1000 € is well clear of any real drink.
@@ -1020,6 +1032,56 @@ service cloud.firestore {
     // Same ownership as every other price list: organisers write, terminals
     // read. Reception rather than everybody, because the bar neither shows the
     // classes nor sells them.
+    // ── What is behind the bar ───────────────────────────────────────────
+    //
+    // Bottles, kegs and cartons, in MILLILITRES as integers — the same
+    // discipline as cents for money, and for the same reason: 0.1 + 0.2 is not
+    // 0.3 in a double, and a stock level that drifts is worse than none.
+    //
+    // Nothing here is money and no terminal writes it: an organiser sets it up
+    // in the panel, and what has been drunk is derived from the ledger the bar
+    // was already writing. The bar reads nothing from this collection — it is a
+    // planning tool, not a till.
+    match /stock/{stockId} {
+      allow read: if canRead();
+      allow create, update: if isAdmin() && isWellFormedStock();
+      allow delete: if isAdmin();
+
+      function isWellFormedStock() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['name', 'openingMl', 'sortOrder', 'isActive'])
+          && d.keys().hasAll(['name', 'openingMl', 'sortOrder', 'isActive'])
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 60
+          // A thousand litres is a typo bound, not a policy — the festival's
+          // beer is measured in dozens of litres, not thousands.
+          && d.openingMl is int && d.openingMl >= 0 && d.openingMl <= 1000000
+          && d.sortOrder is int && d.sortOrder >= 0
+          && d.isActive is bool;
+      }
+
+      // Every change to the level after opening: a new box carried in, or a
+      // recount at 2am. Append-only, like the ledger, and for the same reason —
+      // "how did we get to 4 litres" is a question somebody asks next year.
+      match /movements/{movementId} {
+        allow read: if canRead();
+        allow create: if isAdmin() && isWellFormedMovement();
+        allow update, delete: if false;
+
+        function isWellFormedMovement() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['deltaMl', 'reason', 'at', 'by'])
+            && d.keys().hasAll(['deltaMl', 'reason', 'at', 'by'])
+            // Signed: a delivery is positive, a recount that found less is
+            // negative. Zero would be a movement that moved nothing.
+            && d.deltaMl is int && d.deltaMl != 0
+            && d.deltaMl >= -1000000 && d.deltaMl <= 1000000
+            && d.reason is string && d.reason.size() > 0 && d.reason.size() <= 200
+            && d.at == request.time
+            && d.by == request.auth.uid;
+        }
+      }
+    }
+
     match /specialSessions/{sessionId} {
       allow read: if isReception();
       allow create, update: if isAdmin() && isWellFormedSession();
@@ -1052,6 +1114,26 @@ service cloud.firestore {
     // under the person who bought it.
     match /{path=**}/sessions/{sessionId} {
       allow read: if isReception();
+    }
+
+    // ── Every charge ever written, for the stock report ──────────────────
+    //
+    // The panel works out what is left behind the bar by adding up what was
+    // sold, which means reading every participant's ledger at once. Same
+    // Firestore quirk as the classes above: the nested rule does not authorise
+    // a collection-group query, so this exists for that query alone.
+    //
+    // **Organisers only** — narrower than the per-participant rule, which lets
+    // a terminal read the ledger of whoever is standing in front of it. One
+    // guest's round is the bar's business; everybody's, at once, is not.
+    match /{path=**}/transactions/{transactionId} {
+      allow read: if isAdmin();
+    }
+
+    // Every delivery and recount at once, so the stock report can add them up
+    // without one listener per bottle. Organisers only, like the store itself.
+    match /{path=**}/movements/{movementId} {
+      allow read: if isAdmin();
     }
 
     // ── Bracelet colours ─────────────────────────────────────────────────

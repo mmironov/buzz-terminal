@@ -15,13 +15,17 @@ import { db } from './firebase';
 import {
   COLLECTIONS,
   DRINK_FIELDS,
+  STOCK_FIELDS,
   MAX_DRINK_NAME,
   MAX_DRINK_PRICE,
   parseEuros,
   slugify,
   toDrink,
+  toStockItem,
   type Drink,
+  type StockItem,
 } from './schema';
+import { litres } from './inventory';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  The drinks menu.
@@ -42,7 +46,17 @@ import {
 
 export function Bar() {
   const [drinks, setDrinks] = useState<Drink[] | null>(null);
+  const [stock, setStock] = useState<StockItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // What is behind the bar, so a drink can say what it takes out of it. Read
+    // here rather than passed down: the Stock tab may never have been opened.
+    const store = query(collection(db, COLLECTIONS.stock), orderBy(STOCK_FIELDS.sortOrder));
+    return onSnapshot(store, (snapshot) =>
+      setStock(snapshot.docs.flatMap((entry) => toStockItem(entry) ?? []))
+    );
+  }, []);
 
   useEffect(() => {
     // Every drink, active or not — the bar's query filters, this one must not.
@@ -93,6 +107,7 @@ export function Bar() {
             <tr>
               <th>Drink</th>
               <th className="num">Price</th>
+              <th>Uses</th>
               <th>On the menu</th>
               <th>Order</th>
               <th />
@@ -107,6 +122,7 @@ export function Bar() {
                 isLast={index === drinks.length - 1}
                 neighbour={index === 0 ? drinks[1] : drinks[index - 1]}
                 nextNeighbour={drinks[index + 1]}
+                stock={stock}
                 onError={setError}
               />
             ))}
@@ -131,6 +147,7 @@ function DrinkRow({
   isLast,
   neighbour,
   nextNeighbour,
+  stock,
   onError,
 }: {
   drink: Drink;
@@ -138,6 +155,7 @@ function DrinkRow({
   isLast: boolean;
   neighbour: Drink | undefined;
   nextNeighbour: Drink | undefined;
+  stock: StockItem[];
   onError: (message: string) => void;
 }) {
   const [name, setName] = useState(drink.name);
@@ -191,6 +209,9 @@ function DrinkRow({
           onChange={(event) => setPrice(event.target.value)}
         />
         {priceOK ? null : <div className="field__hint field__hint--bad">Not a price</div>}
+      </td>
+      <td>
+        <Recipe drink={drink} stock={stock} onError={onError} />
       </td>
       <td>
         {drink.isActive ? (
@@ -391,4 +412,113 @@ async function swapOrder(a: Drink, b: Drink): Promise<void> {
 /** 450 → `"4.50"`, for an editable field. */
 function centsToInput(cents: number): string {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+}
+
+/**
+ * What one serving takes out of the store.
+ *
+ * Typed in millilitres rather than litres: a gin and tonic is 50 ml of gin, and
+ * "0.05" is a number nobody wants to type forty times on a Friday. The store
+ * itself is entered in litres, because that is how a keg arrives — the two units
+ * meet here, and both become integer millilitres before anything is written.
+ *
+ * A drink with no recipe is a real state, not a zero: the Stock tab lists what
+ * sold uncosted rather than quietly pretending those drinks poured nothing.
+ */
+function Recipe({
+  drink,
+  stock,
+  onError,
+}: {
+  drink: Drink;
+  stock: StockItem[];
+  onError: (message: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  const summary = Object.entries(drink.recipe)
+    .map(([stockId, ml]) => {
+      const item = stock.find((entry) => entry.id === stockId);
+      return `${litres(ml)} ${item?.name ?? stockId}`;
+    })
+    .join(' · ');
+
+  if (stock.length === 0) {
+    return <span className="sub">Nothing in the store yet</span>;
+  }
+
+  if (!editing) {
+    return (
+      <div className="actions">
+        <span className={summary ? 'sub' : 'field__hint'}>{summary || 'Not costed'}</span>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => {
+            setDraft(
+              Object.fromEntries(
+                stock.map((item) => [item.id, drink.recipe[item.id] ? String(drink.recipe[item.id]) : ''])
+              )
+            );
+            setEditing(true);
+          }}
+        >
+          {summary ? 'Edit' : 'Cost it'}
+        </button>
+      </div>
+    );
+  }
+
+  const parsed: Record<string, number> = {};
+  let bad = false;
+  for (const [stockId, value] of Object.entries(draft)) {
+    const text = value.trim();
+    if (!text) continue;
+    const ml = Number(text);
+    if (!Number.isInteger(ml) || ml <= 0) {
+      bad = true;
+      continue;
+    }
+    parsed[stockId] = ml;
+  }
+
+  async function save() {
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, COLLECTIONS.drinks, drink.id), { [DRINK_FIELDS.recipe]: parsed });
+      setEditing(false);
+    } catch (cause) {
+      onError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="recipe">
+      {stock.map((item) => (
+        <label className="recipe__line" key={item.id}>
+          <input
+            aria-label={`Millilitres of ${item.name} in ${drink.name}`}
+            className="price"
+            inputMode="numeric"
+            placeholder="0"
+            value={draft[item.id] ?? ''}
+            onChange={(event) => setDraft({ ...draft, [item.id]: event.target.value })}
+          />
+          <span>ml {item.name}</span>
+        </label>
+      ))}
+      <div className="actions">
+        <button className="btn btn--primary" type="button" disabled={busy || bad} onClick={save}>
+          {bad ? 'Whole millilitres' : 'Save'}
+        </button>
+        <button className="btn btn--ghost" type="button" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }

@@ -5,11 +5,12 @@ import { Bracelets } from './Bracelets';
 import { Participants } from './Participants';
 import { Passes } from './Passes';
 import { Sessions } from './Sessions';
+import { Stock } from './Stock';
 import { SignIn } from './SignIn';
 import { usingEmulator } from './firebase';
 import { useAuth } from './useAuth';
 
-type Tab = 'participants' | 'bar' | 'bracelets' | 'passes' | 'sessions';
+type Tab = 'participants' | 'bar' | 'stock' | 'bracelets' | 'passes' | 'sessions';
 
 export function App() {
   const { state, signIn, leave } = useAuth();
@@ -100,6 +101,14 @@ export function App() {
         <button
           className="tab"
           role="tab"
+          aria-selected={tab === 'stock'}
+          onClick={() => setTab('stock')}
+        >
+          Stock
+        </button>
+        <button
+          className="tab"
+          role="tab"
           aria-selected={tab === 'bracelets'}
           onClick={() => setTab('bracelets')}
         >
@@ -126,6 +135,7 @@ export function App() {
       <main className="page">
         {tab === 'participants' ? <Participants uid={state.uid} /> : null}
         {tab === 'bar' ? <Bar /> : null}
+        {tab === 'stock' ? <Stock uid={state.uid} /> : null}
         {tab === 'bracelets' ? <Bracelets /> : null}
         {tab === 'passes' ? <Passes /> : null}
         {tab === 'sessions' ? <Sessions /> : null}
