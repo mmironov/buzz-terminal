@@ -12,6 +12,12 @@ import SwiftUI
 struct AssignEveningTicketView: View {
     @Environment(AppModel.self) private var model
 
+    /// The form scrolls and the action does not — because this screen has a
+    /// text field, and a keyboard takes more than a third of the phone.
+    ///
+    /// Without that it did not shrink, it **moved**: the whole app slid up, its
+    /// own header landing on top of the status bar, and the confirm button went
+    /// behind the keyboard where no amount of tapping would find it.
     var body: some View {
         @Bindable var model = model
         return VStack(alignment: .leading, spacing: 0) {
@@ -33,6 +39,8 @@ struct AssignEveningTicketView: View {
             SBDivider()
                 .padding(.vertical, 14)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
             SBTextField(
                 label: "Name",
                 placeholder: "As they say it",
@@ -88,8 +96,10 @@ struct AssignEveningTicketView: View {
                 .sbLineHeight(1.5, size: 11.5)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, SBSpace.x4)
-
-            Spacer(minLength: SBSpace.x4)
+                }
+                .padding(.bottom, SBSpace.x4)
+            }
+            .scrollBounceBehavior(.basedOnSize)
 
             VStack(alignment: .leading, spacing: 0) {
                 SBDivider(weight: SBRule.hairline)

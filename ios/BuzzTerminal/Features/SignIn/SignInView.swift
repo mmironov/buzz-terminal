@@ -11,12 +11,30 @@ struct SignInView: View {
     @State private var showingBatchAudit = false
     #endif
 
+    /// Centred, and scrollable once the keyboard takes a third of the phone.
+    ///
+    /// Without the scroll it did not shrink, it compressed: the title lost half
+    /// of itself to "Staff…", the festival kicker landed on the clock, and on a
+    /// smaller phone the fields being typed into would go with it.
     var body: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                form
+                    .frame(minHeight: proxy.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            // The keyboard is the reason this scrolls, so let a tap outside a
+            // field put it away rather than making somebody find the return key.
+            .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    private var form: some View {
         // The idiom for getting bindings out of an `@Observable` object that
         // arrived through the environment: re-declare it locally as `@Bindable`.
         @Bindable var model = model
 
-        VStack(alignment: .leading, spacing: 0) {
+        return VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 0)
 
             SBKicker(text: model.festivalName, color: .sbAccent, size: 10, tracking: 0.18)
