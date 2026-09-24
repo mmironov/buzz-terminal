@@ -708,6 +708,24 @@ final class AppModel {
     /// almost everybody, and at most one: everybody gets one session.
     private(set) var sessionSale: SessionSale?
 
+    #if DEBUG
+    /// Fill the participant screen's optional sections from fixtures.
+    ///
+    /// These three are `private(set)` because they are answers from the
+    /// backend, and `-sbScreen participant-full` is the one caller that has no
+    /// backend to ask. It lives here rather than in `LaunchOverrides` only
+    /// because a private setter cannot be written from another file.
+    func seedParticipantExtras(
+        merch: MerchOrder?,
+        freeShirt: FreeShirt?,
+        sessions: [SpecialSession]
+    ) {
+        self.merch = merch
+        self.freeShirt = freeShirt
+        self.specialSessions = sessions
+    }
+    #endif
+
     /// Which class the desk has picked, and how it is being paid for, before any
     /// of it is written.
     ///

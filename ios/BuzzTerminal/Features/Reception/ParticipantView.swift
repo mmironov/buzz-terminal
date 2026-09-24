@@ -18,6 +18,19 @@ struct ParticipantView: View {
     private var action: CheckInAction { model.participantAction ?? .scanAndAssign }
     private var isAwaitingCheckIn: Bool { action.isCheckIn }
 
+    /// The way out, the way in, and everything in between — which is the layout
+    /// problem this screen has.
+    ///
+    /// It grew: a balance, preordered merch, a free shirt, a special session,
+    /// and on a replacement a reason and a fee. A staff member with a shirt and
+    /// a class runs past the bottom of the phone, and it used to run **off** it
+    /// — no scroll view anywhere, so the last section and sometimes the button
+    /// simply could not be reached.
+    ///
+    /// So the middle scrolls and the two ends do not. The exit stays under the
+    /// thumb at the top and the one action stays at the bottom, because a
+    /// terminal whose button is somewhere in a scroll offset is a terminal that
+    /// takes two hands at a desk with a queue.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -26,9 +39,29 @@ struct ParticipantView: View {
                 Button(isAwaitingCheckIn ? "Back" : "Done") { model.leaveParticipant() }
                     .buttonStyle(.sbGhost)
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
 
+            ScrollView {
+                scrollingContent
+                    .padding(.horizontal, 18)
+                    .padding(.top, SBSpace.x4)
+                    .padding(.bottom, SBSpace.x4)
+            }
+            // No rubber band on the screens that already fit, which is most of
+            // them: a short screen that bounces reads as though something is
+            // hidden below it.
+            .scrollBounceBehavior(.basedOnSize)
+
+            footer
+                .padding(.horizontal, 18)
+                .padding(.bottom, 20)
+        }
+    }
+
+    private var scrollingContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
             identityCard
-                .padding(.top, SBSpace.x4)
 
             SBDivider()
                 .padding(.vertical, SBSpace.x4)
@@ -115,17 +148,19 @@ struct ParticipantView: View {
                 }
                 .padding(.top, SBSpace.x4)
             }
+        }
+    }
 
-            Spacer(minLength: SBSpace.x4)
-
-            VStack(alignment: .leading, spacing: 0) {
-                SBDivider(weight: SBRule.hairline)
-                Text(footnote)
-                    .font(.sbBody(11.5))
-                    .foregroundStyle(.sbInk(0.55))
-                    .sbLineHeight(1.5, size: 11.5)
-                    .padding(.top, 10)
-            }
+    /// The footnote and the one action, pinned below the scroll.
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SBDivider(weight: SBRule.hairline)
+            Text(footnote)
+                .font(.sbBody(11.5))
+                .foregroundStyle(.sbInk(0.55))
+                .sbLineHeight(1.5, size: 11.5)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
 
             // On a replacement the button says what is still missing rather
             // than sitting there greyed out — the same rule the keypad and the
@@ -136,9 +171,6 @@ struct ParticipantView: View {
                 .disabled(model.isWorking || blocker != nil)
                 .padding(.top, 20)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 20)
     }
 
     /// Preordered merch, and the one thing to do with it.

@@ -18,6 +18,13 @@ struct ReceiptView: View {
         }
     }
 
+    /// The band and the buttons hold still; the itemisation between them
+    /// scrolls.
+    ///
+    /// A round can be eight distinct drinks — the rules' own ceiling — and the
+    /// receipt grows a row per drink, so the tallest one does not fit. It used
+    /// to squeeze the app's header up under the status bar instead of
+    /// scrolling, which is the same bug the participant screen had.
     private func content(_ receipt: Receipt) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             SBBand(
@@ -25,35 +32,44 @@ struct ReceiptView: View {
                 padding: EdgeInsets(top: 14, leading: 22, bottom: 14, trailing: 22)
             )
 
-            VStack(alignment: .leading, spacing: 0) {
-                Text(receipt.title)
-                    .font(.sbDisplay(32))
-                    .tracking(-0.02 * 32)
-                    .sbLineHeight(1.1, size: 32)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(receipt.title)
+                        .font(.sbDisplay(32))
+                        .tracking(-0.02 * 32)
+                        .sbLineHeight(1.1, size: 32)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 6)
 
-                Text(receipt.note)
-                    .font(.sbBody(13.5))
-                    .foregroundStyle(.sbInk(0.65))
-                    .sbLineHeight(1.6, size: 13.5)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text(receipt.note)
+                        .font(.sbBody(13.5))
+                        .foregroundStyle(.sbInk(0.65))
+                        .sbLineHeight(1.6, size: 13.5)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                SBDivider()
-                    .padding(.vertical, SBSpace.x4)
+                    SBDivider()
+                        .padding(.vertical, SBSpace.x4)
 
-                ForEach(receipt.rows) { row in
-                    SBDetailRow(key: row.key, value: row.value)
+                    ForEach(receipt.rows) { row in
+                        SBDetailRow(key: row.key, value: row.value)
+                    }
                 }
+                .padding(.horizontal, 22)
+                .padding(.top, 22)
+                .padding(.bottom, SBSpace.x2)
+            }
+            .scrollBounceBehavior(.basedOnSize)
 
+            // The balance is pinned with the buttons rather than left at the end
+            // of the itemisation. It is the number the guest asks for and the
+            // one the operator reads back, and on the longest round it was
+            // sitting half-hidden behind the button until somebody scrolled.
+            VStack(alignment: .leading, spacing: 0) {
                 newBalance(receipt)
-
-                Spacer(minLength: SBSpace.x4)
-
                 actions(receipt)
+                    .padding(.top, SBSpace.x4)
             }
             .padding(.horizontal, 22)
-            .padding(.top, 22)
         }
         .padding(.bottom, 20)
     }

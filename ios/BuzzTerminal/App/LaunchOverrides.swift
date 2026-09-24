@@ -10,7 +10,8 @@ import Foundation
 ///     xcrun simctl launch <udid> fest.swingbuzz.BuzzTerminal -sbScreen participant
 ///
 /// Available screens: `reception`, `bar`, `assign`, `participant`, `blocked`,
-/// `topup`, `receipt`, `cart`, `balance`, `balance-unknown`, `payreview`, `payreview-short`,
+/// `topup`, `receipt`, `cart`, `balance`, `balance-unknown`, `participant-full`,
+/// `payreview`, `payreview-short`,
 /// `payreview-blocked`, `payreview-unassigned`, `assign-evening`, `door-pass`,
 /// `door-buyer`, `evening-participant`.
 /// Add `-sbOffline` for the offline banner, `-sbScanning` for the scan sheet,
@@ -145,6 +146,21 @@ extension AppModel {
             participant = marta
             screen = .participant
 
+        // The same screen with everything on it at once: a preordered shirt, a
+        // free one, and the classes on sale. This is the layout case — a staff
+        // member with all three runs past the bottom of the phone, and it used
+        // to run off it, so it is worth being one launch argument away.
+        case "participant-full":
+            role = .reception
+            bracelet = SampleData.braceletB
+            participant = marta
+            seedParticipantExtras(
+                merch: SampleData.merchOrders[ParticipantID("tkt-10434")],
+                freeShirt: FreeShirt(entitled: true),
+                sessions: SampleData.specialSessions
+            )
+            screen = .participant
+
         case "blocked":
             role = .reception
             bracelet = SampleData.braceletD
@@ -176,6 +192,24 @@ extension AppModel {
                     .init(key: "Previous balance", value: "23.50 €"),
                 ],
                 balance: Money(euros: 43, cents: 50)
+            )
+            screen = .receipt
+
+        // The biggest round the bar can charge in one go: eight distinct drinks,
+        // which is the rules' own ceiling. The receipt grows a row per drink, so
+        // this is the layout case for that screen.
+        case "receipt-round":
+            role = .bar
+            bracelet = SampleData.braceletB
+            participant = marta
+            receipt = Receipt(
+                kind: .payment,
+                title: "Charged",
+                note: "Marta Lindqvist’s account was debited 41.00 €.",
+                rows: SampleData.drinks.prefix(8).map {
+                    .init(key: "1 × \($0.name)", value: "\($0.price)")
+                } + [.init(key: "Participant", value: "Marta Lindqvist")],
+                balance: Money(euros: 2, cents: 50)
             )
             screen = .receipt
 

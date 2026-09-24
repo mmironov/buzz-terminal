@@ -10,7 +10,24 @@ import SwiftUI
 struct ReceptionHomeView: View {
     @Environment(AppModel.self) private var model
 
+    /// Centred by two spacers, and scrollable when it no longer fits.
+    ///
+    /// The layout fills the screen exactly, which means anything that takes a
+    /// slice of it — the sync banner, when writes are queued or the venue's
+    /// wifi drops — pushes the app's own header up under the status bar. The
+    /// `minHeight` keeps the spacers doing their job at the size it does fit,
+    /// so on an ordinary shift this is unchanged.
     var body: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                content
+                    .frame(minHeight: proxy.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 22) {
             Spacer(minLength: 0)
 

@@ -38,6 +38,7 @@ shoot 05a-door-buyer     -sbScreen door-buyer
 shoot 05b-assign-evening -sbScreen assign-evening
 shoot 05c-evening-participant -sbScreen evening-participant
 shoot 06-participant     -sbScreen participant
+shoot 06a-participant-full -sbScreen participant-full
 shoot 07-topup           -sbScreen topup
 shoot 08-receipt         -sbScreen receipt
 shoot 09-blocked         -sbScreen blocked
