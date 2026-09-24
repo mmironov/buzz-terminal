@@ -130,6 +130,10 @@ final class AppModel {
             /// chip that already belongs to somebody is refused.
             case replaceBracelet
             case payment
+            /// "How much is on this?" — asked by the guest, read by the bar.
+            /// Answers and stops there: nothing is written and no round is
+            /// involved.
+            case checkBalance
         }
         var purpose: Purpose
         var isReading = false
@@ -231,6 +235,11 @@ final class AppModel {
     /// Recomputed whenever the pay-review screen is shown. The decision logic
     /// itself lives on `PaymentDecision` (exercise 3).
     var paymentDecision: PaymentDecision?
+
+    /// The answer to "how much have I got?", built when the chip resolves.
+    /// Held rather than recomputed so the screen keeps saying the same thing
+    /// after the scan state has gone.
+    var balanceCheck: BalanceCheck?
 
     // MARK: Receipt
 
@@ -472,6 +481,11 @@ final class AppModel {
         case .replaceBracelet:
             guard let guest = participant else { return nil }
             return "Hold a fresh bracelet to the top of the phone to replace \(guest.name)'s. The old one stops working."
+        case .checkBalance:
+            // Worth naming on the system sheet: the guest is watching their own
+            // wristband being held to a phone, and "nothing is being charged" is
+            // the thing they want to hear.
+            return "Hold the guest's bracelet to the top of the phone to read what is on it. Nothing is charged."
         case .identify, .payment:
             return nil
         }
@@ -619,6 +633,21 @@ final class AppModel {
                     ScanFeedback.shared.blocked()
                 } else if let found {
                     showParticipant(found)
+                    ScanFeedback.shared.success()
+                }
+
+            case .checkBalance:
+                // Every outcome is the same screen, including the chip nobody
+                // owns: the guest asked a question and is owed an answer, not a
+                // dead end phrased for reception.
+                let check = BalanceCheck.of(found)
+                balanceCheck = check
+                screen = .balance
+                if found?.isBlocked == true {
+                    ScanFeedback.shared.blocked()
+                } else if check.isProblem {
+                    ScanFeedback.shared.problem()
+                } else {
                     ScanFeedback.shared.success()
                 }
 
@@ -1399,6 +1428,7 @@ final class AppModel {
         merchUnavailable = false
         receipt = nil
         paymentDecision = nil
+        balanceCheck = nil
         search = ""
     }
 
@@ -1428,6 +1458,7 @@ final class AppModel {
         participantActionOverride = nil
         merchUnavailable = false
         paymentDecision = nil
+        balanceCheck = nil
     }
 
     /// The receipt's primary button, which differs per outcome:

@@ -43,6 +43,8 @@ shoot 08-receipt         -sbScreen receipt
 shoot 09-blocked         -sbScreen blocked
 shoot 10-bar-menu        -sbScreen bar
 shoot 11-cart            -sbScreen cart
+shoot 11a-balance        -sbScreen balance
+shoot 11b-balance-unknown -sbScreen balance-unknown
 shoot 12-payreview       -sbScreen payreview
 shoot 13-payreview-short -sbScreen payreview-short
 shoot 14-payreview-blocked -sbScreen payreview-blocked

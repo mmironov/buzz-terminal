@@ -16,7 +16,9 @@ struct BarMenuView: View {
         VStack(spacing: 0) {
             header
             menuGrid
-            if !model.cart.isEmpty {
+            if model.cart.isEmpty {
+                balanceBar
+            } else {
                 cartBar
             }
         }
@@ -98,6 +100,27 @@ struct BarMenuView: View {
         .padding(.vertical, 8)
         .frame(minHeight: height, alignment: .topLeading)
         .contentShape(Rectangle())
+    }
+
+    /// "Can you check how much I've got?" — the question a guest asks before
+    /// they order, so it lives where the total will be once they do.
+    ///
+    /// Only with an empty order, and that is the point: the same corner of the
+    /// screen must never offer to read a balance and to charge a round at the
+    /// same time. It also means a bartender mid-round cannot reach it, which is
+    /// correct — the question comes first or not at all.
+    private var balanceBar: some View {
+        VStack(spacing: 0) {
+            SBDivider()
+            Button("Check balance") {
+                model.beginScan(for: .checkBalance)
+            }
+            .buttonStyle(.sbBlock(.secondary, minHeight: 48, fontSize: 15))
+            .padding(.horizontal, 18)
+            .padding(.top, SBSpace.x3)
+            .padding(.bottom, 14)
+            .background(Color.sbSurface)
+        }
     }
 
     /// The running total, a way to throw the round away, and the scan.

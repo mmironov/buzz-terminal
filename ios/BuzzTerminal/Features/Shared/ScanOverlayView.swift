@@ -59,6 +59,7 @@ struct ScanOverlayView: View {
         case .assignToSelected: "Pair a bracelet"
         case .doorSale: "Fresh bracelet"
         case .replaceBracelet: "Replacement bracelet"
+        case .checkBalance: "Check a balance"
         case .identify, .payment: "Hold the bracelet"
         }
     }
@@ -81,6 +82,11 @@ struct ScanOverlayView: View {
             return pass.kind == .evening
                 ? "It becomes \(who)’s ticket for \(model.eveningSelection.label)"
                 : "It becomes \(who)’s \(pass.name)"
+        case .checkBalance:
+            // Said plainly, because the guest is watching their own wristband
+            // being held to a phone and "nothing is being charged" is the thing
+            // they want to hear.
+            return "Reads what is on it. Nothing is charged"
         case .identify, .payment:
             return Self.genericSubtitle
         }

@@ -80,6 +80,9 @@ enum Screen: Hashable, Sendable {
     case barMenu
     case cart
     case payReview
+    /// "How much is on this?" — the answer, and nothing else. Read-only, and
+    /// only reachable with no round in progress.
+    case balance
     // Shared
     case receipt
 }

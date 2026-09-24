@@ -74,7 +74,8 @@ none yet:
 
 Screens: `reception`, `bar`, `assign`, `door-pass`, `door-buyer`,
 `assign-evening`, `participant`,
-`evening-participant`, `blocked`, `topup`, `receipt`, `cart`, `payreview`,
+`evening-participant`, `blocked`, `topup`, `receipt`, `cart`, `balance`,
+`balance-unknown`, `payreview`,
 `payreview-short`, `payreview-blocked`, `payreview-unassigned`. Flags: `-sbOffline`,
 `-sbScanning`. In Xcode the same arguments go in Scheme ▸ Run ▸ Arguments.
 

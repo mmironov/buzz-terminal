@@ -100,6 +100,8 @@ struct RootView: View {
             CartView()
         case .payReview:
             PayReviewView()
+        case .balance:
+            BalanceView()
         case .receipt:
             ReceiptView()
         }

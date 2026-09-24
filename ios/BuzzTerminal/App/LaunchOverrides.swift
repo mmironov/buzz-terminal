@@ -10,7 +10,7 @@ import Foundation
 ///     xcrun simctl launch <udid> fest.swingbuzz.BuzzTerminal -sbScreen participant
 ///
 /// Available screens: `reception`, `bar`, `assign`, `participant`, `blocked`,
-/// `topup`, `receipt`, `cart`, `payreview`, `payreview-short`,
+/// `topup`, `receipt`, `cart`, `balance`, `balance-unknown`, `payreview`, `payreview-short`,
 /// `payreview-blocked`, `payreview-unassigned`, `assign-evening`, `door-pass`,
 /// `door-buyer`, `evening-participant`.
 /// Add `-sbOffline` for the offline banner, `-sbScanning` for the scan sheet,
@@ -183,6 +183,20 @@ extension AppModel {
             role = .bar
             seedCart()
             screen = .cart
+
+        // The bar's read-only question. Both answers, because the one that
+        // matters is the chip nobody owns: it must not read as "you have 0 €".
+        case "balance":
+            role = .bar
+            bracelet = SampleData.braceletB
+            balanceCheck = .of(marta)
+            screen = .balance
+
+        case "balance-unknown":
+            role = .bar
+            bracelet = SampleData.braceletA
+            balanceCheck = .of(nil)
+            screen = .balance
 
         // The three pay-review outcomes. All of them run the real
         // `PaymentDecision.evaluate` against the seeded cart rather than
